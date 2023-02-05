@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets">
+    <Import Project="RTXGI.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_PropertySheetDisplayName>SampleLib12</_PropertySheetDisplayName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)\..\..\SampleLib12\SampleLib12\include;$(ProjectDir)\..\..\SampleLib12\ThirdParty\cereal\include;$(ProjectDir)\..\..\SampleLib12\ThirdParty\stb;$(ProjectDir)\..\..\SampleLib12\ThirdParty\imgui;$(ProjectDir)\..\..\SampleLib12\ThirdParty\tinyexr;$(ProjectDir)\..\..\SampleLib12\ThirdParty\RTXGI\rtxgi-sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>
