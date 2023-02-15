@@ -25,7 +25,7 @@ VSOutput main(uint instanceID : SV_InstanceID, uint vertexID : SV_VertexID)
 	float2 screenPos = pos / cbScene.screenSize;
 	float2 clipPos = screenPos * float2(2, -2) - float2(1, -1);
 
-	float depth = cbMatTile.materialIndex / CLASSIFY_DEPTH_RANGE;
+	float depth = (float)cbMatTile.materialIndex / (float)CLASSIFY_DEPTH_RANGE;
 
 	Out.position = float4(clipPos, depth, 1);
 

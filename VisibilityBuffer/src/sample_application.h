@@ -8,11 +8,13 @@
 #include "sl12/unique_handle.h"
 #include "sl12/cbv_manager.h"
 #include "sl12/render_graph.h"
+#include "sl12/indirect_executer.h"
 
 #include <memory>
 #include <vector>
 
 #include "sl12/scene_mesh.h"
+#include "sl12/timestamp.h"
 
 
 class SampleApplication
@@ -21,7 +23,7 @@ class SampleApplication
 	template <typename T> using UniqueHandle = sl12::UniqueHandle<T>;
 	
 public:
-	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir);
+	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType);
 	virtual ~SampleApplication();
 
 	// virtual
@@ -112,6 +114,8 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
+
+	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
 	
 	UniqueHandle<sl12::Buffer>				instanceB_, submeshB_, drawCallB_;
 	UniqueHandle<sl12::BufferView>			instanceBV_, submeshBV_, drawCallBV_;
@@ -123,6 +127,7 @@ private:
 	sl12::InputData				inputData_{};
 
 	sl12::ResourceHandle	hSuzanneMesh_;
+	sl12::ResourceHandle	hSponzaMesh_;
 	sl12::ShaderHandle		hMeshVV_;
 	sl12::ShaderHandle		hMeshP_;
 	sl12::ShaderHandle		hVisibilityVV_;
@@ -136,11 +141,13 @@ private:
 	sl12::ShaderHandle		hMaterialTileVV_;
 	sl12::ShaderHandle		hMaterialTileP_;
 
-	ID3D12CommandSignature*		tileDrawIndirect_ = nullptr;
-	
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 
+	sl12::Timestamp			timestamps_[2];
+	sl12::u32				timestampIndex_ = 0;
+
 	int	displayWidth_, displayHeight_;
+	int meshType_;
 
 	bool bEnableVisibilityBuffer_ = false;
 };	// class SampleApplication

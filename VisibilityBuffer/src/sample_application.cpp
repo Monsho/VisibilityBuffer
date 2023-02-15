@@ -5,6 +5,7 @@
 #include "sl12/root_signature.h"
 #include "sl12/descriptor_set.h"
 #include "sl12/resource_texture.h"
+#include "sl12/command_queue.h"
 
 #define NOMINMAX
 #include <windowsx.h>
@@ -78,9 +79,10 @@ namespace
 	}
 }
 
-SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir)
+SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType)
 	: Application(hInstance, nCmdShow, screenWidth, screenHeight, csType)
 	, displayWidth_(screenWidth), displayHeight_(screenHeight)
+	, meshType_(meshType)
 {
 	std::filesystem::path p(homeDir);
 	p = std::filesystem::absolute(p);
@@ -155,7 +157,14 @@ bool SampleApplication::Initialize()
 		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
 	
 	// load request.
-	hSuzanneMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/hp_suzanne/hp_suzanne.rmesh");
+	if (meshType_ == 0)
+	{
+		hSuzanneMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/hp_suzanne/hp_suzanne.rmesh");
+	}
+	else
+	{
+		hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sponza/sponza.rmesh");
+	}
 
 	// init command list.
 	mainCmdList_ = sl12::MakeUnique<CommandLists>(nullptr);
@@ -223,6 +232,7 @@ bool SampleApplication::Initialize()
 	}
 	
 	// create scene meshes.
+	if (meshType_ == 0)
 	{
 		static const int kMeshWidth = 32;
 		static const float kMeshInter = 100.0f;
@@ -250,6 +260,19 @@ bool SampleApplication::Initialize()
 				sceneMeshes_.push_back(mesh);
 			}
 		}
+	}
+	else
+	{
+		auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSponzaMesh_.GetItem<sl12::ResourceItemMesh>());
+		DirectX::XMFLOAT3 pos(0.0f, -300.0f, 100.0f);
+		DirectX::XMFLOAT3 scl(0.02f, 0.02f, 0.02f);
+		DirectX::XMFLOAT4X4 mat;
+		DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
+								* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
+		DirectX::XMStoreFloat4x4(&mat, m);
+		mesh->SetMtxLocalToWorld(mat);
+
+		sceneMeshes_.push_back(mesh);
 	}
 	
 	// init root signature and pipeline state.
@@ -471,18 +494,16 @@ bool SampleApplication::Initialize()
 	}
 
 	{
-		D3D12_INDIRECT_ARGUMENT_DESC args[1]{};
-		args[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
-		D3D12_COMMAND_SIGNATURE_DESC desc{};
-		desc.ByteStride = sizeof(D3D12_DRAW_ARGUMENTS);
-		desc.NumArgumentDescs = ARRAYSIZE(args);
-		desc.pArgumentDescs = args;
-		desc.NodeMask = 1;
-		auto hr = device_.GetDeviceDep()->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&tileDrawIndirect_));
-		if (FAILED(hr))
+		tileDrawIndirect_ = sl12::MakeUnique<sl12::IndirectExecuter>(&device_);
+		if (!tileDrawIndirect_->Initialize(&device_, sl12::IndirectType::Draw, 0))
 		{
 			return false;
 		}
+	}
+
+	for (auto&& t : timestamps_)
+	{
+		t.Initialize(&device_, 16);
 	}
 
 	return true;
@@ -495,7 +516,8 @@ void SampleApplication::Finalize()
 	device_.Present(1);
 
 	// destroy render objects.
-	sl12::SafeRelease(tileDrawIndirect_);
+	for (auto&& t : timestamps_) t.Destroy();
+	tileDrawIndirect_.Reset();
 	gui_.Reset();
 	psoLighting_.Reset();
 	psoClearArg_.Reset();
@@ -520,18 +542,61 @@ bool SampleApplication::Execute()
 	auto frameIndex = (device_.GetSwapchain().GetFrameIndex() + sl12::Swapchain::kMaxBuffer - 1) % sl12::Swapchain::kMaxBuffer;
 	auto prevFrameIndex = (device_.GetSwapchain().GetFrameIndex() + sl12::Swapchain::kMaxBuffer - 2) % sl12::Swapchain::kMaxBuffer;
 	auto pCmdList = &mainCmdList_->Reset();
+	auto* pTimestamp = timestamps_ + timestampIndex_;
 
 	gui_->BeginNewFrame(pCmdList, displayWidth_, displayHeight_, inputData_);
 	inputData_.Reset();
 	{
+		bool bPrevMode = bEnableVisibilityBuffer_;
+
 		if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
 		{}
+		
+		uint64_t freq = device_.GetGraphicsQueue().GetTimestampFrequency();
+		if (!bPrevMode)
+		{
+			uint64_t timestamp[6];
+
+			pTimestamp->GetTimestamp(0, 6, timestamp);
+			uint64_t total = timestamp[5] - timestamp[0];
+			uint64_t gbuffer = timestamp[2] - timestamp[1];
+			uint64_t lighting = timestamp[3] - timestamp[2];
+			uint64_t tonemap = timestamp[4] - timestamp[3];
+
+			ImGui::Text("GPU Time");
+			ImGui::Text("  Total   : %f (ms)", (float)total / ((float)freq / 1000.0f));
+			ImGui::Text("  GBuffer : %f (ms)", (float)gbuffer / ((float)freq / 1000.0f));
+			ImGui::Text("  Lighting: %f (ms)", (float)lighting / ((float)freq / 1000.0f));
+			ImGui::Text("  Tonemap : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+		}
+		else
+		{
+			uint64_t timestamp[8];
+
+			pTimestamp->GetTimestamp(0, 8, timestamp);
+			uint64_t total = timestamp[7] - timestamp[0];
+			uint64_t visibility = timestamp[2] - timestamp[1];
+			uint64_t depth = timestamp[3] - timestamp[2];
+			uint64_t classify = timestamp[4] - timestamp[3];
+			uint64_t lighting = timestamp[5] - timestamp[4];
+			uint64_t tonemap = timestamp[6] - timestamp[5];
+
+			ImGui::Text("GPU Time");
+			ImGui::Text("  Total      : %f (ms)", (float)total / ((float)freq / 1000.0f));
+			ImGui::Text("  Visibility : %f (ms)", (float)visibility / ((float)freq / 1000.0f));
+			ImGui::Text("  Depth      : %f (ms)", (float)depth / ((float)freq / 1000.0f));
+			ImGui::Text("  Classify   : %f (ms)", (float)classify / ((float)freq / 1000.0f));
+			ImGui::Text("  Lighting   : %f (ms)", (float)lighting / ((float)freq / 1000.0f));
+			ImGui::Text("  Tonemap    : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+		}
 	}
 	ImGui::Render();
 
 	device_.WaitPresent();
 	device_.SyncKillObjects();
 
+	pTimestamp->Reset();
+	pTimestamp->Query(pCmdList);
 	device_.LoadRenderCommands(pCmdList);
 	meshMan_->BeginNewFrame(pCmdList);
 	cbvMan_->BeginNewFrame();
@@ -674,6 +739,7 @@ bool SampleApplication::Execute()
 	if (!bEnableVisibilityBuffer_)
 	{
 		// gbuffer pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 0);
 		{
 			std::vector<sl12::CbvHandle> MeshCBs;
@@ -775,6 +841,7 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 
 		// lighing pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 1);
 		{
 			GPU_MARKER(pCmdList, 1, "LightingPass");
@@ -804,6 +871,7 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 
 		// tonemap pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 2);
 		{
 			GPU_MARKER(pCmdList, 2, "TonemapPass");
@@ -853,6 +921,7 @@ bool SampleApplication::Execute()
 		CreateBuffers(pCmdList, materials);
 
 		// visibility pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 0);
 		{
 			// create CBs.
@@ -960,6 +1029,7 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 
 		// material depth pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 1);
 		{
 			GPU_MARKER(pCmdList, 1, "MaterialDepthPass");
@@ -1007,6 +1077,7 @@ bool SampleApplication::Execute()
 
 		// classify pass.
 		sl12::CbvHandle hTileCB;
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 2);
 		{
 			UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
@@ -1063,6 +1134,7 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 
 		// material tile pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 3);
 		{
 			GPU_MARKER(pCmdList, 1, "MaterialTilePass");
@@ -1129,10 +1201,10 @@ bool SampleApplication::Execute()
 				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
 
 				pCmdList->GetLatestCommandList()->ExecuteIndirect(
-					tileDrawIndirect_,							// command signature
+					tileDrawIndirect_->GetCommandSignature(),	// command signature
 					1,											// max command count
 					drawArgB_->GetResourceDep(),				// argument buffer
-					sizeof(D3D12_DRAW_ARGUMENTS) * matIndex,	// argument buffer offset
+					tileDrawIndirect_->GetStride() * matIndex,	// argument buffer offset
 					nullptr,									// count buffer
 					0);							// count buffer offset
 				
@@ -1142,6 +1214,7 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 
 		// tonemap pass.
+		pTimestamp->Query(pCmdList);
 		renderGraph_->BeginPass(pCmdList, 4);
 		{
 			GPU_MARKER(pCmdList, 3, "TonemapPass");
@@ -1186,10 +1259,16 @@ bool SampleApplication::Execute()
 	}
 
 	// draw GUI.
+	pTimestamp->Query(pCmdList);
 	gui_->LoadDrawCommands(pCmdList);
 	
 	// barrier swapchain.
 	pCmdList->TransitionBarrier(swapchain.GetCurrentTexture(kSwapchainBufferOffset), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+	// graphics timestamp end.
+	pTimestamp->Query(pCmdList);
+	pTimestamp->Resolve(pCmdList);
+	timestampIndex_ = 1 - timestampIndex_;
 
 	// wait prev frame render.
 	mainCmdList_->Close();
@@ -1371,7 +1450,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<s
 	UINT tileXCount = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileYCount = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileMax = tileXCount * tileYCount;
-	if (drawArgB_.IsValid() && (drawArgB_->GetBufferDesc().size < sizeof(D3D12_DRAW_ARGUMENTS) * outMaterials.size()))
+	if (drawArgB_.IsValid() && (drawArgB_->GetBufferDesc().size < tileDrawIndirect_->GetStride() * outMaterials.size()))
 	{
 		drawArgB_.Reset();
 		drawArgUAV_.Reset();
@@ -1389,7 +1468,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<s
 
 		sl12::BufferDesc desc;
 		desc.heap = sl12::BufferHeap::Default;
-		desc.size = sizeof(D3D12_DRAW_ARGUMENTS) * outMaterials.size();
+		desc.size = tileDrawIndirect_->GetStride() * outMaterials.size();
 		desc.stride = 0;
 		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		drawArgB_->Initialize(&device_, desc);

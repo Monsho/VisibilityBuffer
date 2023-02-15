@@ -36,7 +36,7 @@ PSOutput main(PSInput In)
 		uint drawCallIndex = (texVis[pixelPos] >> 16) & 0xffff;
 		DrawCallData dc = rDrawCallData[drawCallIndex];
 		SubmeshData sm = rSubmeshData[dc.submeshIndex];
-		Out.depth = (float)sm.materialIndex / CLASSIFY_DEPTH_RANGE;
+		Out.depth = (float)sm.materialIndex / (float)CLASSIFY_DEPTH_RANGE;
 		rwAccum[pixelPos] = float4(1, 0, 0, 1);
 	}
 

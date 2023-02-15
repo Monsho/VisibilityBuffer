@@ -12,6 +12,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
 	auto ColorSpace = sl12::ColorSpaceType::Rec709;
 	std::string homeDir = ".\\";
+	int meshType = 0;
 
 	LPWSTR *szArglist;
 	int nArgs;
@@ -29,10 +30,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 			{
 				homeDir = sl12::WStringToString(szArglist[++i]);
 			}
+			else if (!lstrcmpW(szArglist[i], L"-mesh"))
+			{
+				meshType = std::stoi(szArglist[++i]);
+			}
 		}
 	}
 
-	SampleApplication app(hInstance, nCmdShow, kDisplayWidth, kDisplayHeight, ColorSpace, homeDir);
+	SampleApplication app(hInstance, nCmdShow, kDisplayWidth, kDisplayHeight, ColorSpace, homeDir, meshType);
 
 	return app.Run();
 }
