@@ -1,0 +1,3 @@
+[submodule "SampleLib12"]
+	path = SampleLib12
+	url = https://github.com/Monsho/SampleLib12
