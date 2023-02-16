@@ -20,5 +20,18 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="shaders\classify.c.hlsl" />
+    <None Include="shaders\clear_arg.c.hlsl" />
+    <None Include="shaders\fullscreen.vv.hlsl" />
+    <None Include="shaders\lighting.c.hlsl" />
+    <None Include="shaders\material_depth.p.hlsl" />
+    <None Include="shaders\material_tile.p.hlsl" />
+    <None Include="shaders\material_tile.vv.hlsl" />
+    <None Include="shaders\mesh.p.hlsl" />
+    <None Include="shaders\mesh.vv.hlsl" />
+    <None Include="shaders\tonemap.p.hlsl" />
+    <None Include="shaders\visibility.p.hlsl" />
+    <None Include="shaders\visibility.vv.hlsl" />
+    <None Include="shaders\cbuffer.hlsli" />
   </ItemGroup>
 </Project>
