@@ -17,6 +17,7 @@ struct SceneCB
     float4x4    mtxViewToWorld;
     float4      eyePosition;
     float2      screenSize;
+    float2      nearFar;
 };
 
 struct MeshCB

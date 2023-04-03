@@ -730,14 +730,13 @@ bool SampleApplication::Execute()
 	// create scene constant buffer.
 	sl12::CbvHandle hSceneCB;
 	{
-		DirectX::XMFLOAT3 camPos(1000.0f, 1000.0f, 0.0f);
-		DirectX::XMFLOAT3 tgtPos(0.0f, 0.0f, 0.0f);
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
+		float Zn = 0.1f;
 		auto cp = DirectX::XMLoadFloat3(&cameraPos_);
 		auto dir = DirectX::XMLoadFloat3(&cameraDir_);
 		auto up = DirectX::XMLoadFloat3(&upVec);
 		auto mtxWorldToView = DirectX::XMMatrixLookAtRH(cp, DirectX::XMVectorAdd(cp, dir), up);
-		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteFovRH(DirectX::XMConvertToRadians(60.0f), (float)displayWidth_ / (float)displayHeight_, 0.1f);
+		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteFovRH(DirectX::XMConvertToRadians(60.0f), (float)displayWidth_ / (float)displayHeight_, Zn);
 		auto mtxWorldToClip = mtxWorldToView * mtxViewToClip;
 		auto mtxClipToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToClip);
 		auto mtxViewToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToView);
@@ -747,12 +746,14 @@ bool SampleApplication::Execute()
 		DirectX::XMStoreFloat4x4(&cbScene.mtxWorldToView, mtxWorldToView);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToWorld, mtxClipToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxViewToWorld, mtxViewToWorld);
-		cbScene.eyePosition.x = camPos.x;
-		cbScene.eyePosition.y = camPos.y;
-		cbScene.eyePosition.z = camPos.z;
+		cbScene.eyePosition.x = cameraPos_.x;
+		cbScene.eyePosition.y = cameraPos_.y;
+		cbScene.eyePosition.z = cameraPos_.z;
 		cbScene.eyePosition.w = 0.0f;
 		cbScene.screenSize.x = (float)displayWidth_;
 		cbScene.screenSize.y = (float)displayHeight_;
+		cbScene.nearFar.x = Zn;
+		cbScene.nearFar.y = 0.0f;
 
 		hSceneCB = cbvMan_->GetTemporal(&cbScene, sizeof(cbScene));
 	}

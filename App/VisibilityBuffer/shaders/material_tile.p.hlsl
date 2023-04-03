@@ -104,6 +104,87 @@ float3 CalcDerivativeBarycentric(PerspBaryDeriv deriv, float4 pt0, float2 pixelN
 	return ret;
 }
 
+// http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/
+PerspBaryDeriv CalcFullBary(float4 pt0, float4 pt1, float4 pt2, float2 pixelNdc, float2 winSize)
+{
+	PerspBaryDeriv ret = (PerspBaryDeriv)0;
+
+	float3 invW = rcp(float3(pt0.w, pt1.w, pt2.w));
+
+	float2 ndc0 = pt0.xy * invW.x;
+	float2 ndc1 = pt1.xy * invW.y;
+	float2 ndc2 = pt2.xy * invW.z;
+
+	float invDet = rcp(determinant(float2x2(ndc2 - ndc1, ndc0 - ndc1)));
+	ret.Ddx = float3(ndc1.y - ndc2.y, ndc2.y - ndc0.y, ndc0.y - ndc1.y) * invDet * invW;
+	ret.Ddy = float3(ndc2.x - ndc1.x, ndc0.x - ndc2.x, ndc1.x - ndc0.x) * invDet * invW;
+	float ddxSum = dot(ret.Ddx, float3(1,1,1));
+	float ddySum = dot(ret.Ddy, float3(1,1,1));
+
+	float2 deltaVec = pixelNdc - ndc0;
+	float interpInvW = invW.x + deltaVec.x*ddxSum + deltaVec.y*ddySum;
+	float interpW = rcp(interpInvW);
+
+	ret.Lambda.x = interpW * (invW[0] + deltaVec.x*ret.Ddx.x + deltaVec.y*ret.Ddy.x);
+	ret.Lambda.y = interpW * (0.0f    + deltaVec.x*ret.Ddx.y + deltaVec.y*ret.Ddy.y);
+	ret.Lambda.z = interpW * (0.0f    + deltaVec.x*ret.Ddx.z + deltaVec.y*ret.Ddy.z);
+
+	ret.Ddx *= (2.0f/winSize.x);
+	ret.Ddy *= (2.0f/winSize.y);
+	ddxSum  *= (2.0f/winSize.x);
+	ddySum  *= (2.0f/winSize.y);
+
+	ret.Ddy *= -1.0f;
+	ddySum  *= -1.0f;
+
+	float interpW_ddx = 1.0f / (interpInvW + ddxSum);
+	float interpW_ddy = 1.0f / (interpInvW + ddySum);
+
+	ret.Ddx = interpW_ddx*(ret.Lambda*interpInvW + ret.Ddx) - ret.Lambda;
+	ret.Ddy = interpW_ddy*(ret.Lambda*interpInvW + ret.Ddy) - ret.Lambda;  
+
+	return ret;
+}
+
+float3 InterpolateWithDeriv(PerspBaryDeriv deriv, float v0, float v1, float v2)
+{
+	float3 mergedV = float3(v0, v1, v2);
+	float3 ret;
+	ret.x = dot(mergedV, deriv.Lambda);
+	ret.y = dot(mergedV, deriv.Ddx);
+	ret.z = dot(mergedV, deriv.Ddy);
+	return ret;
+}
+
+void CalcDerivativeFloat2(PerspBaryDeriv deriv, float2 v0, float2 v1, float2 v2, out float2 v, out float2 dx, out float2 dy)
+{
+	float3 x = InterpolateWithDeriv(deriv, v0.x, v1.x, v2.x);
+	float3 y = InterpolateWithDeriv(deriv, v0.y, v1.y, v2.y);
+	v = float2(x.x, y.x);
+	dx = float2(x.y, y.y);
+	dy = float2(x.z, y.z);
+}
+void CalcDerivativeFloat3(PerspBaryDeriv deriv, float3 v0, float3 v1, float3 v2, out float3 v, out float3 dx, out float3 dy)
+{
+	float3 x = InterpolateWithDeriv(deriv, v0.x, v1.x, v2.x);
+	float3 y = InterpolateWithDeriv(deriv, v0.y, v1.y, v2.y);
+	float3 z = InterpolateWithDeriv(deriv, v0.z, v1.z, v2.z);
+	v = float3(x.x, y.x, z.x);
+	dx = float3(x.y, y.y, z.y);
+	dy = float3(x.z, y.z, z.z);
+}
+void CalcDerivativeFloat4(PerspBaryDeriv deriv, float4 v0, float4 v1, float4 v2, out float4 v, out float4 dx, out float4 dy)
+{
+	float3 x = InterpolateWithDeriv(deriv, v0.x, v1.x, v2.x);
+	float3 y = InterpolateWithDeriv(deriv, v0.y, v1.y, v2.y);
+	float3 z = InterpolateWithDeriv(deriv, v0.z, v1.z, v2.z);
+	float3 w = InterpolateWithDeriv(deriv, v0.w, v1.w, v2.w);
+	v = float4(x.x, y.x, z.x, w.x);
+	dx = float4(x.y, y.y, z.y, w.y);
+	dy = float4(x.z, y.z, z.z, w.z);
+}
+
+
 // calc barycentric with ray intersection.
 float3 CalcRayIntersectBarycentric(float3 p0, float3 p1, float3 p2, float3 rayOrig, float3 rayDir)
 {
@@ -184,11 +265,13 @@ VertexAttr GetVertexAttrPerspectiveCorrect(InstanceData instance, SubmeshData su
 	p0 = mul(instance.mtxLocalToWorld, float4(p0, 1)).xyz;
 	p1 = mul(instance.mtxLocalToWorld, float4(p1, 1)).xyz;
 	p2 = mul(instance.mtxLocalToWorld, float4(p2, 1)).xyz;
+
+	// transform projection.
 	float4 pt0 = mul(cbScene.mtxWorldToProj, float4(p0, 1));
 	float4 pt1 = mul(cbScene.mtxWorldToProj, float4(p1, 1));
 	float4 pt2 = mul(cbScene.mtxWorldToProj, float4(p2, 1));
-	float3 invW = 1.0 / float3(pt0.w, pt1.w, pt2.w);
 
+#if 0
 	// calc barycentric.
 	float2 screenPos = (pixelPos + 0.5) / cbScene.screenSize;
 	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
@@ -224,6 +307,33 @@ VertexAttr GetVertexAttrPerspectiveCorrect(InstanceData instance, SubmeshData su
 	float4 t1 = GetVertexTangent(submesh, vertexIndices.y);
 	float4 t2 = GetVertexTangent(submesh, vertexIndices.z);
 	attr.tangent = (t0 * C.Lambda.x + t1 * C.Lambda.y + t2 * C.Lambda.z) * C.invPersp;
+#else
+	// calc barycentric.
+	float2 screenPos = (pixelPos + 0.5) / cbScene.screenSize;
+	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
+	PerspBaryDeriv C = CalcFullBary(pt0, pt1, pt2, clipSpacePos, cbScene.screenSize);
+
+	// get uv.
+	float2 uv0 = GetVertexTexcoord(submesh, vertexIndices.x);
+	float2 uv1 = GetVertexTexcoord(submesh, vertexIndices.y);
+	float2 uv2 = GetVertexTexcoord(submesh, vertexIndices.z);
+	CalcDerivativeFloat2(C, uv0, uv1, uv2, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY);
+
+	// get other attributes.
+	float3 dx3, dy3;
+	float4 dx4, dy4;
+	CalcDerivativeFloat3(C, p0, p1, p2, attr.position, dx3, dy3);
+
+	float3 n0 = GetVertexNormal(submesh, vertexIndices.x);
+	float3 n1 = GetVertexNormal(submesh, vertexIndices.y);
+	float3 n2 = GetVertexNormal(submesh, vertexIndices.z);
+	CalcDerivativeFloat3(C, n0, n1, n2, attr.normal, dx3, dy3);
+
+	float4 t0 = GetVertexTangent(submesh, vertexIndices.x);
+	float4 t1 = GetVertexTangent(submesh, vertexIndices.y);
+	float4 t2 = GetVertexTangent(submesh, vertexIndices.z);
+	CalcDerivativeFloat4(C, t0, t1, t2, attr.tangent, dx4, dy4);
+#endif
 
 	return attr;
 }
