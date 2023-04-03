@@ -35,6 +35,8 @@ public:
 private:
 	void CreateBuffers(sl12::CommandList* pCmdList, std::vector<sl12::ResourceItemMesh::Material>& outMaterials);
 
+	void ControlCamera(float deltaTime = 1.0f / 60.0f);
+
 private:
 	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
 
@@ -145,7 +147,13 @@ private:
 
 	sl12::Timestamp			timestamps_[2];
 	sl12::u32				timestampIndex_ = 0;
+	sl12::CpuTimer			currCpuTime_;
 
+	// camera parameters.
+	DirectX::XMFLOAT3		cameraPos_;
+	DirectX::XMFLOAT3		cameraDir_;
+	int						lastMouseX_, lastMouseY_;
+	
 	int	displayWidth_, displayHeight_;
 	int meshType_;
 

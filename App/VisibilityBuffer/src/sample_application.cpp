@@ -506,6 +506,9 @@ bool SampleApplication::Initialize()
 		t.Initialize(&device_, 16);
 	}
 
+	cameraPos_ = DirectX::XMFLOAT3(1000.0f, 1000.0f, 0.0f);
+	cameraDir_ = DirectX::XMFLOAT3(-1.0f, 0.0f, 0.0f);
+	lastMouseX_ = lastMouseY_ = 0;
 	return true;
 }
 
@@ -544,6 +547,11 @@ bool SampleApplication::Execute()
 	auto pCmdList = &mainCmdList_->Reset();
 	auto* pTimestamp = timestamps_ + timestampIndex_;
 
+	sl12::CpuTimer now = sl12::CpuTimer::CurrentTime();
+	sl12::CpuTimer delta = now - currCpuTime_;
+	currCpuTime_ = now;
+
+	ControlCamera(delta.ToSecond());
 	gui_->BeginNewFrame(pCmdList, displayWidth_, displayHeight_, inputData_);
 	inputData_.Reset();
 	{
@@ -704,10 +712,10 @@ bool SampleApplication::Execute()
 		DirectX::XMFLOAT3 camPos(1000.0f, 1000.0f, 0.0f);
 		DirectX::XMFLOAT3 tgtPos(0.0f, 0.0f, 0.0f);
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
-		auto cp = DirectX::XMLoadFloat3(&camPos);
-		auto tp = DirectX::XMLoadFloat3(&tgtPos);
+		auto cp = DirectX::XMLoadFloat3(&cameraPos_);
+		auto dir = DirectX::XMLoadFloat3(&cameraDir_);
 		auto up = DirectX::XMLoadFloat3(&upVec);
-		auto mtxWorldToView = DirectX::XMMatrixLookAtRH(cp, tp, up);
+		auto mtxWorldToView = DirectX::XMMatrixLookAtRH(cp, DirectX::XMVectorAdd(cp, dir), up);
 		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteFovRH(DirectX::XMConvertToRadians(60.0f), (float)displayWidth_ / (float)displayHeight_, 0.1f);
 		auto mtxWorldToClip = mtxWorldToView * mtxViewToClip;
 		auto mtxClipToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToClip);
@@ -1547,5 +1555,58 @@ int SampleApplication::Input(UINT message, WPARAM wParam, LPARAM lParam)
 
 	return 0;
 }
+
+void SampleApplication::ControlCamera(float deltaTime)
+{
+	const float kCameraMoveSpeed = 300.0f;
+	const float kCameraRotSpeed = 10.0f;
+	float x = 0.0f, y = 0.0f, z = 0.0f;
+	float rx = 0.0f, ry = 0.0f;
+	if (GetKeyState('W') < 0)
+	{
+		z = 1.0f;
+	}
+	else if (GetKeyState('S') < 0)
+	{
+		z = -1.0f;
+	}
+	if (GetKeyState('A') < 0)
+	{
+		x = -1.0f;
+	}
+	else if (GetKeyState('D') < 0)
+	{
+		x = 1.0f;
+	}
+	if (GetKeyState('Q') < 0)
+	{
+		y = -1.0f;
+	}
+	else if (GetKeyState('E') < 0)
+	{
+		y = 1.0f;
+	}
+
+	if (inputData_.mouseButton & sl12::MouseButton::Right)
+	{
+		rx = -(float)(inputData_.mouseY - lastMouseY_);
+		ry = -(float)(inputData_.mouseX - lastMouseX_);
+	}
+	lastMouseX_ = inputData_.mouseX;
+	lastMouseY_ = inputData_.mouseY;
+
+	DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
+	auto cp = DirectX::XMLoadFloat3(&cameraPos_);
+	auto c_forward = DirectX::XMLoadFloat3(&cameraDir_);
+	auto c_right = DirectX::XMVector3Normalize(DirectX::XMVector3Cross(c_forward, DirectX::XMLoadFloat3(&upVec)));
+	auto mtxRot = DirectX::XMMatrixMultiply(DirectX::XMMatrixRotationAxis(c_right, DirectX::XMConvertToRadians(rx * kCameraRotSpeed) * deltaTime), DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(ry * kCameraRotSpeed) * deltaTime));
+	c_forward = DirectX::XMVector4Transform(c_forward, mtxRot);
+	cp = DirectX::XMVectorAdd(cp, DirectX::XMVectorScale(c_forward, z * kCameraMoveSpeed * deltaTime));
+	cp = DirectX::XMVectorAdd(cp, DirectX::XMVectorScale(c_right, x * kCameraMoveSpeed * deltaTime));
+	cp = DirectX::XMVectorAdd(cp, DirectX::XMVectorSet(0.0f, y * kCameraMoveSpeed * deltaTime, 0.0f, 0.0f));
+	DirectX::XMStoreFloat3(&cameraPos_, cp);
+	DirectX::XMStoreFloat3(&cameraDir_, c_forward);
+}
+
 
 //	EOF
