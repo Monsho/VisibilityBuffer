@@ -228,9 +228,18 @@ VertexAttr GetVertexAttrPerspectiveCorrect(InstanceData instance, SubmeshData su
 	return attr;
 }
 
-[earlydepthstencil]
-float4 main(PSInput In) : SV_Target
+struct PSOutput
 {
+	float4	color	: SV_TARGET0;
+	float4	orm		: SV_TARGET1;
+	float4	normal	: SV_TARGET2;
+};
+
+[earlydepthstencil]
+PSOutput main(PSInput In)
+{
+	PSOutput Out = (PSOutput)0;
+
 	// get visibility.
 	uint2 pos = (uint2)In.position.xy;
 	uint vis = texVis[pos];
@@ -269,7 +278,9 @@ float4 main(PSInput In) : SV_Target
 	normalInTS *= float3(1, -sign(tangentV.w), 1);
 	float3 normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 
-	float NoL = saturate(normalInWS.y);
-	float3 diffuse = lerp(bc.rgb, 0, orm.b);
-	return float4(diffuse * NoL, 1);
+	Out.color = float4(bc, 1);
+	Out.orm.rgb = orm;
+	Out.normal.xyz = normalInWS * 0.5 + 0.5;
+
+	return Out;
 }

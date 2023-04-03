@@ -443,7 +443,9 @@ bool SampleApplication::Initialize()
 
 		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		desc.numRTVs = 0;
-		desc.rtvFormats[desc.numRTVs++] = gAccumDesc.format;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[0].format;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[1].format;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[2].format;
 		desc.dsvFormat = DXGI_FORMAT_D32_FLOAT;
 		desc.multisampleCount = 1;
 
@@ -579,21 +581,23 @@ bool SampleApplication::Execute()
 		}
 		else
 		{
-			uint64_t timestamp[8];
+			uint64_t timestamp[9];
 
-			pTimestamp->GetTimestamp(0, 8, timestamp);
-			uint64_t total = timestamp[7] - timestamp[0];
+			pTimestamp->GetTimestamp(0, 9, timestamp);
+			uint64_t total = timestamp[8] - timestamp[0];
 			uint64_t visibility = timestamp[2] - timestamp[1];
 			uint64_t depth = timestamp[3] - timestamp[2];
 			uint64_t classify = timestamp[4] - timestamp[3];
-			uint64_t lighting = timestamp[5] - timestamp[4];
-			uint64_t tonemap = timestamp[6] - timestamp[5];
+			uint64_t tile = timestamp[5] - timestamp[4];
+			uint64_t lighting = timestamp[6] - timestamp[5];
+			uint64_t tonemap = timestamp[7] - timestamp[6];
 
 			ImGui::Text("GPU Time");
 			ImGui::Text("  Total      : %f (ms)", (float)total / ((float)freq / 1000.0f));
 			ImGui::Text("  Visibility : %f (ms)", (float)visibility / ((float)freq / 1000.0f));
 			ImGui::Text("  Depth      : %f (ms)", (float)depth / ((float)freq / 1000.0f));
 			ImGui::Text("  Classify   : %f (ms)", (float)classify / ((float)freq / 1000.0f));
+			ImGui::Text("  MatTile    : %f (ms)", (float)tile / ((float)freq / 1000.0f));
 			ImGui::Text("  Lighting   : %f (ms)", (float)lighting / ((float)freq / 1000.0f));
 			ImGui::Text("  Tonemap    : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
 		}
@@ -691,12 +695,29 @@ bool SampleApplication::Execute()
 			matTilePass.input.push_back(gbufferTargetIDs[3]);
 			matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 			matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-			matTilePass.output.push_back(matDepthTargetID);
-			matTilePass.output.push_back(accumTargetID);
-			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			matTilePass.output.push_back(gbufferTargetIDs[0]);
+			matTilePass.output.push_back(gbufferTargetIDs[1]);
+			matTilePass.output.push_back(gbufferTargetIDs[2]);
+			matTilePass.output.push_back(gbufferTargetIDs[3]);
 			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
 			passes.push_back(matTilePass);
 			
+			sl12::RenderPass lightingPass{};
+			lightingPass.input.push_back(gbufferTargetIDs[0]);
+			lightingPass.input.push_back(gbufferTargetIDs[1]);
+			lightingPass.input.push_back(gbufferTargetIDs[2]);
+			lightingPass.input.push_back(gbufferTargetIDs[3]);
+			lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			lightingPass.output.push_back(accumTargetID);
+			lightingPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			passes.push_back(lightingPass);
+
 			sl12::RenderPass tonemapPass{};
 			tonemapPass.input.push_back(accumTargetID);
 			tonemapPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -850,7 +871,7 @@ bool SampleApplication::Execute()
 
 		// lighing pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 1);
+		renderGraph_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 1, "LightingPass");
 
@@ -880,7 +901,7 @@ bool SampleApplication::Execute()
 
 		// tonemap pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 2);
+		renderGraph_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 2, "TonemapPass");
 
@@ -1038,7 +1059,7 @@ bool SampleApplication::Execute()
 
 		// material depth pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 1);
+		renderGraph_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 1, "MaterialDepthPass");
 			
@@ -1086,7 +1107,7 @@ bool SampleApplication::Execute()
 		// classify pass.
 		sl12::CbvHandle hTileCB;
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 2);
+		renderGraph_->NextPass(pCmdList);
 		{
 			UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 			UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
@@ -1143,16 +1164,20 @@ bool SampleApplication::Execute()
 
 		// material tile pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 3);
+		renderGraph_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 1, "MaterialTilePass");
 			
 			// output barrier.
 			renderGraph_->BarrierOutputsAll(pCmdList);
 
-			D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderGraph_->GetTarget(accumTargetID)->rtvs[0]->GetDescInfo().cpuHandle;
+			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
+				renderGraph_->GetTarget(gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraph_->GetTarget(gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraph_->GetTarget(gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
+			};
 			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
-			pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, &dsv);
+			pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
 
 			// set viewport.
 			D3D12_VIEWPORT vp;
@@ -1221,9 +1246,39 @@ bool SampleApplication::Execute()
 		}
 		renderGraph_->EndPass();
 
+		// lighing pass.
+		pTimestamp->Query(pCmdList);
+		renderGraph_->NextPass(pCmdList);
+		{
+			GPU_MARKER(pCmdList, 1, "LightingPass");
+
+			// output barrier.
+			renderGraph_->BarrierOutputsAll(pCmdList);
+
+			// set descriptors.
+			sl12::DescriptorSet descSet;
+			descSet.Reset();
+			descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(3, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(0, renderGraph_->GetTarget(accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoLighting_->GetPSO());
+			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+			// dispatch.
+			UINT x = (displayWidth_ + 7) / 8;
+			UINT y = (displayHeight_ + 7) / 8;
+			pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+		}
+		renderGraph_->EndPass();
+
 		// tonemap pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->BeginPass(pCmdList, 4);
+		renderGraph_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 3, "TonemapPass");
 
