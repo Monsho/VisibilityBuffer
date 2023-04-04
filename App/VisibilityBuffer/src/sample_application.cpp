@@ -559,47 +559,65 @@ bool SampleApplication::Execute()
 	{
 		bool bPrevMode = bEnableVisibilityBuffer_;
 
-		if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
-		{}
-		
-		uint64_t freq = device_.GetGraphicsQueue().GetTimestampFrequency();
-		if (!bPrevMode)
+		// rendering settings.
+		if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			uint64_t timestamp[6];
-
-			pTimestamp->GetTimestamp(0, 6, timestamp);
-			uint64_t total = timestamp[5] - timestamp[0];
-			uint64_t gbuffer = timestamp[2] - timestamp[1];
-			uint64_t lighting = timestamp[3] - timestamp[2];
-			uint64_t tonemap = timestamp[4] - timestamp[3];
-
-			ImGui::Text("GPU Time");
-			ImGui::Text("  Total   : %f (ms)", (float)total / ((float)freq / 1000.0f));
-			ImGui::Text("  GBuffer : %f (ms)", (float)gbuffer / ((float)freq / 1000.0f));
-			ImGui::Text("  Lighting: %f (ms)", (float)lighting / ((float)freq / 1000.0f));
-			ImGui::Text("  Tonemap : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+			if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
+			{}
 		}
-		else
+
+		// light settings.
+		if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			uint64_t timestamp[9];
+			ImGui::ColorEdit3("Ambient Sky Color", skyColor_);
+			ImGui::ColorEdit3("Ambient Ground Color", groundColor_);
+			ImGui::SliderFloat("Ambient Intensity", &ambientIntensity_, 0.0f, 10.0f);
+			ImGui::SliderFloat("Directional Theta", &directionalTheta_, 0.0f, 90.0f);
+			ImGui::SliderFloat("Directional Phi", &directionalPhi_, 0.0f, 360.0f);
+			ImGui::ColorEdit3("Directional Color", directionalColor_);
+			ImGui::SliderFloat("Directional Intensity", &directionalIntensity_, 0.0f, 10.0f);
+		}
 
-			pTimestamp->GetTimestamp(0, 9, timestamp);
-			uint64_t total = timestamp[8] - timestamp[0];
-			uint64_t visibility = timestamp[2] - timestamp[1];
-			uint64_t depth = timestamp[3] - timestamp[2];
-			uint64_t classify = timestamp[4] - timestamp[3];
-			uint64_t tile = timestamp[5] - timestamp[4];
-			uint64_t lighting = timestamp[6] - timestamp[5];
-			uint64_t tonemap = timestamp[7] - timestamp[6];
+		// gpu performance.
+		if (ImGui::CollapsingHeader("GPU Time", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			uint64_t freq = device_.GetGraphicsQueue().GetTimestampFrequency();
+			if (!bPrevMode)
+			{
+				uint64_t timestamp[6];
 
-			ImGui::Text("GPU Time");
-			ImGui::Text("  Total      : %f (ms)", (float)total / ((float)freq / 1000.0f));
-			ImGui::Text("  Visibility : %f (ms)", (float)visibility / ((float)freq / 1000.0f));
-			ImGui::Text("  Depth      : %f (ms)", (float)depth / ((float)freq / 1000.0f));
-			ImGui::Text("  Classify   : %f (ms)", (float)classify / ((float)freq / 1000.0f));
-			ImGui::Text("  MatTile    : %f (ms)", (float)tile / ((float)freq / 1000.0f));
-			ImGui::Text("  Lighting   : %f (ms)", (float)lighting / ((float)freq / 1000.0f));
-			ImGui::Text("  Tonemap    : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+				pTimestamp->GetTimestamp(0, 6, timestamp);
+				uint64_t total = timestamp[5] - timestamp[0];
+				uint64_t gbuffer = timestamp[2] - timestamp[1];
+				uint64_t lighting = timestamp[3] - timestamp[2];
+				uint64_t tonemap = timestamp[4] - timestamp[3];
+
+				ImGui::Text("Total   : %f (ms)", (float)total / ((float)freq / 1000.0f));
+				ImGui::Text("GBuffer : %f (ms)", (float)gbuffer / ((float)freq / 1000.0f));
+				ImGui::Text("Lighting: %f (ms)", (float)lighting / ((float)freq / 1000.0f));
+				ImGui::Text("Tonemap : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+			}
+			else
+			{
+				uint64_t timestamp[9];
+
+				pTimestamp->GetTimestamp(0, 9, timestamp);
+				uint64_t total = timestamp[8] - timestamp[0];
+				uint64_t visibility = timestamp[2] - timestamp[1];
+				uint64_t depth = timestamp[3] - timestamp[2];
+				uint64_t classify = timestamp[4] - timestamp[3];
+				uint64_t tile = timestamp[5] - timestamp[4];
+				uint64_t lighting = timestamp[6] - timestamp[5];
+				uint64_t tonemap = timestamp[7] - timestamp[6];
+
+				ImGui::Text("Total      : %f (ms)", (float)total / ((float)freq / 1000.0f));
+				ImGui::Text("Visibility : %f (ms)", (float)visibility / ((float)freq / 1000.0f));
+				ImGui::Text("Depth      : %f (ms)", (float)depth / ((float)freq / 1000.0f));
+				ImGui::Text("Classify   : %f (ms)", (float)classify / ((float)freq / 1000.0f));
+				ImGui::Text("MatTile    : %f (ms)", (float)tile / ((float)freq / 1000.0f));
+				ImGui::Text("Lighting   : %f (ms)", (float)lighting / ((float)freq / 1000.0f));
+				ImGui::Text("Tonemap    : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
+			}
 		}
 	}
 	ImGui::Render();
@@ -728,7 +746,7 @@ bool SampleApplication::Execute()
 	}
 
 	// create scene constant buffer.
-	sl12::CbvHandle hSceneCB;
+	sl12::CbvHandle hSceneCB, hLightCB;
 	{
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
 		float Zn = 0.1f;
@@ -756,6 +774,25 @@ bool SampleApplication::Execute()
 		cbScene.nearFar.y = 0.0f;
 
 		hSceneCB = cbvMan_->GetTemporal(&cbScene, sizeof(cbScene));
+	}
+	{
+		LightCB cbLight;
+		
+		memcpy(&cbLight.ambientSky, skyColor_, sizeof(cbLight.ambientSky));
+		memcpy(&cbLight.ambientGround, groundColor_, sizeof(cbLight.ambientGround));
+		cbLight.ambientIntensity = ambientIntensity_;
+
+		auto dir = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+		auto mtxRot = DirectX::XMMatrixRotationZ(DirectX::XMConvertToRadians(directionalTheta_)) * DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(directionalPhi_));
+		dir = DirectX::XMVector3TransformNormal(dir, mtxRot);
+		DirectX::XMFLOAT3 dirF3;
+		DirectX::XMStoreFloat3(&dirF3, dir);
+		memcpy(&cbLight.directionalVec, &dirF3, sizeof(cbLight.directionalVec));
+		cbLight.directionalColor.x = directionalColor_[0] * directionalIntensity_;
+		cbLight.directionalColor.y = directionalColor_[1] * directionalIntensity_;
+		cbLight.directionalColor.z = directionalColor_[2] * directionalIntensity_;
+
+		hLightCB = cbvMan_->GetTemporal(&cbLight, sizeof(cbLight));
 	}
 
 	// clear swapchain.
@@ -883,6 +920,7 @@ bool SampleApplication::Execute()
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsCbv(1, hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
@@ -1260,6 +1298,7 @@ bool SampleApplication::Execute()
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsCbv(1, hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
 			descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);

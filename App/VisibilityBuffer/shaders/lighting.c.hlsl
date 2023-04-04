@@ -1,6 +1,9 @@
 #include "cbuffer.hlsli"
+#include "math.hlsli"
+#include "pbr.hlsli"
 
 ConstantBuffer<SceneCB>				cbScene				: register(b0);
+ConstantBuffer<LightCB>				cbLight				: register(b1);
 
 Texture2D							texGBufferA			: register(t0);
 Texture2D							texGBufferB			: register(t1);
@@ -23,9 +26,13 @@ float3 Lighting(uint2 pixelPos, float depth)
 	worldPos.xyz /= worldPos.w;
 
 	// apply light.
-	float NoL = saturate(normal.y);
-	float3 diffuse = lerp(color.rgb, 0, orm.b);
-	return diffuse * NoL;
+	float3 viewDirInWS = cbScene.eyePosition.xyz - worldPos.xyz;
+	float3 diffuseColor = color.rgb * (1 - orm.b);
+	float3 specularColor = 0.04 * (1 - orm.b) + color.rgb * orm.b;
+	float3 directColor = BrdfGGX(diffuseColor, specularColor, orm.g, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;
+	float ambientT = normal.y * 0.5 + 0.5;
+	float3 ambient = lerp(cbLight.ambientGround, cbLight.ambientSky, ambientT) * cbLight.ambientIntensity;
+	return directColor + ambient * diffuseColor;
 }
 
 [numthreads(8, 8, 1)]

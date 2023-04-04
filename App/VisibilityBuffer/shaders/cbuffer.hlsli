@@ -1,5 +1,5 @@
 #ifndef CBUFFER_HLSLI
-#define  CBUFFER_HLSLI
+#define CBUFFER_HLSLI
 
 #ifdef USE_IN_CPP
 #	define		float4x4		DirectX::XMFLOAT4X4
@@ -18,6 +18,18 @@ struct SceneCB
     float4      eyePosition;
     float2      screenSize;
     float2      nearFar;
+};
+
+struct LightCB
+{
+    float3      ambientSky;
+    int         pad0;
+    float3      ambientGround;
+    float       ambientIntensity;
+    float3      directionalVec;
+    int         pad1;
+    float3      directionalColor;
+    int         pad2;
 };
 
 struct MeshCB
