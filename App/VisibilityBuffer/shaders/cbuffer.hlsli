@@ -32,6 +32,13 @@ struct LightCB
     int         pad2;
 };
 
+struct ShadowCB
+{
+    float4x4    mtxWorldToProj;
+    float2      exponent;
+    float       constBias;
+};
+
 struct MeshCB
 {
     float4x4	mtxLocalToWorld;
@@ -54,6 +61,13 @@ struct TileCB
     uint    numY;
     uint    tileMax;
     uint    materialMax;
+};
+
+struct BlurCB
+{
+    float4  kernel0;
+    float4  kernel1;
+    float2  offset;
 };
 
 struct InstanceData
@@ -82,6 +96,8 @@ struct DrawCallData
 #define CLASSIFY_THREAD_WIDTH (16)
 #define CLASSIFY_MATERIAL_MAX (256)
 #define CLASSIFY_DEPTH_RANGE (CLASSIFY_MATERIAL_MAX * 32)
+
+#define SHADOW_TYPE 0
 
 #endif // CBUFFER_HLSLI
 //  EOF

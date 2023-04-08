@@ -37,6 +37,8 @@ private:
 
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
+	void ComputeSceneAABB();
+
 private:
 	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
 
@@ -111,11 +113,17 @@ private:
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMatDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoTonemap_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMaterialTile_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowDepth_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowExp_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoBlur_;
 	UniqueHandle<sl12::ComputePipelineState>	psoLighting_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
+	UniqueHandle<sl12::Sampler>				linearClampSampler_;
+	UniqueHandle<sl12::Sampler>				shadowSampler_;
+	UniqueHandle<sl12::Sampler>				evsmSampler_;
 
 	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
 	
@@ -142,8 +150,12 @@ private:
 	sl12::ShaderHandle		hClearArgC_;
 	sl12::ShaderHandle		hMaterialTileVV_;
 	sl12::ShaderHandle		hMaterialTileP_;
+	sl12::ShaderHandle		hShadowVV_;
+	sl12::ShaderHandle		hShadowP_;
+	sl12::ShaderHandle		hBlurP_;
 
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
+	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
 
 	sl12::Timestamp			timestamps_[2];
 	sl12::u32				timestampIndex_ = 0;
@@ -161,7 +173,11 @@ private:
 	float					directionalTheta_ = 30.0f;
 	float					directionalPhi_ = 45.0f;
 	float					directionalColor_[3] = {1.0f, 1.0f, 1.0f};
-	float					directionalIntensity_ = 1.0f;
+	float					directionalIntensity_ = 3.0f;
+
+	// shadow parameters.
+	float					shadowBias_ = 0.001f;
+	float					shadowExponent_ = 10.0f;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;

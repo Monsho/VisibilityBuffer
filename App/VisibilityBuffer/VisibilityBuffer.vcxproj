@@ -96,6 +96,9 @@
     <None Include="shaders\tonemap.p.hlsl" />
     <None Include="shaders\visibility.p.hlsl" />
     <None Include="shaders\visibility.vv.hlsl" />
+    <None Include="shaders\shadow.vv.hlsl" />
+    <None Include="shaders\shadow.p.hlsl" />
+    <None Include="shaders\blur.p.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>

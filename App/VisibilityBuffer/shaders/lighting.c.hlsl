@@ -4,13 +4,80 @@
 
 ConstantBuffer<SceneCB>				cbScene				: register(b0);
 ConstantBuffer<LightCB>				cbLight				: register(b1);
+ConstantBuffer<ShadowCB>			cbShadow			: register(b2);
 
 Texture2D							texGBufferA			: register(t0);
 Texture2D							texGBufferB			: register(t1);
 Texture2D							texGBufferC			: register(t2);
 Texture2D<float>					texDepth			: register(t3);
+#if SHADOW_TYPE == 0
+Texture2D<float>					texShadowDepth		: register(t4);
+#else
+Texture2D							texShadowExp		: register(t4);
+#endif
+
+#if SHADOW_TYPE == 0
+SamplerComparisonState				samShadow			: register(s0);
+#else
+SamplerState						samLinearClamp		: register(s0);
+#endif
 
 RWTexture2D<float4>					rwOutput			: register(u0);
+
+#if SHADOW_TYPE == 0
+float Shadow(float4 shadowClipPos)
+{
+	float3 shadowProjPos = shadowClipPos.xyz / shadowClipPos.w;
+	float2 shadowUV = shadowProjPos.xy * float2(0.5, -0.5) + 0.5;
+	static const int kKernelLevel = 2;
+	static const int kKernelWidth = kKernelLevel * 2 + 1;
+	float shadow = 0;
+	[unroll]
+	for (int i = -kKernelLevel; i <= kKernelLevel; i++)
+	{
+		[unroll]
+		for (int j = -kKernelLevel; j <= kKernelLevel; j++)
+		{
+			shadow += texShadowDepth.SampleCmpLevelZero(samShadow, shadowUV, shadowProjPos.z + cbShadow.constBias, int2(i, j)).r;
+		}
+	}
+	return shadow / (float)(kKernelWidth * kKernelWidth);
+}
+#else
+float Chebyshev(float2 moments, float depth)
+{
+	const float kVarianceMin = 0.0;
+	const float kLightBleedCoeff = 0.0;
+	
+	if (depth > moments.x)
+		return 1.0;
+
+	float variance = moments.y - (moments.x * moments.x);
+	variance = max(variance, kVarianceMin / 1000.0);
+
+	float d = depth - moments.x;
+	float p_max = variance / (variance + d * d);
+
+	return saturate((p_max - kLightBleedCoeff) / (1.0 - kLightBleedCoeff));
+}
+
+float Shadow(float4 shadowClipPos)
+{
+	float3 shadowProjPos = shadowClipPos.xyz / shadowClipPos.w;
+
+	shadowProjPos.z += cbShadow.constBias;
+	float2 shadowUV = shadowProjPos.xy * float2(0.5, -0.5) + 0.5;
+
+	float4 moments = texShadowExp.SampleLevel(samLinearClamp, shadowUV, 0);
+
+	float p = exp(cbShadow.exponent.x * shadowProjPos.z);
+	float n = -exp(-cbShadow.exponent.y * shadowProjPos.z);
+
+	float posShadow = Chebyshev(moments.xy, p);
+	float negShadow = Chebyshev(moments.zw, n);
+	return min(posShadow, negShadow);
+}
+#endif
 
 float3 Lighting(uint2 pixelPos, float depth)
 {
@@ -25,6 +92,10 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float4 worldPos = mul(cbScene.mtxProjToWorld, float4(clipSpacePos, depth, 1));
 	worldPos.xyz /= worldPos.w;
 
+	// get shadow.
+	float4 shadowClipPos = mul(cbShadow.mtxWorldToProj, float4(worldPos.xyz, 1));
+	float shadow = Shadow(shadowClipPos);
+
 	// apply light.
 	float3 viewDirInWS = cbScene.eyePosition.xyz - worldPos.xyz;
 	float3 diffuseColor = color.rgb * (1 - orm.b);
@@ -32,7 +103,7 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float3 directColor = BrdfGGX(diffuseColor, specularColor, orm.g, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;
 	float ambientT = normal.y * 0.5 + 0.5;
 	float3 ambient = lerp(cbLight.ambientGround, cbLight.ambientSky, ambientT) * cbLight.ambientIntensity;
-	return directColor + ambient * diffuseColor;
+	return directColor * shadow + ambient * diffuseColor;
 }
 
 [numthreads(8, 8, 1)]
@@ -47,7 +118,7 @@ void main(
 	{
 		float depth = texDepth[pixelPos];
 		[branch]
-		if (depth >= 1.0)
+		if (depth <= 0.0)
 		{
 			rwOutput[pixelPos] = float4(0, 0, 1, 1);
 		}
