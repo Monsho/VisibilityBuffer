@@ -22,6 +22,12 @@ class SampleApplication
 {
 	template <typename T> using UniqueHandle = sl12::UniqueHandle<T>;
 	
+	struct WorkMaterial
+	{
+		sl12::ResourceItemMesh::Material	resource;
+		int									psoType;
+	};
+
 public:
 	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType);
 	virtual ~SampleApplication();
@@ -33,7 +39,7 @@ public:
 	virtual int Input(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-	void CreateBuffers(sl12::CommandList* pCmdList, std::vector<sl12::ResourceItemMesh::Material>& outMaterials);
+	void CreateBuffers(sl12::CommandList* pCmdList, std::vector<WorkMaterial>& outMaterials);
 
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
@@ -114,7 +120,7 @@ private:
 	UniqueHandle<sl12::GraphicsPipelineState>	psoVisibility_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMatDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoTonemap_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoMaterialTile_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoMaterialTile_, psoMaterialTileTriplanar_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowExp_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoBlur_;

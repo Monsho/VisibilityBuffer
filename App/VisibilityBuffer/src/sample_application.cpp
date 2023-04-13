@@ -118,28 +118,30 @@ namespace
 		NormalToDerivC,
 		TriplanarVV,
 		TriplanarP,
+		MaterialTileTriplanarP,
 
 		MAX
 	};
 	static const char* kShaderFileAndEntry[] = {
-		"mesh.vv.hlsl",					"main",
-		"mesh.p.hlsl",					"main",
-		"visibility.vv.hlsl",			"main",
-		"visibility.p.hlsl",			"main",
-		"lighting.c.hlsl",				"main",
-		"fullscreen.vv.hlsl",			"main",
-		"tonemap.p.hlsl",				"main",
-		"classify.c.hlsl",				"main",
-		"material_depth.p.hlsl",		"main",
-		"clear_arg.c.hlsl",				"main",
-		"material_tile.vv.hlsl",		"main",
-		"material_tile.p.hlsl",			"main",
-		"shadow.vv.hlsl",				"main",
-		"shadow.p.hlsl",				"main",
-		"blur.p.hlsl",					"main",
-		"ts_normal_to_deriv.c.hlsl",	"main",
-		"triplanar.vv.hlsl",			"main",
-		"triplanar.p.hlsl",				"main",
+		"mesh.vv.hlsl",						"main",
+		"mesh.p.hlsl",						"main",
+		"visibility.vv.hlsl",				"main",
+		"visibility.p.hlsl",				"main",
+		"lighting.c.hlsl",					"main",
+		"fullscreen.vv.hlsl",				"main",
+		"tonemap.p.hlsl",					"main",
+		"classify.c.hlsl",					"main",
+		"material_depth.p.hlsl",			"main",
+		"clear_arg.c.hlsl",					"main",
+		"material_tile.vv.hlsl",			"main",
+		"material_tile.p.hlsl",				"main",
+		"shadow.vv.hlsl",					"main",
+		"shadow.p.hlsl",					"main",
+		"blur.p.hlsl",						"main",
+		"ts_normal_to_deriv.c.hlsl",		"main",
+		"triplanar.vv.hlsl",				"main",
+		"triplanar.p.hlsl",					"main",
+		"material_tile_triplanar.p.hlsl",	"main",
 	};
 }
 
@@ -350,6 +352,7 @@ bool SampleApplication::Initialize()
 	psoTonemap_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMatDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMaterialTile_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
+	psoMaterialTileTriplanar_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoShadowDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoShadowExp_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoBlur_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
@@ -567,6 +570,14 @@ bool SampleApplication::Initialize()
 			sl12::ConsolePrint("Error: failed to init material tile pso.");
 			return false;
 		}
+
+		desc.pPS = hShaders_[ShaderName::MaterialTileTriplanarP].GetShader();
+
+		if (!psoMaterialTileTriplanar_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init material tile triplanar pso.");
+			return false;
+		}
 	}
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
@@ -753,6 +764,7 @@ void SampleApplication::Finalize()
 	psoShadowExp_.Reset();
 	psoShadowDepth_.Reset();
 	psoMaterialTile_.Reset();
+	psoMaterialTileTriplanar_.Reset();
 	psoTonemap_.Reset();
 	psoMatDepth_.Reset();
 	psoVisibility_.Reset();
@@ -1529,7 +1541,7 @@ bool SampleApplication::Execute()
 	else
 	{
 		// create resources.
-		std::vector<sl12::ResourceItemMesh::Material> materials;
+		std::vector<WorkMaterial> materials;
 		CreateBuffers(pCmdList, materials);
 
 		// visibility pass.
@@ -1778,12 +1790,14 @@ bool SampleApplication::Execute()
 			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 			// set descriptors.
+			auto detail_res = const_cast<sl12::ResourceItemTexture*>(hDetailTex_.GetItem<sl12::ResourceItemTexture>());
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetVsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetVsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetVsSrv(0, tileIndexBV_->GetDescInfo().cpuHandle);
 			descSet.SetPsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetPsCbv(1, hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetPsSrv(0, renderGraph_->GetTarget(visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 			descSet.SetPsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
 			descSet.SetPsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
@@ -1791,27 +1805,55 @@ bool SampleApplication::Execute()
 			descSet.SetPsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
 			descSet.SetPsSrv(5, drawCallBV_->GetDescInfo().cpuHandle);
 			descSet.SetPsSrv(6, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			if (detailType_ != 3)
+			{
+				descSet.SetPsSrv(10, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+			}
+			else
+			{
+				descSet.SetPsSrv(10, detailDerivSrv_->GetDescInfo().cpuHandle);
+			}
 			descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
 
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoMaterialTile_->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			
+			sl12::GraphicsPipelineState* NowPSO = nullptr;
+
 			sl12::u32 matIndex = 0;
-			for (auto&& material : materials)
+			for (auto&& work : materials)
 			{
+				sl12::GraphicsPipelineState* pso = &psoMaterialTile_;
+				if (work.psoType == 1)
+				{
+					pso = &psoMaterialTileTriplanar_;
+				}
+
+				if (NowPSO != pso)
+				{
+					// set pipeline.
+					pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+					pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+					NowPSO = pso;
+				}
+			
 				MaterialTileCB cb;
 				cb.materialIndex = matIndex;
 				sl12::CbvHandle hMatTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
-
-				auto bc_tex_res = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
-				auto nm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.normalTex.GetItem<sl12::ResourceItemTexture>());
-				auto orm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
-
 				descSet.SetVsCbv(2, hMatTileCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(7, bc_tex_res->GetTextureView().GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(8, nm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(9, orm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+
+				if (work.psoType == 0)
+				{
+					auto bc_tex_res = const_cast<sl12::ResourceItemTexture*>(work.resource.baseColorTex.GetItem<sl12::ResourceItemTexture>());
+					auto nm_tex_res = const_cast<sl12::ResourceItemTexture*>(work.resource.normalTex.GetItem<sl12::ResourceItemTexture>());
+					auto orm_tex_res = const_cast<sl12::ResourceItemTexture*>(work.resource.ormTex.GetItem<sl12::ResourceItemTexture>());
+
+					descSet.SetPsSrv(7, bc_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+					descSet.SetPsSrv(8, nm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+					descSet.SetPsSrv(9, orm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+				}
+				else
+				{
+					auto dot_res = const_cast<sl12::ResourceItemTexture*>(hDotTex_.GetItem<sl12::ResourceItemTexture>());
+					descSet.SetPsSrv(7, dot_res->GetTextureView().GetDescInfo().cpuHandle);
+				}
 
 				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
 
@@ -1940,7 +1982,7 @@ bool SampleApplication::Execute()
 	return true;
 }
 
-void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<sl12::ResourceItemMesh::Material>& outMaterials)
+void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<WorkMaterial>& outMaterials)
 {
 	// count mesh data.
 	std::map<const sl12::ResourceItemMesh*, sl12::u32> meshMap;
@@ -2056,6 +2098,13 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<s
 	sl12::u32 materialOffset = 0;
 	for (auto meshRes : meshList)
 	{
+		// select pso type.
+		int psoType = 0;
+		if (hSphereMesh_.IsValid() && hSphereMesh_.GetItem<sl12::ResourceItemMesh>() == meshRes)
+		{
+			psoType = 1;
+		}
+		
 		auto&& submeshes = meshRes->GetSubmeshes();
 		for (auto&& submesh : submeshes)
 		{
@@ -2070,7 +2119,10 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList, std::vector<s
 
 		for (auto&& mat : meshRes->GetMaterials())
 		{
-			outMaterials.push_back(mat);
+			WorkMaterial work;
+			work.resource = mat;
+			work.psoType = psoType;
+			outMaterials.push_back(work);
 		}
 		materialOffset += (sl12::u32)meshRes->GetMaterials().size();
 	}
