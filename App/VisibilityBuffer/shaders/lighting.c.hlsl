@@ -49,7 +49,7 @@ float Chebyshev(float2 moments, float depth)
 	const float kVarianceMin = 0.0;
 	const float kLightBleedCoeff = 0.0;
 	
-	if (depth > moments.x)
+	if (depth <= moments.x)
 		return 1.0;
 
 	float variance = moments.y - (moments.x * moments.x);
@@ -64,14 +64,15 @@ float Chebyshev(float2 moments, float depth)
 float Shadow(float4 shadowClipPos)
 {
 	float3 shadowProjPos = shadowClipPos.xyz / shadowClipPos.w;
-
-	shadowProjPos.z += cbShadow.constBias;
 	float2 shadowUV = shadowProjPos.xy * float2(0.5, -0.5) + 0.5;
+	float depth = 1.0 - shadowProjPos.z;
+
+	depth -= cbShadow.constBias;
 
 	float4 moments = texShadowExp.SampleLevel(samLinearClamp, shadowUV, 0);
 
-	float p = exp(cbShadow.exponent.x * shadowProjPos.z);
-	float n = -exp(-cbShadow.exponent.y * shadowProjPos.z);
+	float p = exp(cbShadow.exponent.x * depth);
+	float n = -exp(-cbShadow.exponent.y * depth);
 
 	float posShadow = Chebyshev(moments.xy, p);
 	float negShadow = Chebyshev(moments.zw, n);

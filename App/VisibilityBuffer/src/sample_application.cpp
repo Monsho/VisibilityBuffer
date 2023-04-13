@@ -97,6 +97,50 @@ namespace
 		gShadowDepthDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		gShadowDepthDesc.dsvDescs.push_back(sl12::RenderGraphDSVDesc(0, 0, 0));
 	}
+
+	enum ShaderName
+	{
+		MeshVV,
+		MeshP,
+		VisibilityVV,
+		VisibilityP,
+		LightingC,
+		FullscreenVV,
+		TonemapP,
+		ClassifyC,
+		MatDepthP,
+		ClearArgC,
+		MaterialTileVV,
+		MaterialTileP,
+		ShadowVV,
+		ShadowP,
+		BlurP,
+		NormalToDerivC,
+		TriplanarVV,
+		TriplanarP,
+
+		MAX
+	};
+	static const char* kShaderFileAndEntry[] = {
+		"mesh.vv.hlsl",					"main",
+		"mesh.p.hlsl",					"main",
+		"visibility.vv.hlsl",			"main",
+		"visibility.p.hlsl",			"main",
+		"lighting.c.hlsl",				"main",
+		"fullscreen.vv.hlsl",			"main",
+		"tonemap.p.hlsl",				"main",
+		"classify.c.hlsl",				"main",
+		"material_depth.p.hlsl",		"main",
+		"clear_arg.c.hlsl",				"main",
+		"material_tile.vv.hlsl",		"main",
+		"material_tile.p.hlsl",			"main",
+		"shadow.vv.hlsl",				"main",
+		"shadow.p.hlsl",				"main",
+		"blur.p.hlsl",					"main",
+		"ts_normal_to_deriv.c.hlsl",	"main",
+		"triplanar.vv.hlsl",			"main",
+		"triplanar.p.hlsl",				"main",
+	};
 }
 
 SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType)
@@ -139,51 +183,15 @@ bool SampleApplication::Initialize()
 
 	// compile shaders.
 	const std::string shaderBaseDir = sl12::JoinPath(homeDir_, kShaderDir);
-	hMeshVV_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "mesh.vv.hlsl"),
-		"main", sl12::ShaderType::Vertex, 6, 5, nullptr, nullptr);
-	hMeshP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "mesh.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hVisibilityVV_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "visibility.vv.hlsl"),
-		"main", sl12::ShaderType::Vertex, 6, 5, nullptr, nullptr);
-	hVisibilityP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "visibility.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hLightingC_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "lighting.c.hlsl"),
-		"main", sl12::ShaderType::Compute, 6, 5, nullptr, nullptr);
-	hFullscreenVV_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "fullscreen.vv.hlsl"),
-		"main", sl12::ShaderType::Vertex, 6, 5, nullptr, nullptr);
-	hTonemapP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "tonemap.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hClassifyC_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "classify.c.hlsl"),
-		"main", sl12::ShaderType::Compute, 6, 5, nullptr, nullptr);
-	hMatDepthP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "material_depth.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hClearArgC_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "clear_arg.c.hlsl"),
-		"main", sl12::ShaderType::Compute, 6, 5, nullptr, nullptr);
-	hMaterialTileVV_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "material_tile.vv.hlsl"),
-		"main", sl12::ShaderType::Vertex, 6, 5, nullptr, nullptr);
-	hMaterialTileP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "material_tile.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hShadowVV_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "shadow.vv.hlsl"),
-		"main", sl12::ShaderType::Vertex, 6, 5, nullptr, nullptr);
-	hShadowP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "shadow.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
-	hBlurP_ = shaderMan_->CompileFromFile(
-		sl12::JoinPath(shaderBaseDir, "blur.p.hlsl"),
-		"main", sl12::ShaderType::Pixel, 6, 5, nullptr, nullptr);
+	for (int i = 0; i < ShaderName::MAX; i++)
+	{
+		const char* file = kShaderFileAndEntry[i * 2 + 0];
+		const char* entry = kShaderFileAndEntry[i * 2 + 1];
+		auto handle = shaderMan_->CompileFromFile(
+			sl12::JoinPath(shaderBaseDir, file),
+			entry, sl12::GetShaderTypeFromFileName(file), 6, 5, nullptr, nullptr);
+		hShaders_.push_back(handle);
+	}
 	
 	// load request.
 	if (meshType_ == 0)
@@ -193,7 +201,10 @@ bool SampleApplication::Initialize()
 	else
 	{
 		hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sponza/sponza.rmesh");
+		hSphereMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sphere/sphere.rmesh");
 	}
+	hDetailTex_ = resLoader_->LoadRequest<sl12::ResourceItemTexture>("texture/detail_normal.dds");
+	hDotTex_ = resLoader_->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
 
 	// init command list.
 	mainCmdList_ = sl12::MakeUnique<CommandLists>(nullptr);
@@ -302,22 +313,39 @@ bool SampleApplication::Initialize()
 	}
 	else
 	{
-		auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSponzaMesh_.GetItem<sl12::ResourceItemMesh>());
-		DirectX::XMFLOAT3 pos(0.0f, -300.0f, 100.0f);
-		DirectX::XMFLOAT3 scl(0.02f, 0.02f, 0.02f);
-		DirectX::XMFLOAT4X4 mat;
-		DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
-								* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-		DirectX::XMStoreFloat4x4(&mat, m);
-		mesh->SetMtxLocalToWorld(mat);
+		// sponza
+		{
+			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSponzaMesh_.GetItem<sl12::ResourceItemMesh>());
+			DirectX::XMFLOAT3 pos(0.0f, -300.0f, 100.0f);
+			DirectX::XMFLOAT3 scl(0.02f, 0.02f, 0.02f);
+			DirectX::XMFLOAT4X4 mat;
+			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
+									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
+			DirectX::XMStoreFloat4x4(&mat, m);
+			mesh->SetMtxLocalToWorld(mat);
 
-		sceneMeshes_.push_back(mesh);
+			sceneMeshes_.push_back(mesh);
+		}
+		// sphere
+		{
+			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSphereMesh_.GetItem<sl12::ResourceItemMesh>());
+			DirectX::XMFLOAT3 pos(0.0f, 2000.0f, 0.0f);
+			DirectX::XMFLOAT3 scl(200.0f, 200.0f, 200.0f);
+			DirectX::XMFLOAT4X4 mat;
+			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
+									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
+			DirectX::XMStoreFloat4x4(&mat, m);
+			mesh->SetMtxLocalToWorld(mat);
+
+			sceneMeshes_.push_back(mesh);
+		}
 	}
 	ComputeSceneAABB();
 	
 	// init root signature and pipeline state.
 	rsVsPs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
 	psoMesh_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
+	psoTriplanar_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoVisibility_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoTonemap_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMatDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
@@ -325,12 +353,12 @@ bool SampleApplication::Initialize()
 	psoShadowDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoShadowExp_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoBlur_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
-	rsVsPs_->Initialize(&device_, hMeshVV_.GetShader(), hMeshP_.GetShader(), nullptr, nullptr, nullptr);
+	rsVsPs_->Initialize(&device_, hShaders_[ShaderName::MeshVV].GetShader(), hShaders_[ShaderName::MeshP].GetShader(), nullptr, nullptr, nullptr);
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hMeshVV_.GetShader();
-		desc.pPS = hMeshP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::MeshVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::MeshP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -371,8 +399,50 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hVisibilityVV_.GetShader();
-		desc.pPS = hVisibilityP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::TriplanarVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::TriplanarP].GetShader();
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
+			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
+		desc.inputLayout.pElements = input_elems;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[0].format;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[1].format;
+		desc.rtvFormats[desc.numRTVs++] = gGBufferDescs[2].format;
+		desc.dsvFormat = gGBufferDescs[3].format;
+		desc.multisampleCount = 1;
+
+		if (!psoTriplanar_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init triplanar pso.");
+			return false;
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rsVsPs_;
+		desc.pVS = hShaders_[ShaderName::VisibilityVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::VisibilityP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -408,8 +478,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hFullscreenVV_.GetShader();
-		desc.pPS = hTonemapP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::TonemapP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -438,8 +508,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hFullscreenVV_.GetShader();
-		desc.pPS = hMatDepthP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::MatDepthP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -468,8 +538,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hMaterialTileVV_.GetShader();
-		desc.pPS = hMaterialTileP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::MaterialTileVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::MaterialTileP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -501,7 +571,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShadowVV_.GetShader();
+		desc.pVS = hShaders_[ShaderName::ShadowVV].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -537,8 +607,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hFullscreenVV_.GetShader();
-		desc.pPS = hShadowP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::ShadowP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -567,8 +637,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hFullscreenVV_.GetShader();
-		desc.pPS = hBlurP_.GetShader();
+		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::BlurP].GetShader();
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -599,11 +669,12 @@ bool SampleApplication::Initialize()
 	psoLighting_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoClassify_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoClearArg_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
-	rsCs_->Initialize(&device_, hLightingC_.GetShader());
+	psoNormalToDeriv_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hLightingC_.GetShader();
+		desc.pCS = hShaders_[ShaderName::LightingC].GetShader();
 
 		if (!psoLighting_->Initialize(&device_, desc))
 		{
@@ -614,7 +685,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hClassifyC_.GetShader();
+		desc.pCS = hShaders_[ShaderName::ClassifyC].GetShader();
 
 		if (!psoClassify_->Initialize(&device_, desc))
 		{
@@ -625,11 +696,22 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hClearArgC_.GetShader();
+		desc.pCS = hShaders_[ShaderName::ClearArgC].GetShader();
 
 		if (!psoClearArg_->Initialize(&device_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init clear arg pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::NormalToDerivC].GetShader();
+
+		if (!psoNormalToDeriv_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init normal to deriv pso.");
 			return false;
 		}
 	}
@@ -663,6 +745,7 @@ void SampleApplication::Finalize()
 	for (auto&& t : timestamps_) t.Destroy();
 	tileDrawIndirect_.Reset();
 	gui_.Reset();
+	psoNormalToDeriv_.Reset();
 	psoLighting_.Reset();
 	psoClearArg_.Reset();
 	psoClassify_.Reset();
@@ -673,6 +756,7 @@ void SampleApplication::Finalize()
 	psoTonemap_.Reset();
 	psoMatDepth_.Reset();
 	psoVisibility_.Reset();
+	psoTriplanar_.Reset();
 	psoMesh_.Reset();
 	rsCs_.Reset();
 	rsVsPs_.Reset();
@@ -724,9 +808,30 @@ bool SampleApplication::Execute()
 		if (ImGui::CollapsingHeader("Shadow", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 #if SHADOW_TYPE == 1
+			ImGui::Checkbox("Blur", &evsmBlur_);
 			ImGui::SliderFloat("Exponent", &shadowExponent_, 0.1f, 50.0f);
 #endif
 			ImGui::SliderFloat("Constant Bias", &shadowBias_, 0.001f, 0.02f);
+		}
+
+		// detail normal settings.
+		if (ImGui::CollapsingHeader("Surface Gradient", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kDetailTypes[] = {
+				"None",
+				"UDN",
+				"Surface Gradient",
+				"Surface Gradient Tex",
+			};
+			static const char* kTriplanarTypes[] = {
+				"Blend",
+				"Surface Gradient",
+			};
+			ImGui::Combo("Detail Type", &detailType_, kDetailTypes, ARRAYSIZE(kDetailTypes));
+			ImGui::SliderFloat("Detail Tiling", &detailTile_, 1.0f, 10.0f);
+			ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
+			ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
+			ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
 		}
 
 		// gpu performance.
@@ -783,6 +888,41 @@ bool SampleApplication::Execute()
 	cbvMan_->BeginNewFrame();
 	renderGraph_->BeginNewFrame();
 
+	if (!detailDerivTex_.IsValid())
+	{
+		detailDerivTex_ = sl12::MakeUnique<sl12::Texture>(&device_);
+		detailDerivSrv_ = sl12::MakeUnique<sl12::TextureView>(&device_);
+
+		auto detail_res = hDetailTex_.GetItem<sl12::ResourceItemTexture>();
+		sl12::TextureDesc desc = detail_res->GetTexture().GetTextureDesc();
+		desc.format = DXGI_FORMAT_R8G8_UNORM;
+		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		desc.initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+		
+		detailDerivTex_->Initialize(&device_, desc);
+		detailDerivSrv_->Initialize(&device_, &detailDerivTex_);
+
+		UniqueHandle<sl12::UnorderedAccessView> uav = sl12::MakeUnique<sl12::UnorderedAccessView>(&device_);
+		uav->Initialize(&device_, &detailDerivTex_);
+
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetCsSrv(0, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, uav->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoNormalToDeriv_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+		// dispatch.
+		UINT x = (desc.width + 7) / 8;
+		UINT y = (desc.height + 7) / 8;
+		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+		
+		pCmdList->TransitionBarrier(&detailDerivTex_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
+	}
+
 	// create targets.
 	std::vector<sl12::RenderGraphTargetID> gbufferTargetIDs;
 	sl12::RenderGraphTargetID accumTargetID;
@@ -823,21 +963,24 @@ bool SampleApplication::Execute()
 		shadowExpPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
 		passes.push_back(shadowExpPass);
 
-		// shadow blur x pass.
-		sl12::RenderPass shadowBlurXPass{};
-		shadowBlurXPass.input.push_back(shadowExpTargetID);
-		shadowBlurXPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		shadowBlurXPass.output.push_back(shadowExpTmpTargetID);
-		shadowBlurXPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		passes.push_back(shadowBlurXPass);
+		if (evsmBlur_)
+		{
+			// shadow blur x pass.
+			sl12::RenderPass shadowBlurXPass{};
+			shadowBlurXPass.input.push_back(shadowExpTargetID);
+			shadowBlurXPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			shadowBlurXPass.output.push_back(shadowExpTmpTargetID);
+			shadowBlurXPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			passes.push_back(shadowBlurXPass);
 
-		// shadow blur y pass.
-		sl12::RenderPass shadowBlurYPass{};
-		shadowBlurYPass.input.push_back(shadowExpTmpTargetID);
-		shadowBlurYPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		shadowBlurYPass.output.push_back(shadowExpTargetID);
-		shadowBlurYPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		passes.push_back(shadowBlurYPass);
+			// shadow blur y pass.
+			sl12::RenderPass shadowBlurYPass{};
+			shadowBlurYPass.input.push_back(shadowExpTmpTargetID);
+			shadowBlurYPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			shadowBlurYPass.output.push_back(shadowExpTargetID);
+			shadowBlurYPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			passes.push_back(shadowBlurYPass);
+		}
 #endif
 
 		if (!bEnableVisibilityBuffer_)
@@ -927,7 +1070,7 @@ bool SampleApplication::Execute()
 	}
 
 	// create scene constant buffer.
-	sl12::CbvHandle hSceneCB, hLightCB, hShadowCB;
+	sl12::CbvHandle hSceneCB, hLightCB, hShadowCB, hDetailCB;
 	sl12::CbvHandle hBlurXCB, hBlurYCB;
 	{
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
@@ -1060,6 +1203,17 @@ bool SampleApplication::Execute()
 		cbBlur.offset = DirectX::XMFLOAT2(0.0f, 1.5f / (float)displayHeight_);
 		hBlurYCB = cbvMan_->GetTemporal(&cbBlur, sizeof(cbBlur));
 	}
+	{
+		DetailCB cbDetail;
+
+		cbDetail.detailType = detailType_;
+		cbDetail.detailTile = DirectX::XMFLOAT2(detailTile_, detailTile_);
+		cbDetail.detailIntensity = detailIntensity_;
+		cbDetail.triplanarType = triplanarType_;
+		cbDetail.triplanarTile = triplanarTile_;
+
+		hDetailCB = cbvMan_->GetTemporal(&cbDetail, sizeof(cbDetail));
+	}
 
 	// clear swapchain.
 	auto&& swapchain = device_.GetSwapchain();
@@ -1188,61 +1342,64 @@ bool SampleApplication::Execute()
 	}
 	renderGraph_->EndPass();
 
-	// gaussian blur pass.
-	renderGraph_->NextPass(pCmdList);
+	if (evsmBlur_)
 	{
-		GPU_MARKER(pCmdList, 0, "GaussianBlurX");
+		// gaussian blur pass.
+		renderGraph_->NextPass(pCmdList);
+		{
+			GPU_MARKER(pCmdList, 0, "GaussianBlurX");
 
-		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+			// output barrier.
+			renderGraph_->BarrierOutputsAll(pCmdList);
 
-		// set render targets.
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderGraph_->GetTarget(shadowExpTmpTargetID)->rtvs[0]->GetDescInfo().cpuHandle;
-		pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+			// set render targets.
+			D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderGraph_->GetTarget(shadowExpTmpTargetID)->rtvs[0]->GetDescInfo().cpuHandle;
+			pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
 
-		// set descriptors.
-		sl12::DescriptorSet descSet;
-		descSet.Reset();
-		descSet.SetPsCbv(0, hBlurXCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetPsSrv(0, renderGraph_->GetTarget(shadowExpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetPsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+			// set descriptors.
+			sl12::DescriptorSet descSet;
+			descSet.Reset();
+			descSet.SetPsCbv(0, hBlurXCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetPsSrv(0, renderGraph_->GetTarget(shadowExpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetPsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
 
-		// set pipeline.
-		pCmdList->GetLatestCommandList()->SetPipelineState(psoBlur_->GetPSO());
-		pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoBlur_->GetPSO());
+			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
 
-		// draw fullscreen.
-		pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+			// draw fullscreen.
+			pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+		}
+		renderGraph_->EndPass();
+		renderGraph_->NextPass(pCmdList);
+		{
+			GPU_MARKER(pCmdList, 0, "GaussianBlurY");
+
+			// output barrier.
+			renderGraph_->BarrierOutputsAll(pCmdList);
+
+			// set render targets.
+			D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderGraph_->GetTarget(shadowExpTargetID)->rtvs[0]->GetDescInfo().cpuHandle;
+			pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
+			// set descriptors.
+			sl12::DescriptorSet descSet;
+			descSet.Reset();
+			descSet.SetPsCbv(0, hBlurYCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetPsSrv(0, renderGraph_->GetTarget(shadowExpTmpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetPsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoBlur_->GetPSO());
+			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+
+			// draw fullscreen.
+			pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+		}
+		renderGraph_->EndPass();
 	}
-	renderGraph_->EndPass();
-	renderGraph_->NextPass(pCmdList);
-	{
-		GPU_MARKER(pCmdList, 0, "GaussianBlurY");
-
-		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
-
-		// set render targets.
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv = renderGraph_->GetTarget(shadowExpTargetID)->rtvs[0]->GetDescInfo().cpuHandle;
-		pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
-
-		// set descriptors.
-		sl12::DescriptorSet descSet;
-		descSet.Reset();
-		descSet.SetPsCbv(0, hBlurYCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetPsSrv(0, renderGraph_->GetTarget(shadowExpTmpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetPsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
-
-		// set pipeline.
-		pCmdList->GetLatestCommandList()->SetPipelineState(psoBlur_->GetPSO());
-		pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
-
-		// draw fullscreen.
-		pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
-	}
-	renderGraph_->EndPass();
 #endif
 	
 	if (!bEnableVisibilityBuffer_)
@@ -1285,38 +1442,68 @@ bool SampleApplication::Execute()
 			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 			// set descriptors.
+			auto detail_res = const_cast<sl12::ResourceItemTexture*>(hDetailTex_.GetItem<sl12::ResourceItemTexture>());
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetVsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetPsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetPsCbv(1, hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
+			if (detailType_ != 3)
+			{
+				descSet.SetPsSrv(3, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+			}
+			else
+			{
+				descSet.SetPsSrv(3, detailDerivSrv_->GetDescInfo().cpuHandle);
+			}
 			descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
 
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoMesh_->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			sl12::GraphicsPipelineState* NowPSO = nullptr;
 
 			// draw meshes.
 			uint meshIndex = 0;
 			for (auto&& mesh : sceneMeshes_)
 			{
+				// select pso.
+				auto meshRes = mesh->GetParentResource();
+				sl12::GraphicsPipelineState* pso = &psoMesh_;
+				if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+				{
+					pso = &psoTriplanar_;
+				}
+				if (NowPSO != pso)
+				{
+					// set pipeline.
+					pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+					pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+					NowPSO = pso;
+				}
+				
 				// set mesh constant.
 				descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
-				auto meshRes = mesh->GetParentResource();
 				auto&& submeshes = meshRes->GetSubmeshes();
 				auto submesh_count = submeshes.size();
 				for (int i = 0; i < submesh_count; i++)
 				{
 					auto&& submesh = submeshes[i];
-					auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
-					auto bc_tex_res = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
-					auto nm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.normalTex.GetItem<sl12::ResourceItemTexture>());
-					auto orm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
-					auto&& base_color_srv = bc_tex_res->GetTextureView();
+					if (pso == &psoMesh_)
+					{
+						auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
+						auto bc_tex_res = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
+						auto nm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.normalTex.GetItem<sl12::ResourceItemTexture>());
+						auto orm_tex_res = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
+						auto&& base_color_srv = bc_tex_res->GetTextureView();
 
-					descSet.SetPsSrv(0, bc_tex_res->GetTextureView().GetDescInfo().cpuHandle);
-					descSet.SetPsSrv(1, nm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
-					descSet.SetPsSrv(2, orm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+						descSet.SetPsSrv(0, bc_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+						descSet.SetPsSrv(1, nm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+						descSet.SetPsSrv(2, orm_tex_res->GetTextureView().GetDescInfo().cpuHandle);
+					}
+					else
+					{
+						auto dot_res = const_cast<sl12::ResourceItemTexture*>(hDotTex_.GetItem<sl12::ResourceItemTexture>());
+						descSet.SetPsSrv(0, dot_res->GetTextureView().GetDescInfo().cpuHandle);
+					}
 
 					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
 

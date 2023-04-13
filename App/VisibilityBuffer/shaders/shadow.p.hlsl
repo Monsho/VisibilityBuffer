@@ -11,7 +11,7 @@ Texture2D<float>			texShadowDepth	: register(t0);
 
 float4 main(PSInput In)	: SV_TARGET0
 {
-	float depth = texShadowDepth[In.position.xy];
+	float depth = 1.0 - texShadowDepth[In.position.xy];
 
 	float p = exp(cbShadow.exponent.x * depth);
 	float n = -exp(-cbShadow.exponent.y * depth);

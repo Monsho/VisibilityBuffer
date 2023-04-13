@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+# my pattern
+/.idea/
+/.vs/
+/App/.idea/
+/App/assets/
+/App/packages/
+/App/x64/
+/App/VisibilityBuffer/x64/

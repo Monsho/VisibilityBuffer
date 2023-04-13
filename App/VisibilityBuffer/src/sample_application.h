@@ -106,9 +106,11 @@ private:
 	UniqueHandle<sl12::CbvManager>		cbvMan_;
 	UniqueHandle<sl12::RenderGraph>		renderGraph_;
 
+	// root sig & pso.
 	UniqueHandle<sl12::RootSignature>			rsVsPs_;
 	UniqueHandle<sl12::RootSignature>			rsCs_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMesh_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoTriplanar_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoVisibility_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMatDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoTonemap_;
@@ -119,6 +121,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoLighting_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
+	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
 	UniqueHandle<sl12::Sampler>				linearClampSampler_;
@@ -133,26 +136,21 @@ private:
 	UniqueHandle<sl12::BufferView>			tileIndexBV_;
 	UniqueHandle<sl12::UnorderedAccessView>	drawArgUAV_, tileIndexUAV_;
 
+	UniqueHandle<sl12::Texture>				detailDerivTex_;
+	UniqueHandle<sl12::TextureView>			detailDerivSrv_;
+
 	UniqueHandle<sl12::Gui>		gui_;
 	sl12::InputData				inputData_{};
 
+	// resources.
 	sl12::ResourceHandle	hSuzanneMesh_;
 	sl12::ResourceHandle	hSponzaMesh_;
-	sl12::ShaderHandle		hMeshVV_;
-	sl12::ShaderHandle		hMeshP_;
-	sl12::ShaderHandle		hVisibilityVV_;
-	sl12::ShaderHandle		hVisibilityP_;
-	sl12::ShaderHandle		hLightingC_;
-	sl12::ShaderHandle		hFullscreenVV_;
-	sl12::ShaderHandle		hTonemapP_;
-	sl12::ShaderHandle		hClassifyC_;
-	sl12::ShaderHandle		hMatDepthP_;
-	sl12::ShaderHandle		hClearArgC_;
-	sl12::ShaderHandle		hMaterialTileVV_;
-	sl12::ShaderHandle		hMaterialTileP_;
-	sl12::ShaderHandle		hShadowVV_;
-	sl12::ShaderHandle		hShadowP_;
-	sl12::ShaderHandle		hBlurP_;
+	sl12::ResourceHandle	hSphereMesh_;
+	sl12::ResourceHandle	hDetailTex_;
+	sl12::ResourceHandle	hDotTex_;
+
+	// shaders.
+	std::vector<sl12::ShaderHandle>	hShaders_;
 
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
@@ -178,6 +176,14 @@ private:
 	// shadow parameters.
 	float					shadowBias_ = 0.001f;
 	float					shadowExponent_ = 10.0f;
+	bool					evsmBlur_ = true;
+
+	// surface gradient parameters.
+	float					detailTile_ = 3.0f;
+	float					detailIntensity_ = 1.0f;
+	int						detailType_ = 0;
+	float					triplanarTile_ = 0.01f;
+	int						triplanarType_ = 0;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;

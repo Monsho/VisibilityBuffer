@@ -99,11 +99,15 @@
     <None Include="shaders\shadow.vv.hlsl" />
     <None Include="shaders\shadow.p.hlsl" />
     <None Include="shaders\blur.p.hlsl" />
+    <None Include="shaders\ts_normal_to_deriv.c.hlsl" />
+    <None Include="shaders\triplanar.p.hlsl" />
+    <None Include="shaders\triplanar.vv.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\cbuffer.hlsli" />
+    <None Include="shaders\surface_gradient.hlsli" />
     <ClInclude Include="src\sample_application.h" />
   </ItemGroup>
   <ItemGroup>

@@ -70,6 +70,15 @@ struct BlurCB
     float2  offset;
 };
 
+struct DetailCB
+{
+    float2  detailTile;
+    float   detailIntensity;
+    uint    detailType;
+    float   triplanarTile;
+    uint    triplanarType;
+};
+
 struct InstanceData
 {
     float4x4	mtxLocalToWorld;
