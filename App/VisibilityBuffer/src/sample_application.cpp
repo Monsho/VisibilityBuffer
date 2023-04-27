@@ -17,6 +17,8 @@
 
 namespace
 {
+	static const float kFovY = 90.0f;
+	
 	static const char* kResourceDir = "resources";
 	static const char* kShaderDir = "VisibilityBuffer/shaders";
 	static const char* kShaderIncludeDir = "../SampleLib12/SampleLib12/shaders/include";
@@ -29,6 +31,7 @@ namespace
 	static sl12::RenderGraphTargetDesc gMatDepthDesc;
 	static sl12::RenderGraphTargetDesc gShadowExpDesc;
 	static sl12::RenderGraphTargetDesc gShadowDepthDesc;
+	static sl12::RenderGraphTargetDesc gAoDesc;
 	void SetGBufferDesc(sl12::u32 width, sl12::u32 height)
 	{
 		gGBufferDescs.clear();
@@ -96,6 +99,14 @@ namespace
 		gShadowDepthDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::DepthStencil;
 		gShadowDepthDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		gShadowDepthDesc.dsvDescs.push_back(sl12::RenderGraphDSVDesc(0, 0, 0));
+
+		gAoDesc.name = "AO";
+		gAoDesc.width = width;
+		gAoDesc.height = height;
+		gAoDesc.format = DXGI_FORMAT_R8_UNORM;
+		gAoDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		gAoDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
+		gAoDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
 	}
 
 	enum ShaderName
@@ -119,6 +130,8 @@ namespace
 		TriplanarVV,
 		TriplanarP,
 		MaterialTileTriplanarP,
+		SsaoHbaoC,
+		SsaoBitmaskC,
 
 		MAX
 	};
@@ -142,6 +155,8 @@ namespace
 		"triplanar.vv.hlsl",				"main",
 		"triplanar.p.hlsl",					"main",
 		"material_tile_triplanar.p.hlsl",	"main",
+		"ssao_hbao.c.hlsl",					"main",
+		"ssao_bitmask.c.hlsl",				"main",
 	};
 }
 
@@ -681,6 +696,8 @@ bool SampleApplication::Initialize()
 	psoClassify_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoClearArg_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoNormalToDeriv_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoSsaoHbao_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoSsaoBitmask_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
 	{
 		sl12::ComputePipelineStateDesc desc{};
@@ -726,6 +743,28 @@ bool SampleApplication::Initialize()
 			return false;
 		}
 	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::SsaoHbaoC].GetShader();
+
+		if (!psoSsaoHbao_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init ssao hbao pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::SsaoBitmaskC].GetShader();
+
+		if (!psoSsaoBitmask_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init ssao bitmask pso.");
+			return false;
+		}
+	}
 
 	{
 		tileDrawIndirect_ = sl12::MakeUnique<sl12::IndirectExecuter>(&device_);
@@ -760,6 +799,8 @@ void SampleApplication::Finalize()
 	psoLighting_.Reset();
 	psoClearArg_.Reset();
 	psoClassify_.Reset();
+	psoSsaoBitmask_.Reset();
+	psoSsaoHbao_.Reset();
 	psoBlur_.Reset();
 	psoShadowExp_.Reset();
 	psoShadowDepth_.Reset();
@@ -844,6 +885,43 @@ bool SampleApplication::Execute()
 			ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
 			ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
 			ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
+		}
+
+		// ssao settings.
+		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kTypes[] = {
+				"HBAO",
+				"Visibility Bitmask",
+			};
+			ImGui::Combo("Type", &ssaoType_, kTypes, ARRAYSIZE(kTypes));
+			ImGui::SliderFloat("Intensity", &ssaoIntensity_, 0.0f, 4.0f);
+			ImGui::SliderInt("Slice Count", &ssaoSliceCount_, 1, 16);
+			ImGui::SliderInt("Step Count", &ssaoStepCount_, 1, 16);
+			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 128);
+			ImGui::SliderFloat("Tangent Bias", &ssaoTangentBias_, 0.0f, 1.0f);
+			ImGui::SliderFloat("World Radius", &ssaoWorldRadius_, 0.0f, 200.0f);
+			ImGui::SliderFloat("Thickness", &ssaoConstThickness_, 0.1f, 10.0f);
+			static const char* kBaseVecs[] = {
+				"Pixel Normal",
+				"View Vector",
+				"Face Normal",
+			};
+			ImGui::Combo("Baes Vec", &ssaoBaseVecType_, kBaseVecs, ARRAYSIZE(kBaseVecs));
+		}
+
+		// debug settings.
+		if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kDisplayModes[] = {
+				"Lighting",
+				"BaseColor",
+				"Roughness",
+				"Metallic",
+				"World Normal",
+				"AO",
+			};
+			ImGui::Combo("Display Mode", &displayMode_, kDisplayModes, ARRAYSIZE(kDisplayModes));
 		}
 
 		// gpu performance.
@@ -942,6 +1020,7 @@ bool SampleApplication::Execute()
 	sl12::RenderGraphTargetID matDepthTargetID;
 	sl12::RenderGraphTargetID shadowExpTargetID, shadowExpTmpTargetID;
 	sl12::RenderGraphTargetID shadowDepthTargetID;
+	sl12::RenderGraphTargetID ssaoTargetID;
 	for (auto&& desc : gGBufferDescs)
 	{
 		gbufferTargetIDs.push_back(renderGraph_->AddTarget(desc));
@@ -952,6 +1031,7 @@ bool SampleApplication::Execute()
 	shadowExpTargetID = renderGraph_->AddTarget(gShadowExpDesc);
 	shadowExpTmpTargetID = renderGraph_->AddTarget(gShadowExpDesc);
 	shadowDepthTargetID = renderGraph_->AddTarget(gShadowDepthDesc);
+	ssaoTargetID = renderGraph_->AddTarget(gAoDesc);
 
 	// create render passes.
 	{
@@ -1054,6 +1134,16 @@ bool SampleApplication::Execute()
 			passes.push_back(matTilePass);
 		}
 
+		// ssao pass.
+		sl12::RenderPass ssaoPass{};
+		ssaoPass.input.push_back(gbufferTargetIDs[3]);
+		ssaoPass.input.push_back(gbufferTargetIDs[2]);
+		ssaoPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		ssaoPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		ssaoPass.output.push_back(ssaoTargetID);
+		ssaoPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		passes.push_back(ssaoPass);
+
 		// lighting pass.
 		sl12::RenderPass lightingPass{};
 		lightingPass.input.push_back(gbufferTargetIDs[0]);
@@ -1062,6 +1152,8 @@ bool SampleApplication::Execute()
 		lightingPass.input.push_back(gbufferTargetIDs[3]);
 		lightingPass.input.push_back(shadowExpTargetID);
 		lightingPass.input.push_back(shadowDepthTargetID);
+		lightingPass.input.push_back(ssaoTargetID);
+		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -1084,6 +1176,8 @@ bool SampleApplication::Execute()
 	// create scene constant buffer.
 	sl12::CbvHandle hSceneCB, hLightCB, hShadowCB, hDetailCB;
 	sl12::CbvHandle hBlurXCB, hBlurYCB;
+	sl12::CbvHandle hAmbOccCB;
+	sl12::CbvHandle hDebugCB;
 	{
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
 		float Zn = 0.1f;
@@ -1091,22 +1185,26 @@ bool SampleApplication::Execute()
 		auto dir = DirectX::XMLoadFloat3(&cameraDir_);
 		auto up = DirectX::XMLoadFloat3(&upVec);
 		auto mtxWorldToView = DirectX::XMMatrixLookAtRH(cp, DirectX::XMVectorAdd(cp, dir), up);
-		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteInverseFovRH(DirectX::XMConvertToRadians(60.0f), (float)displayWidth_ / (float)displayHeight_, Zn);
+		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteInverseFovRH(DirectX::XMConvertToRadians(kFovY), (float)displayWidth_ / (float)displayHeight_, Zn);
 		auto mtxWorldToClip = mtxWorldToView * mtxViewToClip;
 		auto mtxClipToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToClip);
 		auto mtxViewToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToView);
+		auto mtxClipToView = DirectX::XMMatrixInverse(nullptr, mtxViewToClip);
 
 		SceneCB cbScene;
 		DirectX::XMStoreFloat4x4(&cbScene.mtxWorldToProj, mtxWorldToClip);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxWorldToView, mtxWorldToView);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToWorld, mtxClipToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxViewToWorld, mtxViewToWorld);
+		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToView, mtxClipToView);
 		cbScene.eyePosition.x = cameraPos_.x;
 		cbScene.eyePosition.y = cameraPos_.y;
 		cbScene.eyePosition.z = cameraPos_.z;
 		cbScene.eyePosition.w = 0.0f;
 		cbScene.screenSize.x = (float)displayWidth_;
 		cbScene.screenSize.y = (float)displayHeight_;
+		cbScene.invScreenSize.x = 1.0f / (float)displayWidth_;
+		cbScene.invScreenSize.y = 1.0f / (float)displayHeight_;
 		cbScene.nearFar.x = Zn;
 		cbScene.nearFar.y = 0.0f;
 
@@ -1225,6 +1323,31 @@ bool SampleApplication::Execute()
 		cbDetail.triplanarTile = triplanarTile_;
 
 		hDetailCB = cbvMan_->GetTemporal(&cbDetail, sizeof(cbDetail));
+	}
+	{
+		AmbOccCB cbAO;
+
+		cbAO.intensity = ssaoIntensity_;
+		cbAO.thickness = ssaoConstThickness_;
+		cbAO.sliceCount = ssaoSliceCount_;
+		cbAO.stepCount = ssaoStepCount_;
+		cbAO.tangentBias = ssaoTangentBias_;
+		cbAO.temporalIndex = 0;
+		cbAO.maxPixelRadius = ssaoMaxPixel_;
+		cbAO.worldSpaceRadius = ssaoWorldRadius_;
+		cbAO.baseVecType = ssaoBaseVecType_;
+
+		float focalLen = (float)displayHeight_ / (float)displayWidth_ / (tanf(DirectX::XMConvertToRadians(kFovY) * 0.5f));
+		cbAO.ndcPixelSize = focalLen * 0.5f * (float)displayWidth_;
+
+		hAmbOccCB = cbvMan_->GetTemporal(&cbAO, sizeof(cbAO));
+	}
+	{
+		DebugCB cbDebug;
+
+		cbDebug.displayMode = displayMode_;
+
+		hDebugCB = cbvMan_->GetTemporal(&cbDebug, sizeof(cbDebug));
 	}
 
 	// clear swapchain.
@@ -1871,6 +1994,38 @@ bool SampleApplication::Execute()
 		renderGraph_->EndPass();
 	}
 
+	// ssao pass.
+	renderGraph_->NextPass(pCmdList);
+	{
+		GPU_MARKER(pCmdList, 1, "SSAOPass");
+
+		// output barrier.
+		renderGraph_->BarrierOutputsAll(pCmdList);
+
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsCbv(1, hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraph_->GetTarget(ssaoTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		if (ssaoType_ == 0)
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoSsaoHbao_->GetPSO());
+		else
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoSsaoBitmask_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+		// dispatch.
+		UINT x = (displayWidth_ + 7) / 8;
+		UINT y = (displayHeight_ + 7) / 8;
+		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+	}
+	renderGraph_->EndPass();
+	
 	// lighing pass.
 	pTimestamp->Query(pCmdList);
 	renderGraph_->NextPass(pCmdList);
@@ -1886,6 +2041,7 @@ bool SampleApplication::Execute()
 		descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(1, hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(2, hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsCbv(3, hDebugCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
@@ -1895,6 +2051,7 @@ bool SampleApplication::Execute()
 #else
 		descSet.SetCsSrv(4, renderGraph_->GetTarget(shadowExpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 #endif
+		descSet.SetCsSrv(5, renderGraph_->GetTarget(ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsUav(0, renderGraph_->GetTarget(accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 #if SHADOW_TYPE == 0
 		descSet.SetCsSampler(0, shadowSampler_->GetDescInfo().cpuHandle);

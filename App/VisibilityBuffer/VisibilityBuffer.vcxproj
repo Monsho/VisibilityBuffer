@@ -103,6 +103,9 @@
     <None Include="shaders\triplanar.p.hlsl" />
     <None Include="shaders\triplanar.vv.hlsl" />
     <None Include="shaders\material_tile_triplanar.p.hlsl" />
+    <None Include="shaders\ssao.c.hlsl" />
+    <None Include="shaders\ssao_hbao.c.hlsl" />
+    <None Include="shaders\ssao_bitmask.c.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>

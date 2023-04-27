@@ -128,6 +128,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
+	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
 	UniqueHandle<sl12::Sampler>				linearClampSampler_;
@@ -190,6 +191,20 @@ private:
 	int						detailType_ = 0;
 	float					triplanarTile_ = 0.01f;
 	int						triplanarType_ = 0;
+
+	// ssao parameters.
+	int						ssaoType_ = 0;
+	float					ssaoIntensity_ = 1.0f;
+	int						ssaoSliceCount_ = 8;
+	int						ssaoStepCount_ = 8;
+	int						ssaoMaxPixel_ = 64;
+	float					ssaoTangentBias_ = 0.3f;
+	float					ssaoWorldRadius_ = 100.0f;
+	float					ssaoConstThickness_ = 1.0f;
+	int						ssaoBaseVecType_ = 0;
+
+	// debug parameters.
+	int						displayMode_ = 0;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;

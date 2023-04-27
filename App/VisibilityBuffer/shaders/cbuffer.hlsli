@@ -15,8 +15,10 @@ struct SceneCB
     float4x4	mtxWorldToView;
     float4x4    mtxProjToWorld;
     float4x4    mtxViewToWorld;
+    float4x4    mtxProjToView;
     float4      eyePosition;
     float2      screenSize;
+    float2      invScreenSize;
     float2      nearFar;
 };
 
@@ -77,6 +79,25 @@ struct DetailCB
     uint    detailType;
     float   triplanarTile;
     uint    triplanarType;
+};
+
+struct AmbOccCB
+{
+    float   intensity;
+    float   thickness;
+    float   tangentBias;
+    float   worldSpaceRadius;
+    float   ndcPixelSize;
+    uint    maxPixelRadius;
+    uint    sliceCount;
+    uint    stepCount;
+    uint    temporalIndex;
+    uint    baseVecType;
+};
+
+struct DebugCB
+{
+    uint    displayMode;
 };
 
 struct InstanceData
