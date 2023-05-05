@@ -1,16 +1,12 @@
 ﻿#include "sample_application.h"
 #include "sl12/string_util.h"
+#include <regex>
 
 
 namespace
 {
-#if 0
 	static const int	kDisplayWidth  = 2560;
 	static const int	kDisplayHeight = 1440;
-#else
-	static const int	kDisplayWidth  = 1280;
-	static const int	kDisplayHeight = 720;
-#endif
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
@@ -18,6 +14,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	auto ColorSpace = sl12::ColorSpaceType::Rec709;
 	std::string homeDir = ".\\";
 	int meshType = 0;
+	int screenWidth = kDisplayWidth;
+	int screenHeight = kDisplayHeight;
 
 	LPWSTR *szArglist;
 	int nArgs;
@@ -39,10 +37,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 			{
 				meshType = std::stoi(szArglist[++i]);
 			}
+			else if (!lstrcmpW(szArglist[i], L"-res"))
+			{
+				std::wstring str = szArglist[++i];
+				std::wregex r(L"([0-9]+)x([0-9]+)");
+				std::wsmatch m;
+				if (std::regex_match(str, m, r))
+				{
+					screenWidth = std::stoi(m[1].str());
+					screenHeight = std::stoi(m[2].str());
+				}
+			}
 		}
 	}
 
-	SampleApplication app(hInstance, nCmdShow, kDisplayWidth, kDisplayHeight, ColorSpace, homeDir, meshType);
+	SampleApplication app(hInstance, nCmdShow, screenWidth, screenHeight, ColorSpace, homeDir, meshType);
 
 	return app.Run();
 }

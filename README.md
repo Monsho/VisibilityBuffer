@@ -15,3 +15,9 @@
     + Specify mesh type.
     + 0: Many suzanne
     + 1: Sponza
+  + -hdr
+    + HDR display mode.
+    + if display do NOT support HDR, the option is ignored.
+  + -res <WIDTHxHEIGHT>
+    + Specify window resolution.
+    + exp.) -res 1280x720
