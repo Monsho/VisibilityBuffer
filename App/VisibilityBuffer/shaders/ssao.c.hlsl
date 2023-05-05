@@ -165,7 +165,6 @@ float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2
 
 	float2 uv = uv0 + randStep * deltaUV;
 	float3 T = deltaUV.x * dPdu + deltaUV.y * dPdv;
-	float tanH = BiasedTangent(T);
 	
 	float3 viewVec = normalize(viewP);
 	float3 thickVec = viewVec * cbAO.thickness;
@@ -176,10 +175,11 @@ float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2
 	{
 	case 1: baseVec = -viewVec; break;
 	case 2:
-		baseVec = normalize(cross(dPdv, dPdu));
+		baseVec = -normalize(cross(dPdv, dPdu));
 		break;
 	default: baseVec = viewN; break;
 	}
+
 	for (uint step = 0; step < cbAO.stepCount; step++)
 	{
 		if (float(step) >= numSteps)
@@ -188,18 +188,28 @@ float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2
 		}
 
 		uv += deltaUV;
+		if (any(uv < 0.0) || any(uv > 1.0))
+		{
+			break;
+		}
+
 		float3 Sf = ScreenPosToViewPos(uv, texDepth.SampleLevel(samLinearClamp, uv, 0));
-		float3 Sb = Sf + thickVec;
+		Sf = Sf + normalize(Sf) * cbAO.viewBias;
 		float3 Vf = normalize(Sf - viewP);
-		float3 Vb = normalize(Sb - viewP);
-		float Tf = acos(dot(baseVec, Vf));
-		float Tb = acos(dot(baseVec, Vb));
-		float Tmin = min(Tf, Tb);
-		float Tmax = max(Tf, Tb);
-		uint a = uint(floor(Tmin * kBitmaskSize / kHalfPI));
-		uint b = uint(floor((Tmax - Tmin) * kBitmaskSize / kHalfPI));
-		uint bit = ((2 ^ b) - 1) << a;
-		mask = mask | bit;
+		float Df = dot(baseVec, Vf);
+		if (Df > 0.0)
+		{
+			float Tf = acos(Df);
+			float3 Sb = Sf + thickVec;
+			float3 Vb = normalize(Sb - viewP);
+			float Tb = acos(saturate(dot(baseVec, Vb)));
+			float Tmin = min(Tf, Tb);
+			float Tmax = max(Tf, Tb);
+			uint a = uint(floor(Tmin * kBitmaskSize / kHalfPI));
+			uint b = uint(floor((Tmax - Tmin) * kBitmaskSize / kHalfPI));
+			uint bit = ((2 ^ b) - 1) << a;
+			mask = mask | bit;
+		}
 	}
 
 	return float(countbits(mask)) / kBitmaskSize;

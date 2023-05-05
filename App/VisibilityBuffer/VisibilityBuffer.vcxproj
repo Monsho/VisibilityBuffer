@@ -118,6 +118,11 @@
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\denoise.c.hlsl">
+      <FileType>Document</FileType>
+    </None>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\WinPixEventRuntime.1.0.220810001\build\WinPixEventRuntime.targets" Condition="Exists('..\packages\WinPixEventRuntime.1.0.220810001\build\WinPixEventRuntime.targets')" />

@@ -132,6 +132,7 @@ namespace
 		MaterialTileTriplanarP,
 		SsaoHbaoC,
 		SsaoBitmaskC,
+		DenoiseC,
 
 		MAX
 	};
@@ -157,6 +158,7 @@ namespace
 		"material_tile_triplanar.p.hlsl",	"main",
 		"ssao_hbao.c.hlsl",					"main",
 		"ssao_bitmask.c.hlsl",				"main",
+		"denoise.c.hlsl",					"main",
 	};
 }
 
@@ -698,6 +700,7 @@ bool SampleApplication::Initialize()
 	psoNormalToDeriv_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoSsaoHbao_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoSsaoBitmask_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoDenoise_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
 	{
 		sl12::ComputePipelineStateDesc desc{};
@@ -762,6 +765,17 @@ bool SampleApplication::Initialize()
 		if (!psoSsaoBitmask_->Initialize(&device_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init ssao bitmask pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::DenoiseC].GetShader();
+
+		if (!psoDenoise_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init denoise pso.");
 			return false;
 		}
 	}
@@ -899,15 +913,25 @@ bool SampleApplication::Execute()
 			ImGui::SliderInt("Slice Count", &ssaoSliceCount_, 1, 16);
 			ImGui::SliderInt("Step Count", &ssaoStepCount_, 1, 16);
 			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 128);
-			ImGui::SliderFloat("Tangent Bias", &ssaoTangentBias_, 0.0f, 1.0f);
 			ImGui::SliderFloat("World Radius", &ssaoWorldRadius_, 0.0f, 200.0f);
+			ImGui::SliderFloat("Tangent Bias", &ssaoTangentBias_, 0.0f, 1.0f);
 			ImGui::SliderFloat("Thickness", &ssaoConstThickness_, 0.1f, 10.0f);
+			ImGui::SliderFloat("View Bias", &ssaoViewBias_, 0.0f, 10.0f);
 			static const char* kBaseVecs[] = {
 				"Pixel Normal",
 				"View Vector",
 				"Face Normal",
 			};
 			ImGui::Combo("Baes Vec", &ssaoBaseVecType_, kBaseVecs, ARRAYSIZE(kBaseVecs));
+		}
+
+		// denoise settings.
+		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
+			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
+			ImGui::SliderFloat("Depth Min", &denoiseDepthMin_, 0.0f, 20.0f);
+			ImGui::SliderFloat("Depth Max", &denoiseDepthMax_, 0.0f, 20.0f);
 		}
 
 		// debug settings.
@@ -928,39 +952,39 @@ bool SampleApplication::Execute()
 		if (ImGui::CollapsingHeader("GPU Time", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			uint64_t freq = device_.GetGraphicsQueue().GetTimestampFrequency();
+			uint64_t timestamp[16];
+			pTimestamp->GetTimestamp(0, 16, timestamp);
 			if (!bPrevMode)
 			{
-				uint64_t timestamp[6];
-
-				pTimestamp->GetTimestamp(0, 6, timestamp);
-				uint64_t total = timestamp[5] - timestamp[0];
+				uint64_t total = timestamp[6] - timestamp[0];
 				uint64_t gbuffer = timestamp[2] - timestamp[1];
-				uint64_t lighting = timestamp[3] - timestamp[2];
-				uint64_t tonemap = timestamp[4] - timestamp[3];
+				uint64_t ssao = timestamp[3] - timestamp[2];
+				uint64_t lighting = timestamp[4] - timestamp[3];
+				uint64_t tonemap = timestamp[5] - timestamp[4];
 
 				ImGui::Text("Total   : %f (ms)", (float)total / ((float)freq / 1000.0f));
 				ImGui::Text("GBuffer : %f (ms)", (float)gbuffer / ((float)freq / 1000.0f));
+				ImGui::Text("SSAO    : %f (ms)", (float)ssao / ((float)freq / 1000.0f));
 				ImGui::Text("Lighting: %f (ms)", (float)lighting / ((float)freq / 1000.0f));
 				ImGui::Text("Tonemap : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
 			}
 			else
 			{
-				uint64_t timestamp[9];
-
-				pTimestamp->GetTimestamp(0, 9, timestamp);
 				uint64_t total = timestamp[8] - timestamp[0];
 				uint64_t visibility = timestamp[2] - timestamp[1];
 				uint64_t depth = timestamp[3] - timestamp[2];
 				uint64_t classify = timestamp[4] - timestamp[3];
 				uint64_t tile = timestamp[5] - timestamp[4];
-				uint64_t lighting = timestamp[6] - timestamp[5];
-				uint64_t tonemap = timestamp[7] - timestamp[6];
+				uint64_t ssao = timestamp[6] - timestamp[5];
+				uint64_t lighting = timestamp[7] - timestamp[6];
+				uint64_t tonemap = timestamp[8] - timestamp[7];
 
 				ImGui::Text("Total      : %f (ms)", (float)total / ((float)freq / 1000.0f));
 				ImGui::Text("Visibility : %f (ms)", (float)visibility / ((float)freq / 1000.0f));
 				ImGui::Text("Depth      : %f (ms)", (float)depth / ((float)freq / 1000.0f));
 				ImGui::Text("Classify   : %f (ms)", (float)classify / ((float)freq / 1000.0f));
 				ImGui::Text("MatTile    : %f (ms)", (float)tile / ((float)freq / 1000.0f));
+				ImGui::Text("SSAO       : %f (ms)", (float)ssao / ((float)freq / 1000.0f));
 				ImGui::Text("Lighting   : %f (ms)", (float)lighting / ((float)freq / 1000.0f));
 				ImGui::Text("Tonemap    : %f (ms)", (float)tonemap / ((float)freq / 1000.0f));
 			}
@@ -1020,7 +1044,7 @@ bool SampleApplication::Execute()
 	sl12::RenderGraphTargetID matDepthTargetID;
 	sl12::RenderGraphTargetID shadowExpTargetID, shadowExpTmpTargetID;
 	sl12::RenderGraphTargetID shadowDepthTargetID;
-	sl12::RenderGraphTargetID ssaoTargetID;
+	sl12::RenderGraphTargetID ssaoTargetID, denoiseTargetID;
 	for (auto&& desc : gGBufferDescs)
 	{
 		gbufferTargetIDs.push_back(renderGraph_->AddTarget(desc));
@@ -1032,6 +1056,7 @@ bool SampleApplication::Execute()
 	shadowExpTmpTargetID = renderGraph_->AddTarget(gShadowExpDesc);
 	shadowDepthTargetID = renderGraph_->AddTarget(gShadowDepthDesc);
 	ssaoTargetID = renderGraph_->AddTarget(gAoDesc);
+	denoiseTargetID = renderGraph_->AddTarget(gAoDesc);
 
 	// create render passes.
 	{
@@ -1144,6 +1169,28 @@ bool SampleApplication::Execute()
 		ssaoPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		passes.push_back(ssaoPass);
 
+		// ssao denoise pass.
+		sl12::RenderPass denoisePass{};
+		denoisePass.input.push_back(gbufferTargetIDs[3]);
+		denoisePass.input.push_back(ssaoTargetID);
+		denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		if (depthHistory_ != sl12::kInvalidTargetID)
+		{
+			denoisePass.input.push_back(depthHistory_);
+			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		}
+		if (ssaoHistory_ != sl12::kInvalidTargetID)
+		{
+			denoisePass.input.push_back(ssaoHistory_);
+			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		}
+		denoisePass.output.push_back(denoiseTargetID);
+		denoisePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		passes.push_back(denoisePass);
+		histories.push_back(gbufferTargetIDs[3]);
+		histories.push_back(denoiseTargetID);
+
 		// lighting pass.
 		sl12::RenderPass lightingPass{};
 		lightingPass.input.push_back(gbufferTargetIDs[0]);
@@ -1152,7 +1199,7 @@ bool SampleApplication::Execute()
 		lightingPass.input.push_back(gbufferTargetIDs[3]);
 		lightingPass.input.push_back(shadowExpTargetID);
 		lightingPass.input.push_back(shadowDepthTargetID);
-		lightingPass.input.push_back(ssaoTargetID);
+		lightingPass.input.push_back(denoiseTargetID);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		lightingPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -1194,9 +1241,23 @@ bool SampleApplication::Execute()
 		SceneCB cbScene;
 		DirectX::XMStoreFloat4x4(&cbScene.mtxWorldToProj, mtxWorldToClip);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxWorldToView, mtxWorldToView);
+		DirectX::XMStoreFloat4x4(&cbScene.mtxViewToProj, mtxViewToClip);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToWorld, mtxClipToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxViewToWorld, mtxViewToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToView, mtxClipToView);
+		if (frameIndex_ == 0)
+		{
+			// first frame.
+			auto U = DirectX::XMMatrixIdentity();
+			DirectX::XMStoreFloat4x4(&cbScene.mtxProjToPrevProj, U);
+			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevViewToProj, mtxViewToClip);
+		}
+		else
+		{
+			auto mtxClipToPrevClip = mtxClipToWorld * mtxPrevWorldToClip_;
+			DirectX::XMStoreFloat4x4(&cbScene.mtxProjToPrevProj, mtxClipToPrevClip);
+			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevViewToProj, mtxPrevViewToClip_);
+		}
 		cbScene.eyePosition.x = cameraPos_.x;
 		cbScene.eyePosition.y = cameraPos_.y;
 		cbScene.eyePosition.z = cameraPos_.z;
@@ -1209,6 +1270,10 @@ bool SampleApplication::Execute()
 		cbScene.nearFar.y = 0.0f;
 
 		hSceneCB = cbvMan_->GetTemporal(&cbScene, sizeof(cbScene));
+
+		mtxPrevWorldToView_ = mtxWorldToView;
+		mtxPrevWorldToClip_ = mtxWorldToClip;
+		mtxPrevViewToClip_ = mtxViewToClip;
 	}
 	{
 		LightCB cbLight;
@@ -1332,13 +1397,19 @@ bool SampleApplication::Execute()
 		cbAO.sliceCount = ssaoSliceCount_;
 		cbAO.stepCount = ssaoStepCount_;
 		cbAO.tangentBias = ssaoTangentBias_;
-		cbAO.temporalIndex = 0;
+		cbAO.temporalIndex = (sl12::u32)(frameIndex_ & 0xff);
 		cbAO.maxPixelRadius = ssaoMaxPixel_;
 		cbAO.worldSpaceRadius = ssaoWorldRadius_;
 		cbAO.baseVecType = ssaoBaseVecType_;
+		cbAO.viewBias = ssaoViewBias_;
 
-		float focalLen = (float)displayHeight_ / (float)displayWidth_ / (tanf(DirectX::XMConvertToRadians(kFovY) * 0.5f));
-		cbAO.ndcPixelSize = focalLen * 0.5f * (float)displayWidth_;
+		float focalLen = ((float)displayHeight_ / (float)displayWidth_) * (tanf(DirectX::XMConvertToRadians(kFovY) * 0.5f));
+		cbAO.ndcPixelSize = 0.5f * (float)displayWidth_ / focalLen;
+
+		cbAO.denoiseRadius = denoiseRadius_;
+		cbAO.denoiseBaseWeight = denoiseBaseWeight_;
+		cbAO.denoiseDepthMin = std::min(denoiseDepthMin_, denoiseDepthMax_);
+		cbAO.denoiseDepthMax = std::max(denoiseDepthMin_, denoiseDepthMax_);
 
 		hAmbOccCB = cbvMan_->GetTemporal(&cbAO, sizeof(cbAO));
 	}
@@ -1995,6 +2066,7 @@ bool SampleApplication::Execute()
 	}
 
 	// ssao pass.
+	pTimestamp->Query(pCmdList);
 	renderGraph_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "SSAOPass");
@@ -2025,7 +2097,44 @@ bool SampleApplication::Execute()
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
 	renderGraph_->EndPass();
-	
+
+	// denoise pass.
+	renderGraph_->NextPass(pCmdList);
+	{
+		GPU_MARKER(pCmdList, 1, "DenoisePass");
+
+		// output barrier.
+		renderGraph_->BarrierOutputsAll(pCmdList);
+
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsCbv(1, hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(1, renderGraph_->GetTarget(ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		if (depthHistory_ != sl12::kInvalidTargetID)
+			descSet.SetCsSrv(2, renderGraph_->GetTarget(depthHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		else
+			descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		if (ssaoHistory_ != sl12::kInvalidTargetID)
+			descSet.SetCsSrv(3, renderGraph_->GetTarget(ssaoHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		else
+			descSet.SetCsSrv(3, renderGraph_->GetTarget(ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraph_->GetTarget(denoiseTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoDenoise_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+		// dispatch.
+		UINT x = (displayWidth_ + 7) / 8;
+		UINT y = (displayHeight_ + 7) / 8;
+		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+	}
+	renderGraph_->EndPass();
+
 	// lighing pass.
 	pTimestamp->Query(pCmdList);
 	renderGraph_->NextPass(pCmdList);
@@ -2051,7 +2160,7 @@ bool SampleApplication::Execute()
 #else
 		descSet.SetCsSrv(4, renderGraph_->GetTarget(shadowExpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 #endif
-		descSet.SetCsSrv(5, renderGraph_->GetTarget(ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(5, renderGraph_->GetTarget(denoiseTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsUav(0, renderGraph_->GetTarget(accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 #if SHADOW_TYPE == 0
 		descSet.SetCsSampler(0, shadowSampler_->GetDescInfo().cpuHandle);
@@ -2135,6 +2244,12 @@ bool SampleApplication::Execute()
 
 	// execute current frame render.
 	mainCmdList_->Execute();
+
+	// store history.
+	depthHistory_ = gbufferTargetIDs[3];
+	ssaoHistory_ = denoiseTargetID;
+
+	frameIndex_++;
 
 	return true;
 }

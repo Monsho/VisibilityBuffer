@@ -129,6 +129,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
 	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_;
+	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
 	UniqueHandle<sl12::Sampler>				linearClampSampler_;
@@ -158,6 +159,11 @@ private:
 
 	// shaders.
 	std::vector<sl12::ShaderHandle>	hShaders_;
+
+	// history.
+	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;
+	sl12::RenderGraphTargetID	ssaoHistory_ = sl12::kInvalidTargetID;
+	DirectX::XMMATRIX		mtxPrevWorldToView_, mtxPrevViewToClip_, mtxPrevWorldToClip_;
 
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
@@ -197,17 +203,23 @@ private:
 	float					ssaoIntensity_ = 1.0f;
 	int						ssaoSliceCount_ = 8;
 	int						ssaoStepCount_ = 8;
-	int						ssaoMaxPixel_ = 64;
+	int						ssaoMaxPixel_ = 32;
+	float					ssaoWorldRadius_ = 30.0f;
 	float					ssaoTangentBias_ = 0.3f;
-	float					ssaoWorldRadius_ = 100.0f;
 	float					ssaoConstThickness_ = 1.0f;
+	float					ssaoViewBias_ = 1.0f;
 	int						ssaoBaseVecType_ = 0;
+	float					denoiseRadius_ = 2.0f;
+	float					denoiseBaseWeight_ = 0.85f;
+	float					denoiseDepthMin_ = 1.0f;
+	float					denoiseDepthMax_ = 3.0f;
 
 	// debug parameters.
 	int						displayMode_ = 0;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;
+	sl12::u64	frameIndex_ = 0;
 
 	bool bEnableVisibilityBuffer_ = false;
 };	// class SampleApplication

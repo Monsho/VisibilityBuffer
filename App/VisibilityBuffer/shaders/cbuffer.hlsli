@@ -11,115 +11,123 @@
 
 struct SceneCB
 {
-    float4x4	mtxWorldToProj;
-    float4x4	mtxWorldToView;
-    float4x4    mtxProjToWorld;
-    float4x4    mtxViewToWorld;
-    float4x4    mtxProjToView;
-    float4      eyePosition;
-    float2      screenSize;
-    float2      invScreenSize;
-    float2      nearFar;
+	float4x4	mtxWorldToProj;
+	float4x4	mtxWorldToView;
+	float4x4	mtxViewToProj;
+	float4x4	mtxProjToWorld;
+	float4x4	mtxViewToWorld;
+	float4x4	mtxProjToView;
+	float4x4	mtxProjToPrevProj;
+	float4x4	mtxPrevViewToProj;
+	float4		eyePosition;
+	float2		screenSize;
+	float2		invScreenSize;
+	float2		nearFar;
 };
 
 struct LightCB
 {
-    float3      ambientSky;
-    int         pad0;
-    float3      ambientGround;
-    float       ambientIntensity;
-    float3      directionalVec;
-    int         pad1;
-    float3      directionalColor;
-    int         pad2;
+	float3		ambientSky;
+	int			pad0;
+	float3		ambientGround;
+	float		ambientIntensity;
+	float3		directionalVec;
+	int			pad1;
+	float3		directionalColor;
+	int			pad2;
 };
 
 struct ShadowCB
 {
-    float4x4    mtxWorldToProj;
-    float2      exponent;
-    float       constBias;
+	float4x4	mtxWorldToProj;
+	float2		exponent;
+	float		constBias;
 };
 
 struct MeshCB
 {
-    float4x4	mtxLocalToWorld;
-    float4x4	mtxPrevLocalToWorld;
+	float4x4	mtxLocalToWorld;
+	float4x4	mtxPrevLocalToWorld;
 };
 
 struct VisibilityCB
 {
-    uint        drawCallIndex;
+	uint		drawCallIndex;
 };
 
 struct MaterialTileCB
 {
-    uint        materialIndex;
+	uint		materialIndex;
 };
 
 struct TileCB
 {
-    uint    numX;
-    uint    numY;
-    uint    tileMax;
-    uint    materialMax;
+	uint	numX;
+	uint	numY;
+	uint	tileMax;
+	uint	materialMax;
 };
 
 struct BlurCB
 {
-    float4  kernel0;
-    float4  kernel1;
-    float2  offset;
+	float4	kernel0;
+	float4	kernel1;
+	float2	offset;
 };
 
 struct DetailCB
 {
-    float2  detailTile;
-    float   detailIntensity;
-    uint    detailType;
-    float   triplanarTile;
-    uint    triplanarType;
+	float2	detailTile;
+	float	detailIntensity;
+	uint	detailType;
+	float	triplanarTile;
+	uint	triplanarType;
 };
 
 struct AmbOccCB
 {
-    float   intensity;
-    float   thickness;
-    float   tangentBias;
-    float   worldSpaceRadius;
-    float   ndcPixelSize;
-    uint    maxPixelRadius;
-    uint    sliceCount;
-    uint    stepCount;
-    uint    temporalIndex;
-    uint    baseVecType;
+	float	intensity;
+	float	worldSpaceRadius;
+	float	ndcPixelSize;
+	uint	maxPixelRadius;
+	uint	sliceCount;
+	uint	stepCount;
+	uint	temporalIndex;
+	float	tangentBias;
+	float	thickness;
+	float	viewBias;
+	uint	baseVecType;
+	float	denoiseRadius;
+	float	denoiseBaseWeight;
+	float	denoiseDepthMin;
+	float	denoiseDepthMax;
 };
 
 struct DebugCB
 {
-    uint    displayMode;
+	uint	displayMode;
 };
 
 struct InstanceData
 {
-    float4x4	mtxLocalToWorld;
-    float4x4	mtxWorldToLocal;
+	float4x4	mtxLocalToWorld;
+	float4x4	mtxWorldToLocal;
 };
 
 struct SubmeshData
 {
-    uint    materialIndex;
-    uint    posOffset;
-    uint    normalOffset;
-    uint    tangentOffset;
-    uint    uvOffset;
-    uint    indexOffset;
+	uint	materialIndex;
+	uint	posOffset;
+	uint	normalOffset;
+	uint	tangentOffset;
+	uint	uvOffset;
+	uint	indexOffset;
 };
 
 struct DrawCallData
 {
-    uint    instanceIndex;
-    uint    submeshIndex;
+	uint	instanceIndex;
+	uint	submeshIndex;
 };
 
 #define CLASSIFY_TILE_WIDTH (64)

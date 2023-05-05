@@ -4,8 +4,13 @@
 
 namespace
 {
+#if 0
 	static const int	kDisplayWidth  = 2560;
 	static const int	kDisplayHeight = 1440;
+#else
+	static const int	kDisplayWidth  = 1280;
+	static const int	kDisplayHeight = 720;
+#endif
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)

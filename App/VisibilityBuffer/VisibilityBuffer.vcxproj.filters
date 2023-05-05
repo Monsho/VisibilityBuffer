@@ -4,6 +4,9 @@
     <Filter Include="src">
       <UniqueIdentifier>{942f8909-68db-44ee-8819-629835879912}</UniqueIdentifier>
     </Filter>
+    <Filter Include="shaders">
+      <UniqueIdentifier>{912323d3-9cc5-40cc-92a0-d8dac7a4c5b8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -19,19 +22,84 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\blur.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_buffer.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ts_normal_to_deriv.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\triplanar.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\triplanar.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\tonemap.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\surface_gradient.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssao_hbao.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssao_bitmask.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssao.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\shadow.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\shadow.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_tile_triplanar.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_tile.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_tile.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_depth.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\lighting.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\fullscreen.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\clear_arg.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\classify.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\cbuffer.hlsli">
+      <Filter>shaders</Filter>
+    </None>
     <None Include="packages.config" />
-    <None Include="shaders\classify.c.hlsl" />
-    <None Include="shaders\clear_arg.c.hlsl" />
-    <None Include="shaders\fullscreen.vv.hlsl" />
-    <None Include="shaders\lighting.c.hlsl" />
-    <None Include="shaders\material_depth.p.hlsl" />
-    <None Include="shaders\material_tile.p.hlsl" />
-    <None Include="shaders\material_tile.vv.hlsl" />
-    <None Include="shaders\mesh.p.hlsl" />
-    <None Include="shaders\mesh.vv.hlsl" />
-    <None Include="shaders\tonemap.p.hlsl" />
-    <None Include="shaders\visibility.p.hlsl" />
-    <None Include="shaders\visibility.vv.hlsl" />
-    <None Include="shaders\cbuffer.hlsli" />
+    <None Include="shaders\denoise.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>
