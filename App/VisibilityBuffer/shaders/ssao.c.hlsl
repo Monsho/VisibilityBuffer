@@ -159,7 +159,7 @@ float3 LoadViewNormal(uint2 pixPos)
 
 float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2 uv0, float3 viewP, float3 viewN, float numSteps, float randStep, float3 dPdu, float3 dPdv)
 {
-	const float kBitmaskSize = 8;
+	const float kBitmaskSize = 32;
 	const float kHalfPI = PI * 0.5;
 	uint mask = 0;
 
@@ -187,7 +187,6 @@ float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2
 			break;
 		}
 
-		uv += deltaUV;
 		if (any(uv < 0.0) || any(uv > 1.0))
 		{
 			break;
@@ -210,6 +209,7 @@ float CalcVisibilityBitmaskOcclusion(float2 deltaUV, float2 texelDeltaUV, float2
 			uint bit = ((2 ^ b) - 1) << a;
 			mask = mask | bit;
 		}
+		uv += deltaUV;
 	}
 
 	return float(countbits(mask)) / kBitmaskSize;
