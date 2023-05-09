@@ -99,8 +99,7 @@ struct AmbOccCB
 	uint	baseVecType;
 	float	denoiseRadius;
 	float	denoiseBaseWeight;
-	float	denoiseDepthMin;
-	float	denoiseDepthMax;
+	float	denoiseDepthSigma;
 };
 
 struct DebugCB

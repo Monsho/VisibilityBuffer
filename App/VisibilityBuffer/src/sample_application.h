@@ -211,8 +211,7 @@ private:
 	int						ssaoBaseVecType_ = 0;
 	float					denoiseRadius_ = 2.0f;
 	float					denoiseBaseWeight_ = 0.85f;
-	float					denoiseDepthMin_ = 1.0f;
-	float					denoiseDepthMax_ = 3.0f;
+	float					denoiseDepthSigma_ = 1.0f;
 
 	// debug parameters.
 	int						displayMode_ = 0;

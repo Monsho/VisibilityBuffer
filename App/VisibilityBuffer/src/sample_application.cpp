@@ -930,8 +930,7 @@ bool SampleApplication::Execute()
 		{
 			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
 			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
-			ImGui::SliderFloat("Depth Min", &denoiseDepthMin_, 0.0f, 20.0f);
-			ImGui::SliderFloat("Depth Max", &denoiseDepthMax_, 0.0f, 20.0f);
+			ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
 		}
 
 		// debug settings.
@@ -1408,8 +1407,7 @@ bool SampleApplication::Execute()
 
 		cbAO.denoiseRadius = denoiseRadius_;
 		cbAO.denoiseBaseWeight = denoiseBaseWeight_;
-		cbAO.denoiseDepthMin = std::min(denoiseDepthMin_, denoiseDepthMax_);
-		cbAO.denoiseDepthMax = std::max(denoiseDepthMin_, denoiseDepthMax_);
+		cbAO.denoiseDepthSigma = denoiseDepthSigma_;
 
 		hAmbOccCB = cbvMan_->GetTemporal(&cbAO, sizeof(cbAO));
 	}
