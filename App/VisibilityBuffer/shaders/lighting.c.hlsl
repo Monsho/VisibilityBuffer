@@ -5,7 +5,6 @@
 ConstantBuffer<SceneCB>				cbScene				: register(b0);
 ConstantBuffer<LightCB>				cbLight				: register(b1);
 ConstantBuffer<ShadowCB>			cbShadow			: register(b2);
-ConstantBuffer<DebugCB>				cbDebug				: register(b3);
 
 Texture2D							texGBufferA			: register(t0);
 Texture2D							texGBufferB			: register(t1);
@@ -16,7 +15,6 @@ Texture2D<float>					texShadowDepth		: register(t4);
 #else
 Texture2D							texShadowExp		: register(t4);
 #endif
-Texture2D<float>					texAO				: register(t5);
 
 #if SHADOW_TYPE == 0
 SamplerComparisonState				samShadow			: register(s0);
@@ -99,32 +97,13 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float4 shadowClipPos = mul(cbShadow.mtxWorldToProj, float4(worldPos.xyz, 1));
 	float shadow = Shadow(shadowClipPos);
 
-	// get ao.
-	float ao = texAO[pixelPos];
-
 	// apply light.
 	float3 viewDirInWS = cbScene.eyePosition.xyz - worldPos.xyz;
 	float3 diffuseColor = color.rgb * (1 - orm.b);
 	float3 specularColor = 0.04 * (1 - orm.b) + color.rgb * orm.b;
 	float3 directColor = BrdfGGX(diffuseColor, specularColor, orm.g, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;
-	float ambientT = normal.y * 0.5 + 0.5;
-	float3 ambient = lerp(cbLight.ambientGround, cbLight.ambientSky, ambientT) * cbLight.ambientIntensity;
 
-	switch (cbDebug.displayMode)
-	{
-	case 1: // BaseColor
-		return float4(color.rgb, 1);
-	case 2: // Roughness
-		return float4(orm.ggg, 1);
-	case 3: // Metallic
-		return float4(orm.bbb, 1);
-	case 4: // World Normal
-		return float4(normal * 0.5 + 0.5, 1);
-	case 5: // AO
-		return float4(ao.xxx, 1);
-	default:
-		return directColor * shadow + ambient * diffuseColor * ao;
-	}
+	return directColor * shadow;
 }
 
 [numthreads(8, 8, 1)]

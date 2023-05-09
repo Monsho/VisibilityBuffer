@@ -124,11 +124,11 @@ private:
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowExp_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoBlur_;
-	UniqueHandle<sl12::ComputePipelineState>	psoLighting_;
+	UniqueHandle<sl12::ComputePipelineState>	psoLighting_, psoIndirect_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
-	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_;
+	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
@@ -163,6 +163,7 @@ private:
 	// history.
 	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;
 	sl12::RenderGraphTargetID	ssaoHistory_ = sl12::kInvalidTargetID;
+	sl12::RenderGraphTargetID	ssgiHistory_ = sl12::kInvalidTargetID;
 	DirectX::XMMATRIX		mtxPrevWorldToView_, mtxPrevViewToClip_, mtxPrevWorldToClip_;
 
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
@@ -201,6 +202,7 @@ private:
 	// ssao parameters.
 	int						ssaoType_ = 0;
 	float					ssaoIntensity_ = 1.0f;
+	float					ssgiIntensity_ = 1.0f;
 	int						ssaoSliceCount_ = 8;
 	int						ssaoStepCount_ = 8;
 	int						ssaoMaxPixel_ = 32;

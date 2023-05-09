@@ -87,6 +87,7 @@ struct DetailCB
 struct AmbOccCB
 {
 	float	intensity;
+	float	giIntensity;
 	float	worldSpaceRadius;
 	float	ndcPixelSize;
 	uint	maxPixelRadius;
