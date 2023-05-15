@@ -248,10 +248,10 @@ void main(uint3 did : SV_DispatchThreadID)
 		float3 viewNormal = LoadViewNormal(pixPos);
 #endif
 		
-		float3 viewPosL = ScreenPosToViewPos(uv + float2(-invRes.x, 0), depthC);
-		float3 viewPosU = ScreenPosToViewPos(uv + float2(0, -invRes.y), depthC);
-		float3 viewPosR = ScreenPosToViewPos(uv + float2(invRes.x, 0), depthC);
-		float3 viewPosB = ScreenPosToViewPos(uv + float2(0, invRes.y), depthC);
+		float3 viewPosL = ScreenPosToViewPos(uv + float2(-invRes.x, 0), depthL);
+		float3 viewPosU = ScreenPosToViewPos(uv + float2(0, -invRes.y), depthU);
+		float3 viewPosR = ScreenPosToViewPos(uv + float2(invRes.x, 0), depthR);
+		float3 viewPosB = ScreenPosToViewPos(uv + float2(0, invRes.y), depthB);
 		
 		float3 dPdu = MinDiff(viewPosC, viewPosR, viewPosL);
 		float3 dPdv = MinDiff(viewPosC, viewPosU, viewPosB) * Res.y * invRes.x;

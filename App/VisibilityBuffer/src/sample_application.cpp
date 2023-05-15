@@ -33,6 +33,8 @@ namespace
 	static sl12::RenderGraphTargetDesc gShadowDepthDesc;
 	static sl12::RenderGraphTargetDesc gAoDesc;
 	static sl12::RenderGraphTargetDesc gGiDesc;
+	static sl12::RenderGraphTargetDesc gDiDepthDesc;
+	static sl12::RenderGraphTargetDesc gDiNormalDesc;
 	void SetGBufferDesc(sl12::u32 width, sl12::u32 height)
 	{
 		gGBufferDescs.clear();
@@ -116,6 +118,20 @@ namespace
 		gGiDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		gGiDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		gGiDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
+
+		gDiDepthDesc.name = "Depth";
+		gDiDepthDesc.width = width;
+		gDiDepthDesc.height = height;
+		gDiDepthDesc.format = DXGI_FORMAT_R32_FLOAT;
+		gDiDepthDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		gDiDepthDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
+		gDiDepthDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
+
+		gDiNormalDesc = gGBufferDescs[2];
+		gDiNormalDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		gDiNormalDesc.rtvDescs.clear();
+		gDiNormalDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
+		gDiNormalDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
 	}
 
 	enum ShaderName
@@ -143,7 +159,9 @@ namespace
 		SsaoHbaoC,
 		SsaoBitmaskC,
 		SsgiC,
+		SsgiDIC,
 		DenoiseC,
+		DeinterleaveC,
 
 		MAX
 	};
@@ -170,8 +188,10 @@ namespace
 		"material_tile_triplanar.p.hlsl",	"main",
 		"ssao_hbao.c.hlsl",					"main",
 		"ssao_bitmask.c.hlsl",				"main",
-		"ssgi.c.hlsl",						"main",
+		"ssgi_standard.c.hlsl",				"main",
+		"ssgi_deinterleave.c.hlsl",			"main",
 		"denoise.c.hlsl",					"main",
+		"deinterleave.c.hlsl",				"main",
 	};
 }
 
@@ -715,7 +735,9 @@ bool SampleApplication::Initialize()
 	psoSsaoHbao_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoSsaoBitmask_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoSsgi_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoSsgiDI_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoDenoise_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoDeinterleave_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
 	{
 		sl12::ComputePipelineStateDesc desc{};
@@ -808,11 +830,33 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::SsgiDIC].GetShader();
+
+		if (!psoSsgiDI_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init ssgi deinterleave pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
 		desc.pCS = hShaders_[ShaderName::DenoiseC].GetShader();
 
 		if (!psoDenoise_->Initialize(&device_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init denoise pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::DeinterleaveC].GetShader();
+
+		if (!psoDeinterleave_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init deinterleave pso.");
 			return false;
 		}
 	}
@@ -852,7 +896,9 @@ void SampleApplication::Finalize()
 	psoClearArg_.Reset();
 	psoClassify_.Reset();
 	psoDenoise_.Reset();
+	psoDeinterleave_.Reset();
 	psoSsgi_.Reset();
+	psoSsgiDI_.Reset();
 	psoSsaoBitmask_.Reset();
 	psoSsaoHbao_.Reset();
 	psoBlur_.Reset();
@@ -951,10 +997,10 @@ bool SampleApplication::Execute()
 			};
 			ImGui::Combo("Type", &ssaoType_, kTypes, ARRAYSIZE(kTypes));
 			ImGui::SliderFloat("Intensity", &ssaoIntensity_, 0.0f, 10.0f);
-			ImGui::SliderFloat("GI Intensity", &ssgiIntensity_, 0.0f, 10.0f);
+			ImGui::SliderFloat("GI Intensity", &ssgiIntensity_, 0.0f, 40.0f);
 			ImGui::SliderInt("Slice Count", &ssaoSliceCount_, 1, 16);
 			ImGui::SliderInt("Step Count", &ssaoStepCount_, 1, 16);
-			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 128);
+			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 512);
 			ImGui::SliderFloat("World Radius", &ssaoWorldRadius_, 0.0f, 200.0f);
 			ImGui::SliderFloat("Tangent Bias", &ssaoTangentBias_, 0.0f, 1.0f);
 			ImGui::SliderFloat("Thickness", &ssaoConstThickness_, 0.1f, 10.0f);
@@ -965,6 +1011,7 @@ bool SampleApplication::Execute()
 				"Face Normal",
 			};
 			ImGui::Combo("Baes Vec", &ssaoBaseVecType_, kBaseVecs, ARRAYSIZE(kBaseVecs));
+			ImGui::Checkbox("Deinterleave", &bIsDeinterleave_);
 		}
 
 		// denoise settings.
@@ -1053,6 +1100,8 @@ bool SampleApplication::Execute()
 	}
 	ImGui::Render();
 
+	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
+	
 	device_.WaitPresent();
 	device_.SyncKillObjects();
 
@@ -1106,6 +1155,7 @@ bool SampleApplication::Execute()
 	sl12::RenderGraphTargetID shadowExpTargetID, shadowExpTmpTargetID;
 	sl12::RenderGraphTargetID shadowDepthTargetID;
 	sl12::RenderGraphTargetID ssaoTargetID, ssgiTargetID, denoiseTargetID;
+	sl12::RenderGraphTargetID diDepthTargetID, diNormalTargetID, diAccumTargetID;
 	for (auto&& desc : gGBufferDescs)
 	{
 		gbufferTargetIDs.push_back(renderGraph_->AddTarget(desc));
@@ -1119,6 +1169,12 @@ bool SampleApplication::Execute()
 	ssaoTargetID = renderGraph_->AddTarget(gAoDesc);
 	ssgiTargetID = renderGraph_->AddTarget(gGiDesc);
 	denoiseTargetID = renderGraph_->AddTarget(gAoDesc);
+	if (bNeedDeinterleave)
+	{
+		diDepthTargetID = renderGraph_->AddTarget(gDiDepthDesc);
+		diNormalTargetID = renderGraph_->AddTarget(gDiNormalDesc);
+		diAccumTargetID = renderGraph_->AddTarget(gAccumDesc);
+	}
 
 	// create render passes.
 	{
@@ -1239,6 +1295,25 @@ bool SampleApplication::Execute()
 		lightingPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		passes.push_back(lightingPass);
 
+		if (bNeedDeinterleave)
+		{
+			// deinterleave pass.
+			sl12::RenderPass diPass{};
+			diPass.input.push_back(gbufferTargetIDs[3]);
+			diPass.input.push_back(gbufferTargetIDs[2]);
+			diPass.input.push_back(accumTargetID);
+			diPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			diPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			diPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			diPass.output.push_back(diDepthTargetID);
+			diPass.output.push_back(diNormalTargetID);
+			diPass.output.push_back(diAccumTargetID);
+			diPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			diPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			diPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			passes.push_back(diPass);
+		}
+		
 		// ssao pass.
 		sl12::RenderPass ssaoPass{};
 		ssaoPass.input.push_back(gbufferTargetIDs[3]);
@@ -2192,6 +2267,39 @@ bool SampleApplication::Execute()
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
 	renderGraph_->EndPass();
+
+	// deinterleave pass.
+	if (bNeedDeinterleave)
+	{
+		renderGraph_->NextPass(pCmdList);
+		{
+			GPU_MARKER(pCmdList, 1, "DeinterleavePass");
+
+			// output barrier.
+			renderGraph_->BarrierOutputsAll(pCmdList);
+
+			// set descriptors.
+			sl12::DescriptorSet descSet;
+			descSet.Reset();
+			descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(2, renderGraph_->GetTarget(accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(0, renderGraph_->GetTarget(diDepthTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(1, renderGraph_->GetTarget(diNormalTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(2, renderGraph_->GetTarget(diAccumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoDeinterleave_->GetPSO());
+			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+			// dispatch.
+			UINT x = (displayWidth_ + 7) / 8;
+			UINT y = (displayHeight_ + 7) / 8;
+			pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+		}
+		renderGraph_->EndPass();
+	}
 	
 	// ssao pass.
 	pTimestamp->Query(pCmdList);
@@ -2207,15 +2315,27 @@ bool SampleApplication::Execute()
 		descSet.Reset();
 		descSet.SetCsCbv(0, hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(1, hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		if (bNeedDeinterleave)
+		{
+			descSet.SetCsSrv(0, renderGraph_->GetTarget(diDepthTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraph_->GetTarget(diNormalTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		}
+		else
+		{
+			descSet.SetCsSrv(0, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		}
+		if (ssaoType_ == 2)
+		{
+			if (bNeedDeinterleave)
+				descSet.SetCsSrv(2, renderGraph_->GetTarget(diAccumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			else
+				descSet.SetCsSrv(2, renderGraph_->GetTarget(accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		}
+
 		descSet.SetCsUav(0, renderGraph_->GetTarget(ssaoTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsUav(1, renderGraph_->GetTarget(ssgiTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
-		if (ssaoType_ == 2)
-		{
-			descSet.SetCsSrv(2, renderGraph_->GetTarget(accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		}
 
 		// set pipeline.
 		switch (ssaoType_)
@@ -2227,7 +2347,10 @@ bool SampleApplication::Execute()
 			pCmdList->GetLatestCommandList()->SetPipelineState(psoSsaoBitmask_->GetPSO());
 			break;
 		case 2:
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoSsgi_->GetPSO());
+			if (bNeedDeinterleave)
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoSsgiDI_->GetPSO());
+			else
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoSsgi_->GetPSO());
 			break;
 		}
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);

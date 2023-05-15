@@ -128,8 +128,9 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
-	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_;
+	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_, psoSsgiDI_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_;
+	UniqueHandle<sl12::ComputePipelineState>	psoDeinterleave_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
 	UniqueHandle<sl12::Sampler>				linearClampSampler_;
@@ -181,7 +182,7 @@ private:
 	// light parameters.
 	float					skyColor_[3] = {0.565f, 0.843f, 0.925f};
 	float					groundColor_[3] = {0.639f, 0.408f, 0.251f};
-	float					ambientIntensity_ = 0.3f;
+	float					ambientIntensity_ = 0.1f;
 	float					directionalTheta_ = 30.0f;
 	float					directionalPhi_ = 45.0f;
 	float					directionalColor_[3] = {1.0f, 1.0f, 1.0f};
@@ -211,6 +212,7 @@ private:
 	float					ssaoConstThickness_ = 1.0f;
 	float					ssaoViewBias_ = 1.0f;
 	int						ssaoBaseVecType_ = 0;
+	bool					bIsDeinterleave_ = false;
 	float					denoiseRadius_ = 2.0f;
 	float					denoiseBaseWeight_ = 0.85f;
 	float					denoiseDepthSigma_ = 1.0f;

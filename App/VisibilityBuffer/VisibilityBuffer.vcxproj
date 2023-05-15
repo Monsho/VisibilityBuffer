@@ -108,6 +108,9 @@
     <None Include="shaders\ssao_bitmask.c.hlsl" />
     <None Include="shaders\ssgi.c.hlsl" />
     <None Include="shaders\indirect_lighting.c.hlsl" />
+    <None Include="shaders\deinterleave.c.hlsl" />
+    <None Include="shaders\ssgi_deinterleave.c.hlsl" />
+    <None Include="shaders\ssgi_standard.c.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
