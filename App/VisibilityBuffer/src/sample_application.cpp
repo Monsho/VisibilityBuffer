@@ -161,6 +161,7 @@ namespace
 		SsgiC,
 		SsgiDIC,
 		DenoiseC,
+		DenoiseWithGIC,
 		DeinterleaveC,
 
 		MAX
@@ -191,6 +192,7 @@ namespace
 		"ssgi_standard.c.hlsl",				"main",
 		"ssgi_deinterleave.c.hlsl",			"main",
 		"denoise.c.hlsl",					"main",
+		"denoise_with_gi.c.hlsl",			"main",
 		"deinterleave.c.hlsl",				"main",
 	};
 }
@@ -737,6 +739,7 @@ bool SampleApplication::Initialize()
 	psoSsgi_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoSsgiDI_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoDenoise_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoDenoiseGI_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoDeinterleave_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
 	{
@@ -852,6 +855,17 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
+		desc.pCS = hShaders_[ShaderName::DenoiseWithGIC].GetShader();
+
+		if (!psoDenoiseGI_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init denoise with gi pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
 		desc.pCS = hShaders_[ShaderName::DeinterleaveC].GetShader();
 
 		if (!psoDeinterleave_->Initialize(&device_, desc))
@@ -896,6 +910,7 @@ void SampleApplication::Finalize()
 	psoClearArg_.Reset();
 	psoClassify_.Reset();
 	psoDenoise_.Reset();
+	psoDenoiseGI_.Reset();
 	psoDeinterleave_.Reset();
 	psoSsgi_.Reset();
 	psoSsgiDI_.Reset();
@@ -1154,7 +1169,7 @@ bool SampleApplication::Execute()
 	sl12::RenderGraphTargetID matDepthTargetID;
 	sl12::RenderGraphTargetID shadowExpTargetID, shadowExpTmpTargetID;
 	sl12::RenderGraphTargetID shadowDepthTargetID;
-	sl12::RenderGraphTargetID ssaoTargetID, ssgiTargetID, denoiseTargetID;
+	sl12::RenderGraphTargetID ssaoTargetID, ssgiTargetID, denoiseTargetID, denoiseGITargetID;
 	sl12::RenderGraphTargetID diDepthTargetID, diNormalTargetID, diAccumTargetID;
 	for (auto&& desc : gGBufferDescs)
 	{
@@ -1169,6 +1184,7 @@ bool SampleApplication::Execute()
 	ssaoTargetID = renderGraph_->AddTarget(gAoDesc);
 	ssgiTargetID = renderGraph_->AddTarget(gGiDesc);
 	denoiseTargetID = renderGraph_->AddTarget(gAoDesc);
+	denoiseGITargetID = renderGraph_->AddTarget(gGiDesc);
 	if (bNeedDeinterleave)
 	{
 		diDepthTargetID = renderGraph_->AddTarget(gDiDepthDesc);
@@ -1350,9 +1366,22 @@ bool SampleApplication::Execute()
 		}
 		denoisePass.output.push_back(denoiseTargetID);
 		denoisePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		denoisePass.output.push_back(denoiseGITargetID);
+		denoisePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		if (ssaoType_ == 2)
+		{
+			denoisePass.input.push_back(ssgiTargetID);
+			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			if (ssgiHistory_ != sl12::kInvalidTargetID)
+			{
+				denoisePass.input.push_back(ssgiHistory_);
+				denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			}
+		}
 		passes.push_back(denoisePass);
 		histories.push_back(gbufferTargetIDs[3]);
 		histories.push_back(denoiseTargetID);
+		histories.push_back(denoiseGITargetID);
 
 		// indirect lighting pass.
 		sl12::RenderPass indirectPass{};
@@ -1361,7 +1390,7 @@ bool SampleApplication::Execute()
 		indirectPass.input.push_back(gbufferTargetIDs[2]);
 		indirectPass.input.push_back(gbufferTargetIDs[3]);
 		indirectPass.input.push_back(denoiseTargetID);
-		indirectPass.input.push_back(ssgiTargetID);
+		indirectPass.input.push_back(denoiseGITargetID);
 		indirectPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		indirectPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		indirectPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -2386,10 +2415,23 @@ bool SampleApplication::Execute()
 		else
 			descSet.SetCsSrv(3, renderGraph_->GetTarget(ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsUav(0, renderGraph_->GetTarget(denoiseTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(1, renderGraph_->GetTarget(denoiseGITargetID)->uavs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
 
+		if (ssaoType_ == 2)
+		{
+			descSet.SetCsSrv(4, renderGraph_->GetTarget(ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			if (ssgiHistory_ != sl12::kInvalidTargetID)
+				descSet.SetCsSrv(5, renderGraph_->GetTarget(ssgiHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			else
+				descSet.SetCsSrv(5, renderGraph_->GetTarget(ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		}
+
 		// set pipeline.
-		pCmdList->GetLatestCommandList()->SetPipelineState(psoDenoise_->GetPSO());
+		if (ssaoType_ == 2)
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoDenoiseGI_->GetPSO());
+		else
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoDenoise_->GetPSO());
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
 
 		// dispatch.
@@ -2419,7 +2461,7 @@ bool SampleApplication::Execute()
 		descSet.SetCsSrv(2, renderGraph_->GetTarget(gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(3, renderGraph_->GetTarget(gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(4, renderGraph_->GetTarget(denoiseTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(5, renderGraph_->GetTarget(ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(5, renderGraph_->GetTarget(denoiseGITargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		descSet.SetCsUav(0, renderGraph_->GetTarget(accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 		// set pipeline.
@@ -2502,6 +2544,7 @@ bool SampleApplication::Execute()
 	// store history.
 	depthHistory_ = gbufferTargetIDs[3];
 	ssaoHistory_ = denoiseTargetID;
+	ssgiHistory_ = denoiseGITargetID;
 
 	frameIndex_++;
 

@@ -1,6 +1,10 @@
 #include "cbuffer.hlsli"
 #include "math.hlsli"
 
+#ifndef DENOISE_WITH_GI
+#	define  DENOISE_WITH_GI 0
+#endif
+
 ConstantBuffer<SceneCB>		cbScene		: register(b0);
 ConstantBuffer<AmbOccCB>	cbAO		: register(b1);
 
@@ -8,10 +12,15 @@ Texture2D<float>			texDepth	: register(t0);
 Texture2D<float>			texAO		: register(t1);
 Texture2D<float>			texPrevDepth: register(t2);
 Texture2D<float>			texPrevAO	: register(t3);
+#if DENOISE_WITH_GI == 1
+Texture2D<float3>			texGI		: register(t4);
+Texture2D<float3>			texPrevGI	: register(t5);
+#endif
 
 SamplerState				samLinearClamp	: register(s0);
 
-RWTexture2D<float4>			rwOutput	: register(u0);
+RWTexture2D<float>			rwAO		: register(u0);
+RWTexture2D<float3>			rwGI		: register(u1);
 
 float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
 {
@@ -35,6 +44,9 @@ void main(uint3 did : SV_DispatchThreadID)
 	int R = min(max(ceil(radiusInPixels), 1), kMaxSpatioPixel);
 	float totalWeight = 1.0f;
 	float ao = texAO[pixPos];
+#if DENOISE_WITH_GI == 1
+	float3 gi = texGI[pixPos];
+#endif
 	for (int x = -R; x <= R; x++)
 	{
 		for (int y = -R; y <= R; y++)
@@ -46,26 +58,40 @@ void main(uint3 did : SV_DispatchThreadID)
 				float nVD = ClipDepthToViewDepth(nd, cbScene.mtxViewToProj);
 				float w = 1.0 - smoothstep(1.0, 2.0, abs(VD - nVD));
 				ao += texAO[p] * w;
+#if DENOISE_WITH_GI == 1
+				gi += texGI[p] * w;
+#endif
 				totalWeight += w;
 			}
 		}
 	}
 	ao = ao / totalWeight;
-
-	// sample prev ao.
+#if DENOISE_WITH_GI == 1
+	gi = gi / totalWeight;
+#endif
+	
+	// sample prev.
 	float4 prevClipPos = mul(cbScene.mtxProjToPrevProj, clipPos);
 	prevClipPos.xyz *= (1 / prevClipPos.w);
 	float2 prevUV = prevClipPos.xy * float2(0.5, -0.5) + 0.5;
 	float prevAO = texPrevAO.SampleLevel(samLinearClamp, prevUV, 0);
+#if DENOISE_WITH_GI == 1
+	float3 prevGI = texPrevGI.SampleLevel(samLinearClamp, prevUV, 0);
+#endif
 
 	// depth weight.
 	float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
 	float prevVD = ClipDepthToViewDepth(prevDepth, cbScene.mtxPrevViewToProj);
 	float currVD = ClipDepthToViewDepth(prevClipPos.z, cbScene.mtxPrevViewToProj);
 	float w = exp(-abs(prevVD - currVD) / (cbAO.denoiseDepthSigma + 1e-3));
-	float depthWeight = w;
+	float depthWeight = isfinite(w) ? w : 0;
 
 	// temporal denoise.
 	float weight = cbAO.denoiseBaseWeight * depthWeight;
-	rwOutput[pixPos] = lerp(ao, prevAO, weight);
+	rwAO[pixPos] = lerp(ao, prevAO, weight);
+#if DENOISE_WITH_GI == 1
+	rwGI[pixPos] = lerp(gi, prevGI, weight);
+#else
+	rwGI[pixPos] = 0;
+#endif
 }

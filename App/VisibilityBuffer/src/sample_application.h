@@ -129,7 +129,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
 	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
 	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_, psoSsgiDI_;
-	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_;
+	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_, psoDenoiseGI_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDeinterleave_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
