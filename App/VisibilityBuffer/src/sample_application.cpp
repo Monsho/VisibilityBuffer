@@ -1352,6 +1352,8 @@ bool SampleApplication::Execute()
 		sl12::RenderPass denoisePass{};
 		denoisePass.input.push_back(gbufferTargetIDs[3]);
 		denoisePass.input.push_back(ssaoTargetID);
+		denoisePass.input.push_back(ssgiTargetID);
+		denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		if (depthHistory_ != sl12::kInvalidTargetID)
@@ -1364,20 +1366,15 @@ bool SampleApplication::Execute()
 			denoisePass.input.push_back(ssaoHistory_);
 			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 		}
+		if (ssgiHistory_ != sl12::kInvalidTargetID)
+		{
+			denoisePass.input.push_back(ssgiHistory_);
+			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+		}
 		denoisePass.output.push_back(denoiseTargetID);
 		denoisePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		denoisePass.output.push_back(denoiseGITargetID);
 		denoisePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		if (ssaoType_ == 2)
-		{
-			denoisePass.input.push_back(ssgiTargetID);
-			denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-			if (ssgiHistory_ != sl12::kInvalidTargetID)
-			{
-				denoisePass.input.push_back(ssgiHistory_);
-				denoisePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-			}
-		}
 		passes.push_back(denoisePass);
 		histories.push_back(gbufferTargetIDs[3]);
 		histories.push_back(denoiseTargetID);
