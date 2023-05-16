@@ -220,7 +220,12 @@ void main(uint3 did : SV_DispatchThreadID)
 		float3 dPdu = MinDiff(viewPosC, viewPosR, viewPosL);
 		float3 dPdv = MinDiff(viewPosC, viewPosU, viewPosB) * R.y * iR.x;
 
+#if ENABLE_DEINTERLEAVE == 0
 		float2 noise = SpatioTemporalNoise(outPos, cbAO.temporalIndex);
+#else
+		float2 noise = SpatioTemporalNoise(outPos, cbAO.temporalIndex);
+		//float2 noise = SpatioTemporalNoise(diIndex, cbAO.temporalIndex);
+#endif
 
 		float numSteps;
 		float2 stepSize;
