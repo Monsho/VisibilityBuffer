@@ -40,10 +40,14 @@ public:
 
 private:
 	void CreateBuffers(sl12::CommandList* pCmdList, std::vector<WorkMaterial>& outMaterials);
+	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
 	void ComputeSceneAABB();
+
+	void SetupRenderGraph(struct TargetIDContainer& OutContainer);
+	void SetupConstantBuffers(struct TemporalCB& OutCBs);
 
 private:
 	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
@@ -113,7 +117,7 @@ private:
 	UniqueHandle<sl12::RenderGraph>		renderGraph_;
 
 	// root sig & pso.
-	UniqueHandle<sl12::RootSignature>			rsVsPs_;
+	UniqueHandle<sl12::RootSignature>			rsVsPs_, rsVisibility_;
 	UniqueHandle<sl12::RootSignature>			rsCs_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMesh_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoTriplanar_;
@@ -131,6 +135,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_, psoSsgiDI_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_, psoDenoiseGI_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDeinterleave_;
+	UniqueHandle<sl12::ComputePipelineState>	psoMeshletCull_;
 
 	UniqueHandle<sl12::Sampler>				linearSampler_;
 	UniqueHandle<sl12::Sampler>				linearClampSampler_;
@@ -139,8 +144,8 @@ private:
 
 	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
 	
-	UniqueHandle<sl12::Buffer>				instanceB_, submeshB_, drawCallB_;
-	UniqueHandle<sl12::BufferView>			instanceBV_, submeshBV_, drawCallBV_;
+	UniqueHandle<sl12::Buffer>				instanceB_, submeshB_, meshletB_, drawCallB_;
+	UniqueHandle<sl12::BufferView>			instanceBV_, submeshBV_, meshletBV_, drawCallBV_;
 	UniqueHandle<sl12::Buffer>				drawArgB_, tileIndexB_;
 	UniqueHandle<sl12::BufferView>			tileIndexBV_;
 	UniqueHandle<sl12::UnorderedAccessView>	drawArgUAV_, tileIndexUAV_;
@@ -148,15 +153,32 @@ private:
 	UniqueHandle<sl12::Texture>				detailDerivTex_;
 	UniqueHandle<sl12::TextureView>			detailDerivSrv_;
 
+	UniqueHandle<sl12::Buffer>				indirectArgBuffer_;
+	UniqueHandle<sl12::Buffer>				indirectArgUpload_;
+	UniqueHandle<sl12::UnorderedAccessView>	indirectArgUAV_;
+	UniqueHandle<sl12::IndirectExecuter>	meshletIndirectStandard_, meshletIndirectVisbuffer_;
+	std::vector<sl12::CbvHandle>			meshletCBs_;
+
 	UniqueHandle<sl12::Gui>		gui_;
 	sl12::InputData				inputData_{};
 
 	// resources.
 	sl12::ResourceHandle	hSuzanneMesh_;
 	sl12::ResourceHandle	hSponzaMesh_;
+	sl12::ResourceHandle	hCurtainMesh_;
 	sl12::ResourceHandle	hSphereMesh_;
 	sl12::ResourceHandle	hDetailTex_;
 	sl12::ResourceHandle	hDotTex_;
+
+	// meshlet bounds buffer.
+	UniqueHandle<sl12::Buffer> SuzanneMeshletB_;
+	UniqueHandle<sl12::Buffer> SponzaMeshletB_;
+	UniqueHandle<sl12::Buffer> CurtainMeshletB_;
+	UniqueHandle<sl12::Buffer> SphereMeshletB_;
+	UniqueHandle<sl12::BufferView> SuzanneMeshletBV_;
+	UniqueHandle<sl12::BufferView> SponzaMeshletBV_;
+	UniqueHandle<sl12::BufferView> CurtainMeshletBV_;
+	UniqueHandle<sl12::BufferView> SphereMeshletBV_;
 
 	// shaders.
 	std::vector<sl12::ShaderHandle>	hShaders_;

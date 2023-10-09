@@ -101,5 +101,11 @@
     <None Include="shaders\denoise.c.hlsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="shaders\ssgi.c.hlsl" />
+    <None Include="shaders\indirect_lighting.c.hlsl" />
+    <None Include="shaders\deinterleave.c.hlsl" />
+    <None Include="shaders\ssgi_deinterleave.c.hlsl" />
+    <None Include="shaders\ssgi_standard.c.hlsl" />
+    <None Include="shaders\denoise_with_gi.c.hlsl" />
   </ItemGroup>
 </Project>

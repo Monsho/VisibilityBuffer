@@ -1,5 +1,6 @@
 #include "cbuffer.hlsli"
 #include "math.hlsli"
+#include "visibility_buffer.hlsli"
 
 struct PSInput
 {
@@ -12,13 +13,13 @@ struct PSOutput
 };
 
 ConstantBuffer<SceneCB>			cbScene			: register(b0);
-ConstantBuffer<VisibilityCB>	cbVisibility	: register(b1);
+ConstantBuffer<VisibilityCB>	cbVisibility	: register(b0, space1);
 
 PSOutput main(uint primID : SV_PrimitiveID)
 {
 	PSOutput Out = (PSOutput)0;
 
-	Out.visibility = ((cbVisibility.drawCallIndex & 0xffff) << 16) | (primID & 0xffff); 
+	Out.visibility = EncodeVisibility(cbVisibility.drawCallIndex, primID); 
 
 	return Out;
 }

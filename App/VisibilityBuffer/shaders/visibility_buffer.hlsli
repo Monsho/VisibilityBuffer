@@ -1,9 +1,23 @@
+#ifndef VISIBILITY_BUFFER_HLSLI
+#define VISIBILITY_BUFFER_HLSLI
+
 #include "cbuffer.hlsli"
 #include "math.hlsli"
 
-uint3 GetVertexIndices(in ByteAddressBuffer rIndexBuffer, in SubmeshData smData, in uint triIndex)
+uint EncodeVisibility(in uint DrawCallIndex, in uint PrimID)
 {
-	uint address = smData.indexOffset + triIndex * 3 * 4;
+	return ((DrawCallIndex & 0xffffff) << 8) | (PrimID & 0xff); 
+}
+
+void DecodeVisibility(in uint Visibility, out uint DrawCallIndex, out uint PrimID)
+{
+	DrawCallIndex = (Visibility >> 8) & 0xffffff;
+	PrimID = Visibility & 0xff;
+}
+
+uint3 GetVertexIndices(in ByteAddressBuffer rIndexBuffer, in MeshletData mlData, in uint triIndex)
+{
+	uint address = mlData.indexOffset + triIndex * 3 * 4;
 	return rIndexBuffer.Load3(address);
 }
 
@@ -326,3 +340,5 @@ VertexAttr GetVertexAttrPerspectiveCorrect(
 
 	return attr;
 }
+
+#endif // VISIBILITY_BUFFER_HLSLI

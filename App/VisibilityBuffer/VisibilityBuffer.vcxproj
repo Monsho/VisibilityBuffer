@@ -112,6 +112,7 @@
     <None Include="shaders\ssgi_deinterleave.c.hlsl" />
     <None Include="shaders\ssgi_standard.c.hlsl" />
     <None Include="shaders\denoise_with_gi.c.hlsl" />
+    <None Include="shaders\meshlet_cull.c.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
@@ -119,6 +120,7 @@
     <None Include="shaders\cbuffer.hlsli" />
     <None Include="shaders\surface_gradient.hlsli" />
     <None Include="shaders\visibility_buffer.hlsli" />
+    <None Include="shaders\culling.hlsli" />
     <ClInclude Include="src\sample_application.h" />
   </ItemGroup>
   <ItemGroup>

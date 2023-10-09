@@ -103,6 +103,18 @@ struct AmbOccCB
 	float	denoiseDepthSigma;
 };
 
+struct FrustumCB
+{
+	float4	frustumPlanes[6];
+};
+
+struct MeshletCullCB
+{
+	uint	argStartAddress;
+	uint	meshletStartIndex;
+	uint	meshletCount;
+};
+
 struct DebugCB
 {
 	uint	displayMode;
@@ -124,10 +136,16 @@ struct SubmeshData
 	uint	indexOffset;
 };
 
+struct MeshletData
+{
+	uint	submeshIndex;
+	uint	indexOffset;
+};
+
 struct DrawCallData
 {
 	uint	instanceIndex;
-	uint	submeshIndex;
+	uint	meshletIndex;
 };
 
 #define CLASSIFY_TILE_WIDTH (64)

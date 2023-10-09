@@ -1,5 +1,6 @@
 #include "cbuffer.hlsli"
 #include "math.hlsli"
+#include "visibility_buffer.hlsli"
 
 struct PSInput
 {
@@ -14,8 +15,9 @@ struct PSOutput
 
 Texture2D<uint>					texVis				: register(t0);
 StructuredBuffer<SubmeshData>	rSubmeshData		: register(t1);
-StructuredBuffer<DrawCallData>	rDrawCallData		: register(t2);
-Texture2D<float>				texDepth			: register(t3);
+StructuredBuffer<MeshletData>	rMeshletData		: register(t2);
+StructuredBuffer<DrawCallData>	rDrawCallData		: register(t3);
+Texture2D<float>				texDepth			: register(t4);
 
 PSOutput main(PSInput In)
 {
@@ -30,9 +32,11 @@ PSOutput main(PSInput In)
 	}
 	else
 	{
-		uint drawCallIndex = (texVis[pixelPos] >> 16) & 0xffff;
+		uint drawCallIndex, primID;
+		DecodeVisibility(texVis[pixelPos], drawCallIndex, primID);
 		DrawCallData dc = rDrawCallData[drawCallIndex];
-		SubmeshData sm = rSubmeshData[dc.submeshIndex];
+		MeshletData ml = rMeshletData[dc.meshletIndex];
+		SubmeshData sm = rSubmeshData[ml.submeshIndex];
 		Out.depth = (float)sm.materialIndex / (float)CLASSIFY_DEPTH_RANGE;
 	}
 

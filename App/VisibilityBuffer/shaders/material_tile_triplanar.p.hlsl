@@ -16,9 +16,10 @@ ByteAddressBuffer				rVertexBuffer	: register(t1);
 ByteAddressBuffer				rIndexBuffer	: register(t2);
 StructuredBuffer<InstanceData>	rInstanceData	: register(t3);
 StructuredBuffer<SubmeshData>	rSubmeshData	: register(t4);
-StructuredBuffer<DrawCallData>	rDrawCallData	: register(t5);
-Texture2D<float>				texDepth		: register(t6);
-Texture2D						texNormal		: register(t7);
+StructuredBuffer<MeshletData>	rMeshletData	: register(t5);
+StructuredBuffer<DrawCallData>	rDrawCallData	: register(t6);
+Texture2D<float>				texDepth		: register(t7);
+Texture2D						texNormal		: register(t8);
 
 SamplerState		samLinearWrap	: register(s0);
 
@@ -37,14 +38,15 @@ PSOutput main(PSInput In)
 	// get visibility.
 	uint2 pos = (uint2)In.position.xy;
 	uint vis = texVis[pos];
-	uint drawCallIndex = (vis >> 16) & 0xffff;
-	uint triIndex = vis & 0xffff;
+	uint drawCallIndex, triIndex;
+	DecodeVisibility(vis, drawCallIndex, triIndex);
 
 	// get triangle indices.
 	DrawCallData dcData = rDrawCallData[drawCallIndex];
 	InstanceData inData = rInstanceData[dcData.instanceIndex];
-	SubmeshData smData = rSubmeshData[dcData.submeshIndex];
-	uint3 vertexIndices = GetVertexIndices(rIndexBuffer, smData, triIndex);
+	MeshletData mlData = rMeshletData[dcData.meshletIndex];
+	SubmeshData smData = rSubmeshData[mlData.submeshIndex];
+	uint3 vertexIndices = GetVertexIndices(rIndexBuffer, mlData, triIndex);
 
 	// barycentric type.
 	const uint kBaryCalcType = 1;

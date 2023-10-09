@@ -1,12 +1,14 @@
 #include "cbuffer.hlsli"
+#include "visibility_buffer.hlsli"
 
 ConstantBuffer<SceneCB>			cbScene				: register(b0);
 ConstantBuffer<TileCB>			cbTile				: register(b1);
 
 Texture2D<uint>					texVis				: register(t0);
 StructuredBuffer<SubmeshData>	rSubmeshData		: register(t1);
-StructuredBuffer<DrawCallData>	rDrawCallData		: register(t2);
-Texture2D<float>				texDepth			: register(t3);
+StructuredBuffer<MeshletData>	rMeshletData		: register(t2);
+StructuredBuffer<DrawCallData>	rDrawCallData		: register(t3);
+Texture2D<float>				texDepth			: register(t4);
 
 RWByteAddressBuffer				rwDrawArg			: register(u0);
 RWByteAddressBuffer				rwTileIndex			: register(u1);
@@ -21,9 +23,11 @@ void ClassifyPixel(uint2 pos)
 		[branch]
 		if (depth < 1.0)
 		{
-			uint drawCallIndex = (texVis[pos] >> 16) & 0xffff;
+			uint drawCallIndex, primID;
+			DecodeVisibility(texVis[pos], drawCallIndex, primID);
 			DrawCallData dc = rDrawCallData[drawCallIndex];
-			SubmeshData sm = rSubmeshData[dc.submeshIndex];
+			MeshletData ml = rMeshletData[dc.meshletIndex];
+			SubmeshData sm = rSubmeshData[ml.submeshIndex];
 			uint index = sm.materialIndex / 32;
 			uint bit = sm.materialIndex % 32;
 			uint orig;
