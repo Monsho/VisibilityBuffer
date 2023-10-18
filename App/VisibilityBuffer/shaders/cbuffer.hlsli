@@ -7,6 +7,9 @@
 #	define		float3			DirectX::XMFLOAT3
 #	define		float2			DirectX::XMFLOAT2
 #	define		uint			UINT
+#	define		uint2			DirectX::XMUINT2
+#	define		uint3			DirectX::XMUINT3
+#	define		uint4			DirectX::XMUINT4
 #endif
 
 struct SceneCB
@@ -23,6 +26,7 @@ struct SceneCB
 	float2		screenSize;
 	float2		invScreenSize;
 	float2		nearFar;
+	uint2		feedbackIndex;
 };
 
 struct LightCB

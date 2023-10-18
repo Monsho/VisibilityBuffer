@@ -113,6 +113,8 @@
     <None Include="shaders\ssgi_standard.c.hlsl" />
     <None Include="shaders\denoise_with_gi.c.hlsl" />
     <None Include="shaders\meshlet_cull.c.hlsl" />
+    <None Include="shaders\depth.vv.hlsl" />
+    <None Include="shaders\miplevel_feedback.c.hlsl" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>

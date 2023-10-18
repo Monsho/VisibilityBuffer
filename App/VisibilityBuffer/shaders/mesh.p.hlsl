@@ -19,13 +19,16 @@ struct PSOutput
 
 ConstantBuffer<SceneCB>		cbScene			: register(b0);
 ConstantBuffer<DetailCB>	cbDetail		: register(b1);
+ConstantBuffer<MaterialTileCB>	cbMaterialTile	: register(b0, space1);
 
 Texture2D			texColor		: register(t0);
 Texture2D			texNormal		: register(t1);
 Texture2D			texORM			: register(t2);
 Texture2D			texDetail		: register(t3);
 SamplerState		samLinearWrap	: register(s0);
+RWTexture2D<uint2>	rwFeedback		: register(u0);
 
+[earlydepthstencil]
 PSOutput main(PSInput In)
 {
 	PSOutput Out = (PSOutput)0;
@@ -33,6 +36,15 @@ PSOutput main(PSInput In)
 	float4 baseColor = texColor.Sample(samLinearWrap, In.uv);
 	float3 orm = texORM.Sample(samLinearWrap, In.uv);
 
+	uint2 PixPos = uint2(In.position.xy);
+	uint2 TileIndex = PixPos / 4;
+	uint2 TilePos = PixPos % 4;
+	uint neededMiplevel = uint(ComputeMiplevelPS(In.uv, 4096));
+	if (all(TilePos == cbScene.feedbackIndex))
+	{
+		rwFeedback[TileIndex] = uint2(cbMaterialTile.materialIndex, neededMiplevel);
+	}
+	
 	float3 T, B, N;
 	GetTangentSpace(In.normal, In.tangent, T, B, N);
 	float3 normalInTS = texNormal.Sample(samLinearWrap, In.uv).xyz * 2 - 1;
