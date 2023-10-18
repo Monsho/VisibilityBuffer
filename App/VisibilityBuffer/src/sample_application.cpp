@@ -723,7 +723,7 @@ bool SampleApplication::Initialize()
 	}
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
-		desc.pRootSignature = &rsVsPs_;
+		desc.pRootSignature = &rsVsPsC1_;
 		desc.pVS = hShaders_[ShaderName::MaterialTileVV].GetShader();
 		desc.pPS = hShaders_[ShaderName::MaterialTileP].GetShader();
 
@@ -2761,7 +2761,8 @@ bool SampleApplication::Execute()
 					descSet.SetPsSrv(8, dot_res->GetTextureView().GetDescInfo().cpuHandle);
 				}
 
-				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
+				pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rsVsPsC1_->GetRootConstantIndex(), matIndex, 0);
 
 				pCmdList->GetLatestCommandList()->ExecuteIndirect(
 					tileDrawIndirect_->GetCommandSignature(),	// command signature

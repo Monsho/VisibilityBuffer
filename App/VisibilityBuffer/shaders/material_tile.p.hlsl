@@ -10,6 +10,7 @@ struct PSInput
 
 ConstantBuffer<SceneCB>			cbScene			: register(b0);
 ConstantBuffer<DetailCB>		cbDetail		: register(b1);
+ConstantBuffer<MaterialTileCB>	cbMaterialTile	: register(b0, space1);
 
 Texture2D<uint>					texVis			: register(t0);
 ByteAddressBuffer				rVertexBuffer	: register(t1);
@@ -25,6 +26,8 @@ Texture2D						texORM			: register(t10);
 Texture2D						texDetail		: register(t11);
 
 SamplerState		samLinearWrap	: register(s0);
+
+RWTexture2D<uint2>	rwFeedback		: register(u0);
 
 struct PSOutput
 {
@@ -66,6 +69,15 @@ PSOutput main(PSInput In)
 		attr = GetVertexAttrPerspectiveCorrect(
 			rVertexBuffer, inData, smData, vertexIndices, In.position.xy,
 			cbScene.mtxWorldToProj, cbScene.screenSize);
+	}
+
+	// miplevel feedback.
+	uint2 TileIndex = pos / 4;
+	uint2 TilePos = pos % 4;
+	uint neededMiplevel = uint(ComputeMiplevelCS(attr.texcoord, attr.texcoordDDX, attr.texcoordDDY, 4096));
+	if (all(TilePos == cbScene.feedbackIndex))
+	{
+		rwFeedback[TileIndex] = uint2(cbMaterialTile.materialIndex, neededMiplevel);
 	}
 
 	// sample texture.
