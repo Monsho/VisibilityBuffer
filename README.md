@@ -15,9 +15,15 @@
     + Specify mesh type.
     + 0: Many suzanne
     + 1: Sponza
+    + 2: Intel Sponza + Curtain (option / See Texture Streaming sample)
   + -hdr
     + HDR display mode.
     + if display do NOT support HDR, the option is ignored.
   + -res <WIDTHxHEIGHT>
     + Specify window resolution.
     + exp.) -res 1280x720
+
+## Texture Streaming sample
+1. Download IntelMesh.zip and unzip in resources/mesh directory.
+   + https://www.dropbox.com/s/mhso4568i88iouf/IntelMesh.zip?dl=0
+2. "-mesh 2" in startup argument.
