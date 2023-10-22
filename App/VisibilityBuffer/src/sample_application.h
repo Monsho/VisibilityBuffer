@@ -43,8 +43,8 @@ class SampleApplication
 	struct NeededMiplevel
 	{
 		sl12::u32	prevLevel;
-		sl12::u32	maxLevel;
 		sl12::u32	minLevel;
+		sl12::u32	latestLevel;
 		int			time;
 	};	// struct NeededMiplevel
 

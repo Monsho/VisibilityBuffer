@@ -3209,9 +3209,9 @@ void SampleApplication::CreateMaterialList()
 	neededMiplevels_.resize(workMaterials_.size());
 	for (auto&& s : neededMiplevels_)
 	{
-		s.maxLevel = 0;
-		s.minLevel = 0xff;
 		s.prevLevel = 0xff;
+		s.minLevel = 0xff;
+		s.latestLevel = 0xff;
 		s.time = 0;
 	}
 	miplevelReadbacks_[0].Reset();
@@ -3709,15 +3709,14 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 		auto p = miplevels.data();
 		for (auto&& s : neededMiplevels_)
 		{
-			sl12::u32 minL = std::min(*p, s.minLevel);
-			sl12::u32 maxL = std::max(*p, s.maxLevel);
-			p++;
+			s.latestLevel = std::min(*p++, 0xffu);
+			sl12::u32 minL = std::min(s.latestLevel, s.minLevel);
 
 			s.minLevel = minL;
-			s.maxLevel = maxL;
 			if (s.prevLevel == s.minLevel)
 			{
 				s.minLevel = 0xff;
+				s.latestLevel = 0xff;
 				s.time = 0;
 			}
 			else
@@ -3731,6 +3730,14 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 	int i = 0;
 	for (auto&& s : neededMiplevels_)
 	{
+		bool bLatestCheck = (s.minLevel > s.latestLevel ? s.minLevel - s.latestLevel : s.latestLevel - s.minLevel) <= 1;
+		if (!bLatestCheck)
+		{
+			s.minLevel = 0xff;
+			s.latestLevel = 0xff;
+			s.time = 0;
+		}
+		
 		// if 30 frames elapsed.
 		if (s.time >= 30)
 		{
@@ -3744,8 +3751,8 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 			{
 				s.prevLevel = s.minLevel;
 			}
-			s.maxLevel = 0;
 			s.minLevel = 0xff;
+			s.latestLevel = 0xff;
 			s.time = 0;
 		}
 		i++;
