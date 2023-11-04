@@ -90,7 +90,7 @@ float3 LoadViewNormalFromUV(float2 uv)
 	return mul((float3x3)cbScene.mtxWorldToView, worldNormal);
 }
 
-void CalcVisibilityBitmask(float2 deltaUV, float2 uv0, float2 baseUV, float4 rect, float3 viewP, float3 viewN, float numSteps, float randStep, float3 dPdu, float3 dPdv, inout float resultAO, inout float3 resultGI)
+void ComputeVisibilityBitmask(float2 deltaUV, float2 uv0, float2 baseUV, float4 rect, float3 viewP, float3 viewN, float numSteps, float randStep, float3 dPdu, float3 dPdv, inout float resultAO, inout float3 resultGI)
 {
 	const float kBitmaskSize = 32;
 	const float kHalfPI = PI * 0.5;
@@ -243,7 +243,7 @@ void main(uint3 did : SV_DispatchThreadID)
 			float2 dir = float2(cosPhi, sinPhi);
 			float2 deltaUV = dir * stepSize;
 
-			CalcVisibilityBitmask(deltaUV, pixUV, baseUV, rect, viewPosC, viewNormal, numSteps, noise.y, dPdu, dPdv, resultAO, resultGI);
+			ComputeVisibilityBitmask(deltaUV, pixUV, baseUV, rect, viewPosC, viewNormal, numSteps, noise.y, dPdu, dPdv, resultAO, resultGI);
 		}
 		resultAO = 1.0 - saturate(resultAO / float(cbAO.sliceCount) * cbAO.intensity);
 		resultGI = resultGI * cbAO.giIntensity / float(cbAO.sliceCount);

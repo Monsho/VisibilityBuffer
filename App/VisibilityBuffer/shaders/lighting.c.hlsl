@@ -86,6 +86,7 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float4 color = texGBufferA[pixelPos];
 	float3 orm = texGBufferB[pixelPos].xyz;
 	float3 normal = texGBufferC[pixelPos].xyz * 2.0 - 1.0;
+	float roughness = max(orm.g, 1e-4);
 
 	// get world position.
 	float2 screenPos = ((float2)pixelPos + 0.5) / cbScene.screenSize;
@@ -101,7 +102,7 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float3 viewDirInWS = cbScene.eyePosition.xyz - worldPos.xyz;
 	float3 diffuseColor = color.rgb * (1 - orm.b);
 	float3 specularColor = 0.04 * (1 - orm.b) + color.rgb * orm.b;
-	float3 directColor = BrdfGGX(diffuseColor, specularColor, orm.g, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;
+	float3 directColor = BrdfGGX(diffuseColor, specularColor, roughness, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;
 
 	return directColor * shadow;
 }
