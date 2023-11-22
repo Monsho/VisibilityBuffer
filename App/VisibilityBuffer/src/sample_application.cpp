@@ -50,6 +50,8 @@ namespace
 	static sl12::RenderGraphTargetDesc gDiDepthDesc;
 	static sl12::RenderGraphTargetDesc gDiNormalDesc;
 	static sl12::RenderGraphTargetDesc gMiplevelDesc;
+	static sl12::RenderGraphTargetDesc gHiZDesc;
+	static sl12::RenderGraphTargetDesc gDrawFlagDesc;
 	void SetGBufferDesc(sl12::u32 width, sl12::u32 height)
 	{
 		gGBufferDescs.clear();
@@ -155,6 +157,30 @@ namespace
 		gMiplevelDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		gMiplevelDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		gMiplevelDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
+
+		gHiZDesc.name = "HiZ";
+		gHiZDesc.width = width / 2;
+		gHiZDesc.height = height / 2;
+		gHiZDesc.mipLevels = 5;
+		gHiZDesc.format = DXGI_FORMAT_R32_FLOAT;
+		gHiZDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::RenderTarget;
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 1, 0, 0));
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(1, 1, 0, 0));
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(2, 1, 0, 0));
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(3, 1, 0, 0));
+		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(0, 0, 0));
+		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(1, 0, 0));
+		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(2, 0, 0));
+		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(3, 0, 0));
+		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(4, 0, 0));
+
+		gDrawFlagDesc.name = "DrawFlag";
+		gDrawFlagDesc.width = 0;
+		gDrawFlagDesc.type = sl12::RenderGraphTargetType::Buffer;
+		gDrawFlagDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		gDrawFlagDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0));
+		gDrawFlagDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0, 0));
 	}
 
 	enum ShaderName
@@ -190,6 +216,11 @@ namespace
 		MeshletCullC,
 		ClearMipC,
 		FeedbackMipC,
+		VisibilityMesh1stA,
+		VisibilityMesh2ndA,
+		VisibilityMeshM,
+		VisibilityMeshP,
+		DepthReductionP,
 
 		MAX
 	};
@@ -225,6 +256,11 @@ namespace
 		"meshlet_cull.c.hlsl",				"main",
 		"miplevel_feedback.c.hlsl",			"ClearCS",
 		"miplevel_feedback.c.hlsl",			"FeedbackCS",
+		"visibility_mesh_1st.a.hlsl",		"main",
+		"visibility_mesh_2nd.a.hlsl",		"main",
+		"visibility_mesh.m.hlsl",			"main",
+		"visibility_mesh.p.hlsl",			"main",
+		"depth_reduction.p.hlsl",			"main",
 	};
 
 	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
@@ -308,7 +344,6 @@ bool SampleApplication::Initialize()
 	}
 	else if (meshType_ == 1)
 	{
-		//hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/IntelSponza/IntelSponza.rmesh");
 		hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sponza/sponza.rmesh");
 		hSphereMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sphere/sphere.rmesh");
 	}
@@ -492,10 +527,13 @@ bool SampleApplication::Initialize()
 	// init root signature and pipeline state.
 	rsVsPs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
 	rsVsPsC1_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
+	rsMs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
 	psoDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMesh_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoTriplanar_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoVisibility_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
+	psoVisibilityMesh1st_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
+	psoVisibilityMesh2nd_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoTonemap_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMatDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoMaterialTile_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
@@ -503,8 +541,10 @@ bool SampleApplication::Initialize()
 	psoShadowDepth_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoShadowExp_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoBlur_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
+	psoDepthReduction_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	rsVsPs_->Initialize(&device_, hShaders_[ShaderName::MeshVV].GetShader(), hShaders_[ShaderName::MeshP].GetShader(), nullptr, nullptr, nullptr);
 	rsVsPsC1_->Initialize(&device_, hShaders_[ShaderName::VisibilityVV].GetShader(), hShaders_[ShaderName::VisibilityP].GetShader(), nullptr, nullptr, nullptr, 1);
+	rsMs_->Initialize(&device_, hShaders_[ShaderName::VisibilityMesh1stA].GetShader(), hShaders_[ShaderName::VisibilityMeshM].GetShader(), hShaders_[ShaderName::VisibilityMeshP].GetShader(), 0);
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
@@ -657,7 +697,46 @@ bool SampleApplication::Initialize()
 
 		if (!psoVisibility_->Initialize(&device_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init mesh pso.");
+			sl12::ConsolePrint("Error: failed to init visibility pso.");
+			return false;
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rsMs_;
+		desc.pAS = hShaders_[ShaderName::VisibilityMesh1stA].GetShader();
+		desc.pMS = hShaders_[ShaderName::VisibilityMeshM].GetShader();
+		desc.pPS = hShaders_[ShaderName::VisibilityMeshP].GetShader();
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = gVisibilityDesc.format;
+		desc.dsvFormat = gGBufferDescs[3].format;
+		desc.multisampleCount = 1;
+
+		if (!psoVisibilityMesh1st_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+			return false;
+		}
+
+		desc.pAS = hShaders_[ShaderName::VisibilityMesh2ndA].GetShader();
+		if (!psoVisibilityMesh2nd_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
 			return false;
 		}
 	}
@@ -855,6 +934,36 @@ bool SampleApplication::Initialize()
 		if (!psoBlur_->Initialize(&device_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init blur pso.");
+			return false;
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rsVsPs_;
+		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
+		desc.pPS = hShaders_[ShaderName::DepthReductionP].GetShader();
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = false;
+		desc.depthStencil.isDepthWriteEnable = false;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = gHiZDesc.format;
+		desc.dsvFormat = DXGI_FORMAT_UNKNOWN;
+		desc.multisampleCount = 1;
+
+		if (!psoDepthReduction_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init depth reduction pso.");
 			return false;
 		}
 	}
@@ -1097,6 +1206,7 @@ void SampleApplication::Finalize()
 	psoSsgiDI_.Reset();
 	psoSsaoBitmask_.Reset();
 	psoSsaoHbao_.Reset();
+	psoDepthReduction_.Reset();
 	psoBlur_.Reset();
 	psoShadowExp_.Reset();
 	psoShadowDepth_.Reset();
@@ -1104,10 +1214,13 @@ void SampleApplication::Finalize()
 	psoMaterialTileTriplanar_.Reset();
 	psoTonemap_.Reset();
 	psoMatDepth_.Reset();
+	psoVisibilityMesh2nd_.Reset();
+	psoVisibilityMesh1st_.Reset();
 	psoVisibility_.Reset();
 	psoTriplanar_.Reset();
 	psoMesh_.Reset();
 	psoDepth_.Reset();
+	rsMs_.Reset();
 	rsCs_.Reset();
 	rsVsPsC1_.Reset();
 	rsVsPs_.Reset();
@@ -1131,6 +1244,8 @@ struct TargetIDContainer
 	sl12::RenderGraphTargetID ssaoTargetID, ssgiTargetID, denoiseTargetID, denoiseGITargetID;
 	sl12::RenderGraphTargetID diDepthTargetID, diNormalTargetID, diAccumTargetID;
 	sl12::RenderGraphTargetID miplevelTargetID;
+	sl12::RenderGraphTargetID hiZTargetID;
+	sl12::RenderGraphTargetID drawFlagTargetID;
 };
 void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 {
@@ -1157,10 +1272,27 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 		OutContainer.diAccumTargetID = renderGraph_->AddTarget(gAccumDesc);
 	}
 	OutContainer.miplevelTargetID = renderGraph_->AddTarget(gMiplevelDesc);
+	OutContainer.hiZTargetID = renderGraph_->AddTarget(gHiZDesc);
+	if (bEnableVisibilityBuffer_ && bEnableMeshShader_)
+	{
+		// count total meshlets.
+		size_t totalMeshlets = 0;
+		for (auto&& mesh : sceneMeshes_)
+		{
+			auto res = mesh->GetParentResource();
+			for (auto&& submesh : res->GetSubmeshes())
+			{
+				totalMeshlets += submesh.meshlets.size();
+			}
+		}
+		gDrawFlagDesc.width = totalMeshlets * 4;
+		OutContainer.drawFlagTargetID = renderGraph_->AddTarget(gDrawFlagDesc);
+	}
 
 	// create render passes.
 	std::vector<sl12::RenderPass> passes;
 	std::vector<sl12::RenderGraphTargetID> histories;
+	std::vector<sl12::RenderGraphTargetID> returns;
 
 	// shadow depth pass.
 	sl12::RenderPass shadowPass{};
@@ -1229,13 +1361,53 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	}
 	else
 	{
-		// visibility pass.
-		sl12::RenderPass visibilityPass{};
-		visibilityPass.output.push_back(OutContainer.visibilityTargetID);
-		visibilityPass.output.push_back(OutContainer.gbufferTargetIDs[3]);
-		visibilityPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		visibilityPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		passes.push_back(visibilityPass);
+		if (!bEnableMeshShader_)
+		{
+			// visibility pass.
+			sl12::RenderPass visibilityPass{};
+			visibilityPass.output.push_back(OutContainer.visibilityTargetID);
+			visibilityPass.output.push_back(OutContainer.gbufferTargetIDs[3]);
+			visibilityPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			visibilityPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			passes.push_back(visibilityPass);
+		}
+		else
+		{
+			// visibility pass 1st.
+			sl12::RenderPass visibility1stPass{};
+			visibility1stPass.output.push_back(OutContainer.visibilityTargetID);
+			visibility1stPass.output.push_back(OutContainer.gbufferTargetIDs[3]);
+			visibility1stPass.output.push_back(OutContainer.drawFlagTargetID);
+			visibility1stPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			visibility1stPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			visibility1stPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			if (hiZHistory_ != sl12::kInvalidTargetID)
+			{
+				visibility1stPass.input.push_back(hiZHistory_);
+				visibility1stPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			}
+			passes.push_back(visibility1stPass);
+
+			// depth reduction pass.
+			sl12::RenderPass hiZ1Pass{};
+			hiZ1Pass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+			hiZ1Pass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			hiZ1Pass.output.push_back(OutContainer.hiZTargetID);
+			hiZ1Pass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			passes.push_back(hiZ1Pass);
+
+			// visibility pass 2nd.
+			sl12::RenderPass visibility2ndPass{};
+			visibility2ndPass.output.push_back(OutContainer.visibilityTargetID);
+			visibility2ndPass.output.push_back(OutContainer.gbufferTargetIDs[3]);
+			visibility2ndPass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			visibility2ndPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			visibility2ndPass.input.push_back(OutContainer.hiZTargetID);
+			visibility2ndPass.input.push_back(OutContainer.drawFlagTargetID);
+			visibility2ndPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			visibility2ndPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			passes.push_back(visibility2ndPass);
+		}
 
 		// material depth pass.
 		sl12::RenderPass matDepthPass{};
@@ -1297,6 +1469,16 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	lightingPass.output.push_back(OutContainer.accumTargetID);
 	lightingPass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	passes.push_back(lightingPass);
+
+	// depth reduction pass.
+	sl12::RenderPass hiZ2Pass{};
+	hiZ2Pass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+	hiZ2Pass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+	hiZ2Pass.output.push_back(OutContainer.hiZTargetID);
+	hiZ2Pass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+	passes.push_back(hiZ2Pass);
+	histories.push_back(OutContainer.hiZTargetID);
+	returns.push_back(hiZHistory_);
 
 	if (bNeedDeinterleave)
 	{
@@ -1366,6 +1548,9 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	histories.push_back(OutContainer.gbufferTargetIDs[3]);
 	histories.push_back(OutContainer.denoiseTargetID);
 	histories.push_back(OutContainer.denoiseGITargetID);
+	returns.push_back(depthHistory_);
+	returns.push_back(ssaoHistory_);
+	returns.push_back(ssgiHistory_);
 
 	// indirect lighting pass.
 	sl12::RenderPass indirectPass{};
@@ -1391,7 +1576,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	tonemapPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 	passes.push_back(tonemapPass);
 
-	renderGraph_->CreateRenderPasses(&device_, passes, histories);
+	renderGraph_->CreateRenderPasses(&device_, passes, histories, returns);
 }
 
 struct TemporalCB
@@ -1631,6 +1816,12 @@ bool SampleApplication::Execute()
 		{
 			if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
 			{}
+
+			if (bEnableVisibilityBuffer_)
+			{
+				if (ImGui::Checkbox("Mesh Shader", &bEnableMeshShader_))
+				{}
+			}
 		}
 
 		// light settings.
@@ -2134,6 +2325,7 @@ bool SampleApplication::Execute()
 #endif
 
 	// meshlet culling.
+	if (!bEnableVisibilityBuffer_ || !bEnableMeshShader_)
 	{
 		// transition meshlet arg buffer.
 		pCmdList->TransitionBarrier(&indirectArgBuffer_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -2501,59 +2693,305 @@ bool SampleApplication::Execute()
 			rect.bottom = displayHeight_;
 			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
-			// set descriptors.
-			sl12::DescriptorSet descSet;
-			descSet.Reset();
-			descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoVisibility_->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-			// draw meshes.
-			sl12::u32 meshIndex = 0;
-			sl12::u32 drawCallIndex = 0;
-			sl12::u32 meshletTotal = 0;
-			for (auto&& mesh : sceneMeshes_)
+			// vertex-pixel pipeline.
+			if (!bEnableMeshShader_)
 			{
-				// set mesh constant.
-				descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+				// set descriptors.
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 
-				auto meshRes = mesh->GetParentResource();
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoVisibility_->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-				// set vertex buffer.
-				const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
-					sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
-				};
-				pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
-
-				// set index buffer.
-				auto ibv = sl12::MeshManager::CreateIndexView(meshRes->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
-				pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
-
-				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
-
-				UINT meshletCnt = 0;
-				for (auto&& submesh : meshRes->GetSubmeshes())
+				// draw meshes.
+				sl12::u32 meshIndex = 0;
+				sl12::u32 meshletTotal = 0;
+				for (auto&& mesh : sceneMeshes_)
 				{
-					meshletCnt += (sl12::u32)submesh.meshlets.size();
+					// set mesh constant.
+					descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+
+					auto meshRes = mesh->GetParentResource();
+
+					// set vertex buffer.
+					const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
+						sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+					};
+					pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
+
+					// set index buffer.
+					auto ibv = sl12::MeshManager::CreateIndexView(meshRes->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
+					pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
+
+					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
+
+					UINT meshletCnt = 0;
+					for (auto&& submesh : meshRes->GetSubmeshes())
+					{
+						meshletCnt += (sl12::u32)submesh.meshlets.size();
+					}
+					pCmdList->GetLatestCommandList()->ExecuteIndirect(
+						meshletIndirectVisbuffer_->GetCommandSignature(),			// command signature
+						meshletCnt,													// max command count
+						indirectArgBuffer_->GetResourceDep(),						// argument buffer
+						meshletIndirectVisbuffer_->GetStride() * meshletTotal,		// argument buffer offset
+						nullptr,													// count buffer
+						0);											// count buffer offset
+
+					meshletTotal += meshletCnt;
+
+					meshIndex++;
 				}
-				pCmdList->GetLatestCommandList()->ExecuteIndirect(
-					meshletIndirectVisbuffer_->GetCommandSignature(),			// command signature
-					meshletCnt,													// max command count
-					indirectArgBuffer_->GetResourceDep(),						// argument buffer
-					meshletIndirectVisbuffer_->GetStride() * meshletTotal,		// argument buffer offset
-					nullptr,													// count buffer
-					0);											// count buffer offset
+			}
+			// mesh-pixel pipeline.
+			else
+			{
+				// set descriptors.
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				// as
+				descSet.SetAsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetAsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+				if (hiZHistory_ != sl12::kInvalidTargetID)
+				{
+					descSet.SetAsSrv(1, renderGraph_->GetTarget(hiZHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				}
+				else
+				{
+					auto black = device_.GetDummyTextureView(sl12::DummyTex::Black);
+					descSet.SetAsSrv(1, black->GetDescInfo().cpuHandle);
+				}
+				descSet.SetAsUav(0, renderGraph_->GetTarget(TargetContainer.drawFlagTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+				// ms
+				descSet.SetMsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetMsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(0, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(1, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(2, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(3, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(4, drawCallBV_->GetDescInfo().cpuHandle);
+				// ps
+				descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 
-				meshletTotal += meshletCnt;
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoVisibilityMesh1st_->GetPSO());
 
-				meshIndex++;
+				// draw meshes.
+				sl12::u32 meshIndex = 0;
+				sl12::u32 meshletTotal = 0;
+				for (auto&& mesh : sceneMeshes_)
+				{
+					auto meshRes = mesh->GetParentResource();
+
+					sl12::BufferView* pMeshletBoundSrv = nullptr;
+					UINT meshletCnt = 0;
+					if (hSuzanneMesh_.IsValid() && meshRes == hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SuzanneMeshletBV_;
+						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hSponzaMesh_.IsValid() && meshRes == hSponzaMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SponzaMeshletBV_;
+						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hCurtainMesh_.IsValid() && meshRes == hCurtainMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &CurtainMeshletBV_;
+						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SphereMeshletBV_;
+						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
+					}
+					
+					// set mesh constant.
+					descSet.SetAsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+
+					pCmdList->SetMeshRootSignatureAndDescriptorSet(&rsMs_, &descSet);
+
+					const UINT kLaneCount = 32;
+					UINT dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
+					pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
+
+					meshIndex++;
+				}
 			}
 		}
 		renderGraph_->EndPass();
 
+		if (bEnableMeshShader_)
+		{
+			// depth reduction pass.
+			renderGraph_->NextPass(pCmdList);
+			{
+				GPU_MARKER(pCmdList, 1, "DepthReductionPass");
+				
+				// output barrier.
+				renderGraph_->BarrierOutputsAll(pCmdList);
+
+				auto srv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
+				auto target = renderGraph_->GetTarget(TargetContainer.hiZTargetID);
+				auto width = gHiZDesc.width;
+				auto height = gHiZDesc.height;
+				for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
+				{
+					// set viewport.
+					D3D12_VIEWPORT vp;
+					vp.TopLeftX = vp.TopLeftY = 0.0f;
+					vp.Width = (float)width;
+					vp.Height = (float)height;
+					vp.MinDepth = 0.0f;
+					vp.MaxDepth = 1.0f;
+					pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+					// set scissor rect.
+					D3D12_RECT rect;
+					rect.left = rect.top = 0;
+					rect.right = (LONG)width;
+					rect.bottom = height;
+					pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+					
+					// set render targets.
+					D3D12_CPU_DESCRIPTOR_HANDLE rtv = target->rtvs[i]->GetDescInfo().cpuHandle;
+					pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
+					// set descriptors.
+					sl12::DescriptorSet descSet;
+					descSet.Reset();
+					descSet.SetPsSrv(0, srv);
+
+					// set pipeline.
+					pCmdList->GetLatestCommandList()->SetPipelineState(psoDepthReduction_->GetPSO());
+					pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+
+					// draw fullscreen.
+					pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+
+					pCmdList->TransitionBarrier(&target->texture, i, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
+					if (i + 1 < gHiZDesc.mipLevels)
+					{
+						srv = target->textureSrvs[i + 1]->GetDescInfo().cpuHandle;
+						width >>= 1;
+						height >>= 1;
+					}
+				}
+
+				// render graph glitch.
+				pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			}
+			renderGraph_->EndPass();
+
+			renderGraph_->NextPass(pCmdList);
+			{
+				GPU_MARKER(pCmdList, 0, "VisibilityPass2nd");
+
+				// output barrier.
+				renderGraph_->BarrierOutputsAll(pCmdList);
+
+				// set render targets.
+				D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
+					renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->rtvs[0]->GetDescInfo().cpuHandle,
+				};
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
+				pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
+
+				// set viewport.
+				D3D12_VIEWPORT vp;
+				vp.TopLeftX = vp.TopLeftY = 0.0f;
+				vp.Width = (float)displayWidth_;
+				vp.Height = (float)displayHeight_;
+				vp.MinDepth = 0.0f;
+				vp.MaxDepth = 1.0f;
+				pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+				// set scissor rect.
+				D3D12_RECT rect;
+				rect.left = rect.top = 0;
+				rect.right = displayWidth_;
+				rect.bottom = displayHeight_;
+				pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+				// set descriptors.
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				// as
+				descSet.SetAsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetAsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetAsSrv(1, renderGraph_->GetTarget(TargetContainer.hiZTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetAsSrv(2, renderGraph_->GetTarget(TargetContainer.drawFlagTargetID)->bufferSrvs[0]->GetDescInfo().cpuHandle);
+				// ms
+				descSet.SetMsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetMsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(0, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(1, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(2, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(3, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(4, drawCallBV_->GetDescInfo().cpuHandle);
+				// ps
+				descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoVisibilityMesh2nd_->GetPSO());
+
+				// draw meshes.
+				sl12::u32 meshIndex = 0;
+				sl12::u32 meshletTotal = 0;
+				for (auto&& mesh : sceneMeshes_)
+				{
+					auto meshRes = mesh->GetParentResource();
+
+					sl12::BufferView* pMeshletBoundSrv = nullptr;
+					UINT meshletCnt = 0;
+					if (hSuzanneMesh_.IsValid() && meshRes == hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SuzanneMeshletBV_;
+						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hSponzaMesh_.IsValid() && meshRes == hSponzaMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SponzaMeshletBV_;
+						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hCurtainMesh_.IsValid() && meshRes == hCurtainMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &CurtainMeshletBV_;
+						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
+					}
+					else if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+					{
+						pMeshletBoundSrv = &SphereMeshletBV_;
+						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
+					}
+				
+					// set mesh constant.
+					descSet.SetAsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+
+					pCmdList->SetMeshRootSignatureAndDescriptorSet(&rsMs_, &descSet);
+
+					const UINT kLaneCount = 32;
+					UINT dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
+					pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
+
+					meshIndex++;
+				}
+			}
+			renderGraph_->EndPass();
+		}
+		
 		// material depth pass.
 		pTimestamp->Query(pCmdList);
 		renderGraph_->NextPass(pCmdList);
@@ -2806,7 +3244,7 @@ bool SampleApplication::Execute()
 	}
 	renderGraph_->EndPass();
 
-	// lighing pass.
+	// lighting pass.
 	pTimestamp->Query(pCmdList);
 	renderGraph_->NextPass(pCmdList);
 	{
@@ -2845,6 +3283,67 @@ bool SampleApplication::Execute()
 		UINT x = (displayWidth_ + 7) / 8;
 		UINT y = (displayHeight_ + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+	}
+	renderGraph_->EndPass();
+
+	// depth reduction pass.
+	renderGraph_->NextPass(pCmdList);
+	{
+		GPU_MARKER(pCmdList, 1, "DepthReductionPass");
+		
+		// output barrier.
+		renderGraph_->BarrierOutputsAll(pCmdList);
+
+		auto srv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
+		auto target = renderGraph_->GetTarget(TargetContainer.hiZTargetID);
+		auto width = gHiZDesc.width;
+		auto height = gHiZDesc.height;
+		for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
+		{
+			// set viewport.
+			D3D12_VIEWPORT vp;
+			vp.TopLeftX = vp.TopLeftY = 0.0f;
+			vp.Width = (float)width;
+			vp.Height = (float)height;
+			vp.MinDepth = 0.0f;
+			vp.MaxDepth = 1.0f;
+			pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+			// set scissor rect.
+			D3D12_RECT rect;
+			rect.left = rect.top = 0;
+			rect.right = (LONG)width;
+			rect.bottom = height;
+			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+			
+			// set render targets.
+			D3D12_CPU_DESCRIPTOR_HANDLE rtv = target->rtvs[i]->GetDescInfo().cpuHandle;
+			pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
+			// set descriptors.
+			sl12::DescriptorSet descSet;
+			descSet.Reset();
+			descSet.SetPsSrv(0, srv);
+
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoDepthReduction_->GetPSO());
+			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+
+			// draw fullscreen.
+			pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+
+			pCmdList->TransitionBarrier(&target->texture, i, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
+			if (i + 1 < gHiZDesc.mipLevels)
+			{
+				srv = target->textureSrvs[i + 1]->GetDescInfo().cpuHandle;
+				width >>= 1;
+				height >>= 1;
+			}
+		}
+
+		// render graph glitch.
+		pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 	renderGraph_->EndPass();
 
@@ -3130,6 +3629,7 @@ bool SampleApplication::Execute()
 
 	// store history.
 	depthHistory_ = TargetContainer.gbufferTargetIDs[3];
+	hiZHistory_ = TargetContainer.hiZTargetID;
 	ssaoHistory_ = TargetContainer.denoiseTargetID;
 	ssgiHistory_ = TargetContainer.denoiseGITargetID;
 
@@ -3393,10 +3893,16 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 			submeshData->indexOffset = submeshIndexOffset;
 			submeshData++;
 
+			sl12::u32 submeshPackedPrimOffset = (sl12::u32)(meshRes->GetMeshletPackedPrimHandle().offset + submesh.meshletPackedPrimOffsetBytes);
+			sl12::u32 submeshVertexIndexOffset = (sl12::u32)(meshRes->GetMeshletVertexIndexHandle().offset + submesh.meshletVertexIndexOffsetBytes);
 			for (auto&& meshlet : submesh.meshlets)
 			{
 				meshletData->submeshIndex = submeshTotal;
 				meshletData->indexOffset = submeshIndexOffset + meshlet.indexOffset * (sl12::u32)sl12::ResourceItemMesh::GetIndexStride();
+				meshletData->meshletPackedPrimCount = meshlet.primitiveCount;
+				meshletData->meshletPackedPrimOffset = submeshPackedPrimOffset + meshlet.primitiveOffset * (sl12::u32)sizeof(sl12::u32);
+				meshletData->meshletVertexIndexCount = meshlet.vertexIndexCount;
+				meshletData->meshletVertexIndexOffset = submeshVertexIndexOffset + meshlet.vertexIndexOffset * (sl12::u32)sl12::ResourceItemMesh::GetIndexStride();
 				meshletData++;
 			}
 

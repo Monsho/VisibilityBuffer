@@ -144,6 +144,10 @@ struct MeshletData
 {
 	uint	submeshIndex;
 	uint	indexOffset;
+	uint	meshletPackedPrimCount;
+	uint	meshletPackedPrimOffset;
+	uint	meshletVertexIndexCount;
+	uint	meshletVertexIndexOffset;
 };
 
 struct DrawCallData

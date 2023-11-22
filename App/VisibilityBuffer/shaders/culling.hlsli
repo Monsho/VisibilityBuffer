@@ -88,25 +88,29 @@ bool ToScreenAABB(in MeshletBound meshlet, in float4x4 mtxLocalToProj, in float 
 	}
 
 	aabbMin = aabbMax = points[0].xyz;
+	float minZ, maxZ;
+	minZ = maxZ = points[0].w;
 	for (pointID = 1; pointID < 8; pointID++)
 	{
 		aabbMin = min(aabbMin, points[pointID].xyz);
 		aabbMax = max(aabbMax, points[pointID].xyz);
+		minZ = min(minZ, points[pointID].w);
+		maxZ = max(maxZ, points[pointID].w);
 	}
-	if (aabbMin.z <= nearZ)
+	if (minZ <= nearZ)
 		return true;
 
 	aabbMin.xy = clamp(aabbMin.xy, 0.0, 1.0);
-	aabbMin.z = max(aabbMin.z, 0.0);
+	aabbMin.z = min(aabbMin.z, 1.0);
 	aabbMax.xy = clamp(aabbMax.xy, 0.0, 1.0);
-	aabbMax.z = max(aabbMax.z, 0.0);
+	aabbMax.z = min(aabbMax.z, 1.0);
 	return false;
 }
 
 // test cull HiZ.
 //   true : this aabb is invisible.
 //   false : this aabb is visible.
-bool IsOcclusionCull(in float3 aabbMin, in float3 aabbMax, in float2 hizSize, in Texture2D<float2> texHiZ, in uint mipLevel, in float2 maskMinMax)
+bool IsOcclusionCull(in float3 aabbMin, in float3 aabbMax, in float2 hizSize, in Texture2D<float> texHiZ, in uint mipLevel)
 {
 	float4 rect = float4(aabbMin.xy, aabbMax.xy) * hizSize.xyxy;
 	uint numTexel = (uint)min(rect.z - rect.x, rect.w - rect.y) + 1;
@@ -119,19 +123,19 @@ bool IsOcclusionCull(in float3 aabbMin, in float3 aabbMax, in float2 hizSize, in
 	uint startY = (uint)left_top.y;
 	uint endX = (uint)right_bottom.x + (frac(right_bottom.x) > 0.0 ? 1 : 0);
 	uint endY = (uint)right_bottom.y + (frac(right_bottom.y) > 0.0 ? 1 : 0);
-	float rectZ = aabbMin.z;
+	float rectZ = aabbMax.z;
 
-	float maxZ = 0.0;
+	float texelFarZ = 1.0;
 	for (uint y = startY; y <= endY; y++)
 	{
 		for (uint x = startX; x <= endX; x++)
 		{
 			uint3 uvw = uint3(x, y, desiredMip);
-			maxZ = max(maxZ, dot(texHiZ.Load(uvw), maskMinMax));
+			texelFarZ = min(texelFarZ, texHiZ.Load(uvw));
 		}
 	}
-	const float kEpsilon = 1e-3;
-	return maxZ > 0.0 && rectZ >= (maxZ + kEpsilon);
+	const float kEpsilon = 1e-7;
+	return texelFarZ < 1.0 && rectZ <= (texelFarZ - kEpsilon);
 }
 
 #endif // CULLING_HLSLI

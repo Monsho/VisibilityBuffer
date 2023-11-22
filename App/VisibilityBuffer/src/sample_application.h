@@ -154,6 +154,7 @@ private:
 	// root sig & pso.
 	UniqueHandle<sl12::RootSignature>			rsVsPs_, rsVsPsC1_;
 	UniqueHandle<sl12::RootSignature>			rsCs_;
+	UniqueHandle<sl12::RootSignature>			rsMs_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoMesh_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoTriplanar_;
@@ -164,6 +165,8 @@ private:
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowDepth_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowExp_;
 	UniqueHandle<sl12::GraphicsPipelineState>	psoBlur_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoVisibilityMesh1st_, psoVisibilityMesh2nd_;
+	UniqueHandle<sl12::GraphicsPipelineState>	psoDepthReduction_;
 	UniqueHandle<sl12::ComputePipelineState>	psoLighting_, psoIndirect_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
@@ -229,6 +232,7 @@ private:
 	
 	// history.
 	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;
+	sl12::RenderGraphTargetID	hiZHistory_ = sl12::kInvalidTargetID;
 	sl12::RenderGraphTargetID	ssaoHistory_ = sl12::kInvalidTargetID;
 	sl12::RenderGraphTargetID	ssgiHistory_ = sl12::kInvalidTargetID;
 	DirectX::XMMATRIX		mtxPrevWorldToView_, mtxPrevViewToClip_, mtxPrevWorldToClip_;
@@ -245,6 +249,10 @@ private:
 	DirectX::XMFLOAT3		cameraDir_;
 	int						lastMouseX_, lastMouseY_;
 
+	// rendering parameters.
+	bool					bEnableVisibilityBuffer_ = false;
+	bool					bEnableMeshShader_ = false;
+	
 	// light parameters.
 	float					skyColor_[3] = {0.565f, 0.843f, 0.925f};
 	float					groundColor_[3] = {0.639f, 0.408f, 0.251f};
@@ -290,8 +298,6 @@ private:
 	int	displayWidth_, displayHeight_;
 	int meshType_;
 	sl12::u64	frameIndex_ = 0;
-
-	bool bEnableVisibilityBuffer_ = false;
 };	// class SampleApplication
 
 //	EOF
