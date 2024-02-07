@@ -274,7 +274,7 @@ namespace
 	}
 }
 
-SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType)
+SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader)
 	: Application(hInstance, nCmdShow, screenWidth, screenHeight, csType)
 	, displayWidth_(screenWidth), displayHeight_(screenHeight)
 	, meshType_(meshType)
@@ -282,6 +282,9 @@ SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int scre
 	std::filesystem::path p(homeDir);
 	p = std::filesystem::absolute(p);
 	homeDir_ = p.string();
+
+	appShaderDir_ = appShader.empty() ? kShaderDir : appShader;
+	sysShaderInclDir_ = sysShader.empty() ? kShaderIncludeDir : sysShader;
 }
 
 SampleApplication::~SampleApplication()
@@ -312,7 +315,7 @@ bool SampleApplication::Initialize()
 
 	// initialize shader manager.
 	std::vector<std::string> shaderIncludeDirs;
-	shaderIncludeDirs.push_back(sl12::JoinPath(homeDir_, kShaderIncludeDir));
+	shaderIncludeDirs.push_back(sl12::JoinPath(homeDir_, sysShaderInclDir_));
 	shaderMan_ = sl12::MakeUnique<sl12::ShaderManager>(nullptr);
 	sl12::ShaderPDB::Type pdbType = sl12::ShaderPDB::None;
 	std::string pdbDir = sl12::JoinPath(homeDir_, kShaderPDBDir);
@@ -326,7 +329,7 @@ bool SampleApplication::Initialize()
 	}
 
 	// compile shaders.
-	const std::string shaderBaseDir = sl12::JoinPath(homeDir_, kShaderDir);
+	const std::string shaderBaseDir = sl12::JoinPath(homeDir_, appShaderDir_);
 	for (int i = 0; i < ShaderName::MAX; i++)
 	{
 		const char* file = kShaderFileAndEntry[i * 2 + 0];
@@ -545,6 +548,11 @@ bool SampleApplication::Initialize()
 	rsVsPs_->Initialize(&device_, hShaders_[ShaderName::MeshVV].GetShader(), hShaders_[ShaderName::MeshP].GetShader(), nullptr, nullptr, nullptr);
 	rsVsPsC1_->Initialize(&device_, hShaders_[ShaderName::VisibilityVV].GetShader(), hShaders_[ShaderName::VisibilityP].GetShader(), nullptr, nullptr, nullptr, 1);
 	rsMs_->Initialize(&device_, hShaders_[ShaderName::VisibilityMesh1stA].GetShader(), hShaders_[ShaderName::VisibilityMeshM].GetShader(), hShaders_[ShaderName::VisibilityMeshP].GetShader(), 0);
+
+	const DXGI_FORMAT kPositionFormat = sl12::ResourceItemMesh::GetPositionFormat();
+	const DXGI_FORMAT kNormalFormat = sl12::ResourceItemMesh::GetNormalFormat();
+	const DXGI_FORMAT kTangentFormat = sl12::ResourceItemMesh::GetTangentFormat();
+	const DXGI_FORMAT kTexcoordFormat = sl12::ResourceItemMesh::GetTexcoordFormat();
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
@@ -564,7 +572,7 @@ bool SampleApplication::Initialize()
 		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"POSITION", 0, kPositionFormat, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -600,10 +608,10 @@ bool SampleApplication::Initialize()
 		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"POSITION", 0, kPositionFormat, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, kNormalFormat,   1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TANGENT",  0, kTangentFormat,  2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, kTexcoordFormat, 3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -642,10 +650,10 @@ bool SampleApplication::Initialize()
 		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"POSITION", 0, kPositionFormat, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, kNormalFormat,   1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TANGENT",  0, kTangentFormat,  2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, kTexcoordFormat, 3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -684,7 +692,7 @@ bool SampleApplication::Initialize()
 		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"POSITION", 0, kPositionFormat, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -861,7 +869,7 @@ bool SampleApplication::Initialize()
 		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"POSITION", 0, kPositionFormat, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -2065,6 +2073,7 @@ bool SampleApplication::Execute()
 	{
 		// set mesh constant.
 		MeshCB cbMesh;
+		cbMesh.mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
 		cbMesh.mtxLocalToWorld = mesh->GetMtxLocalToWorld();
 		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
 		MeshCBs.push_back(cbvMan_->GetTemporal(&cbMesh, sizeof(cbMesh)));
@@ -3919,6 +3928,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 		// set mesh constant.
 		DirectX::XMMATRIX l2w = DirectX::XMLoadFloat4x4(&mesh->GetMtxLocalToWorld());
 		DirectX::XMMATRIX w2l = DirectX::XMMatrixInverse(nullptr, l2w);
+		meshData->mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
 		meshData->mtxLocalToWorld = mesh->GetMtxLocalToWorld();
 		DirectX::XMStoreFloat4x4(&meshData->mtxWorldToLocal, w2l);
 		meshData++;

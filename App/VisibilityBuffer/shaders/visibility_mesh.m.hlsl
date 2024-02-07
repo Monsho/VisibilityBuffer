@@ -66,7 +66,7 @@ void main(
 	{
 		VSOutput Out;
 
-		float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, cbMesh.mtxLocalToWorld);
+		float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, mul(cbMesh.mtxLocalToWorld, cbMesh.mtxBoxTransform));
 
 		uint index = rIndexBuffer.Load(mlData.meshletVertexIndexOffset + v1 * 4);
 		float3 InPos = GetVertexPosition(rVertexBuffer, smData, index);
@@ -79,7 +79,7 @@ void main(
 	{
 		VSOutput Out;
 
-		float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, cbMesh.mtxLocalToWorld);
+		float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, mul(cbMesh.mtxLocalToWorld, cbMesh.mtxBoxTransform));
 
 		uint index = rIndexBuffer.Load(mlData.meshletVertexIndexOffset + v2 * 4);
 		float3 InPos = GetVertexPosition(rVertexBuffer, smData, index);

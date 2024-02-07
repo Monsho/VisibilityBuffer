@@ -49,7 +49,7 @@ class SampleApplication
 	};	// struct NeededMiplevel
 
 public:
-	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType);
+	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader);
 	virtual ~SampleApplication();
 
 	// virtual
@@ -142,6 +142,7 @@ private:
 
 private:
 	std::string		homeDir_;
+	std::string		appShaderDir_, sysShaderInclDir_;
 	
 	UniqueHandle<sl12::ResourceLoader>	resLoader_;
 	UniqueHandle<sl12::ShaderManager>	shaderMan_;

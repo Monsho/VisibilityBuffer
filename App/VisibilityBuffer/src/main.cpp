@@ -13,7 +13,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
 	auto ColorSpace = sl12::ColorSpaceType::Rec709;
 	std::string homeDir = ".\\";
-	int meshType = 0;
+	std::string appShaderDir = "";
+	std::string sysShaderInclDir = "";
+	int meshType = 1;
 	int screenWidth = kDisplayWidth;
 	int screenHeight = kDisplayHeight;
 
@@ -48,10 +50,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 					screenHeight = std::stoi(m[2].str());
 				}
 			}
+			else if (!lstrcmpW(szArglist[i], L"-appshader"))
+			{
+				appShaderDir = sl12::WStringToString(szArglist[++i]);
+			}
+			else if (!lstrcmpW(szArglist[i], L"-sysshader"))
+			{
+				sysShaderInclDir = sl12::WStringToString(szArglist[++i]);
+			}
 		}
 	}
 
-	SampleApplication app(hInstance, nCmdShow, screenWidth, screenHeight, ColorSpace, homeDir, meshType);
+	SampleApplication app(hInstance, nCmdShow, screenWidth, screenHeight, ColorSpace, homeDir, meshType, appShaderDir, sysShaderInclDir);
 
 	return app.Run();
 }

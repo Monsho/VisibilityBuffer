@@ -50,6 +50,7 @@ struct ShadowCB
 
 struct MeshCB
 {
+	float4x4	mtxBoxTransform;
 	float4x4	mtxLocalToWorld;
 	float4x4	mtxPrevLocalToWorld;
 };
@@ -126,6 +127,7 @@ struct DebugCB
 
 struct InstanceData
 {
+	float4x4	mtxBoxTransform;
 	float4x4	mtxLocalToWorld;
 	float4x4	mtxWorldToLocal;
 };

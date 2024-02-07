@@ -22,7 +22,7 @@ VSOutput main(const VSInput In)
 {
 	VSOutput Out = (VSOutput)0;
 
-	float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, cbMesh.mtxLocalToWorld);
+	float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, mul(cbMesh.mtxLocalToWorld, cbMesh.mtxBoxTransform));
 
 	Out.position = mul(mtxLocalToProj, float4(In.position, 1));
 	Out.normal = normalize(mul((float3x3)cbMesh.mtxLocalToWorld, In.normal));

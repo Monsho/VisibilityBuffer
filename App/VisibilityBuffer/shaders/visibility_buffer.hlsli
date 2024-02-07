@@ -21,32 +21,60 @@ uint3 GetVertexIndices(in ByteAddressBuffer rIndexBuffer, in MeshletData mlData,
 	return rIndexBuffer.Load3(address);
 }
 
+float SNormToFloat(int v, float scale)
+{
+	float scaledV = (float)v * scale;
+	return max(scaledV, -1.0);
+}
+
+float4 SNorm8ToFloat32_Vector(uint v)
+{
+	const float kScale = 1.0 / 127.0;
+	float4 ret = float4(
+		SNormToFloat(asint(v << 24) >> 24, kScale),
+		SNormToFloat(asint((v << 16) & 0xff000000) >> 24, kScale),
+		SNormToFloat(asint((v << 8) & 0xff000000) >> 24, kScale),
+		SNormToFloat(asint(v & 0xff000000) >> 24, kScale)
+		);
+	return ret;
+}
+
 float3 GetVertexPosition(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.posOffset + index * 12;
-	uint3 up = rVertexBuffer.Load3(address);
-	return asfloat(up);
+	const float kScale = 1.0 / 32767.0;
+	uint address = smData.posOffset + index * 8;
+	uint2 up = rVertexBuffer.Load2(address);
+	float3 ret = float3(
+		SNormToFloat(asint(up.x << 16) >> 16, kScale),
+		SNormToFloat(asint(up.x & 0xffff0000) >> 16, kScale),
+		SNormToFloat(asint(up.y << 16) >> 16, kScale)
+		);
+	return ret;
 }
 
 float3 GetVertexNormal(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.normalOffset + index * 12;
-	uint3 up = rVertexBuffer.Load3(address);
-	return asfloat(up);
+	uint address = smData.normalOffset + index * 4;
+	uint up = rVertexBuffer.Load(address);
+	return SNorm8ToFloat32_Vector(up).xyz;
 }
 
 float4 GetVertexTangent(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.tangentOffset + index * 16;
-	uint4 up = rVertexBuffer.Load4(address);
-	return asfloat(up);
+	uint address = smData.tangentOffset + index * 4;
+	uint up = rVertexBuffer.Load(address);
+	return SNorm8ToFloat32_Vector(up);
 }
 
 float2 GetVertexTexcoord(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.uvOffset + index * 8;
-	uint2 up = rVertexBuffer.Load2(address);
-	return asfloat(up);
+	uint address = smData.uvOffset + index * 4;
+	uint up = rVertexBuffer.Load(address);
+	float2 ret = float2(
+		f16tof32(up),
+		f16tof32(up >> 16)
+		);
+	return ret;
 }
 
 // perspective correct attribute interpolation using partial derivatives.
@@ -218,9 +246,10 @@ VertexAttr GetVertexAttrFromRay(
 	float3 p0 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.x);
 	float3 p1 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.y);
 	float3 p2 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.z);
-	p0 = mul(instance.mtxLocalToWorld, float4(p0, 1)).xyz;
-	p1 = mul(instance.mtxLocalToWorld, float4(p1, 1)).xyz;
-	p2 = mul(instance.mtxLocalToWorld, float4(p2, 1)).xyz;
+	float4x4 mtxBoxToWorld = mul(instance.mtxLocalToWorld, instance.mtxBoxTransform);
+	p0 = mul(mtxBoxToWorld, float4(p0, 1)).xyz;
+	p1 = mul(mtxBoxToWorld, float4(p1, 1)).xyz;
+	p2 = mul(mtxBoxToWorld, float4(p2, 1)).xyz;
 
 	// calc barycentric.
 	float2 screenPos = (pixelPos + 0.5) / screenSize;
@@ -265,9 +294,10 @@ VertexAttr GetVertexAttrPerspectiveCorrect(
 	float3 p0 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.x);
 	float3 p1 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.y);
 	float3 p2 = GetVertexPosition(rVertexBuffer, submesh, vertexIndices.z);
-	p0 = mul(instance.mtxLocalToWorld, float4(p0, 1)).xyz;
-	p1 = mul(instance.mtxLocalToWorld, float4(p1, 1)).xyz;
-	p2 = mul(instance.mtxLocalToWorld, float4(p2, 1)).xyz;
+	float4x4 mtxBoxToWorld = mul(instance.mtxLocalToWorld, instance.mtxBoxTransform);
+	p0 = mul(mtxBoxToWorld, float4(p0, 1)).xyz;
+	p1 = mul(mtxBoxToWorld, float4(p1, 1)).xyz;
+	p2 = mul(mtxBoxToWorld, float4(p2, 1)).xyz;
 
 	// transform projection.
 	float4 pt0 = mul(mtxWorldToProj, float4(p0, 1));
