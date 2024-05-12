@@ -2005,7 +2005,7 @@ bool SampleApplication::Execute()
 	ImGui::Render();
 
 	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
-	
+
 	device_.WaitPresent();
 	device_.SyncKillObjects();
 
