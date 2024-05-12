@@ -15,6 +15,13 @@ RWByteAddressBuffer	rwMaterialMip	: register(u0);
 [numthreads(8, 8, 1)]
 void FeedbackCS(uint3 did : SV_DispatchThreadID)
 {
+	uint2 size;
+	FeedbackTex.GetDimensions(size.x, size.y);
+	if (any(did.xy >= size))
+	{
+		return;
+	}
+	
 	uint2 value = FeedbackTex[did.xy];
 	uint materialIndex = value.x;
 	uint miplevel = value.y;

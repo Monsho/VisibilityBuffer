@@ -1939,6 +1939,7 @@ bool SampleApplication::Execute()
 					}
 				}
 			}
+			ImGui::Text("Heaps : %lld (MB)", device_.GetTextureStreamAllocator()->GetAllHeapSize() / 1024 / 1024);
 		}
 
 		// gpu performance.
@@ -2007,6 +2008,7 @@ bool SampleApplication::Execute()
 	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
 
 	device_.WaitPresent();
+	device_.GetTextureStreamAllocator()->GabageCollect();
 	device_.SyncKillObjects();
 
 	pTimestamp->Reset();
@@ -4261,7 +4263,7 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 			texStreamer_->RequestStreaming(workMaterials_[i].texSetHandle, targetWidth);
 			if (s.prevLevel != 0xff && s.prevLevel < s.minLevel)
 			{
-				s.prevLevel--;
+				s.prevLevel++;
 			}
 			else
 			{
