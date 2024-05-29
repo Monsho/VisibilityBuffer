@@ -1939,7 +1939,23 @@ bool SampleApplication::Execute()
 					}
 				}
 			}
-			ImGui::Text("Heaps : %lld (MB)", device_.GetTextureStreamAllocator()->GetAllHeapSize() / 1024 / 1024);
+			static const char* kPoolSizes[] = {
+				"Infinite",
+				"256MB",
+				"512MB",
+				"1024MB"
+			};
+			if (ImGui::Combo("Pool Size", &poolSizeSelect_, kPoolSizes, ARRAYSIZE(kPoolSizes)))
+			{
+				static const sl12::u64 kPoolLimits[] = {
+					0,
+					256 * 1024 * 1024,
+					512 * 1024 * 1024,
+					1024 * 1024 * 1024,
+				}; 
+				device_.GetTextureStreamAllocator()->SetPoolLimitSize(kPoolLimits[poolSizeSelect_]);
+			}
+			ImGui::Text("Heaps : %lld (MB)", device_.GetTextureStreamAllocator()->GetCurrentHeapSize() / 1024 / 1024);
 		}
 
 		// gpu performance.
@@ -2008,9 +2024,9 @@ bool SampleApplication::Execute()
 	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
 
 	device_.WaitPresent();
-	device_.GetTextureStreamAllocator()->GabageCollect();
+	device_.GetTextureStreamAllocator()->GabageCollect(&texStreamer_);
 	device_.SyncKillObjects();
-
+	
 	pTimestamp->Reset();
 	pTimestamp->Query(pCmdList);
 	device_.LoadRenderCommands(pCmdList);
@@ -3678,13 +3694,9 @@ void SampleApplication::CreateMaterialList()
 				WorkMaterial work{};
 				work.pResMaterial = &mat;
 				work.psoType = psoType;
-
-				// register textures to streamer.
-				std::vector<sl12::ResourceHandle> texHandles;
-				texHandles.push_back(work.pResMaterial->baseColorTex);
-				texHandles.push_back(work.pResMaterial->normalTex);
-				texHandles.push_back(work.pResMaterial->ormTex);
-				work.texSetHandle = texStreamer_->RegisterTextureSet(texHandles);
+				work.texHandles.push_back(work.pResMaterial->baseColorTex);
+				work.texHandles.push_back(work.pResMaterial->normalTex);
+				work.texHandles.push_back(work.pResMaterial->ormTex);
 
 				// add to list.
 				workMaterials_.push_back(work);
@@ -4260,7 +4272,10 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 		if (s.time >= 30)
 		{
 			sl12::u32 targetWidth = std::max(4096u >> s.minLevel, 1u);
-			texStreamer_->RequestStreaming(workMaterials_[i].texSetHandle, targetWidth);
+			for (auto handle : workMaterials_[i].texHandles)
+			{
+				texStreamer_->RequestStreaming(handle, targetWidth);
+			}
 			if (s.prevLevel != 0xff && s.prevLevel < s.minLevel)
 			{
 				s.prevLevel++;

@@ -27,7 +27,7 @@ class SampleApplication
 	struct WorkMaterial
 	{
 		const sl12::ResourceItemMesh::Material*	pResMaterial;
-		sl12::StreamTextureSetHandle			texSetHandle;
+		std::vector<sl12::ResourceHandle>		texHandles;
 		int										psoType;
 
 		bool operator==(const WorkMaterial& rhs) const
@@ -295,6 +295,7 @@ private:
 	// debug parameters.
 	int						displayMode_ = 0;
 	bool					bIsTexStreaming_ = true;
+	int						poolSizeSelect_ = 0;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;
