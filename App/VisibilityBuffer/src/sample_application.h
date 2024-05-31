@@ -14,6 +14,7 @@
 #include <queue>
 #include <vector>
 
+#include "sl12/resource_streaming_texture.h"
 #include "sl12/scene_mesh.h"
 #include "sl12/texture_streamer.h"
 #include "sl12/timestamp.h"
@@ -38,11 +39,23 @@ class SampleApplication
 		{
 			return !operator==(rhs);
 		}
+
+		sl12::u32 GetCurrentMiplevel() const
+		{
+			if (!texHandles.empty())
+			{
+				auto sTex = texHandles[0].GetItem<sl12::ResourceItemStreamingTexture>();
+				if (sTex)
+				{
+					return sTex->GetCurrMipLevel();
+				}
+			}
+			return 0;
+		}
 	};	// struct WorkMaterial
 
 	struct NeededMiplevel
 	{
-		sl12::u32	prevLevel;
 		sl12::u32	minLevel;
 		sl12::u32	latestLevel;
 		int			time;

@@ -3732,7 +3732,6 @@ void SampleApplication::CreateMaterialList()
 	neededMiplevels_.resize(workMaterials_.size());
 	for (auto&& s : neededMiplevels_)
 	{
-		s.prevLevel = 0xff;
 		s.minLevel = 0xff;
 		s.latestLevel = 0xff;
 		s.time = 0;
@@ -4233,17 +4232,21 @@ void SampleApplication::ComputeSceneAABB()
 
 void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplevels)
 {
+	int index = 0;
+	
 	// process needed levels.
 	if (!miplevels.empty())
 	{
 		auto p = miplevels.data();
 		for (auto&& s : neededMiplevels_)
 		{
+			auto currLevel = workMaterials_[index].GetCurrentMiplevel();
+			
 			s.latestLevel = std::min(*p++, 0xffu);
 			sl12::u32 minL = std::min(s.latestLevel, s.minLevel);
 
 			s.minLevel = minL;
-			if (s.prevLevel == s.minLevel)
+			if (currLevel == s.minLevel)
 			{
 				s.minLevel = 0xff;
 				s.latestLevel = 0xff;
@@ -4253,6 +4256,8 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 			{
 				s.time++;
 			}
+
+			index++;
 		}
 	}
 
@@ -4275,14 +4280,6 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 			for (auto handle : workMaterials_[i].texHandles)
 			{
 				texStreamer_->RequestStreaming(handle, targetWidth);
-			}
-			if (s.prevLevel != 0xff && s.prevLevel < s.minLevel)
-			{
-				s.prevLevel++;
-			}
-			else
-			{
-				s.prevLevel = s.minLevel;
 			}
 			s.minLevel = 0xff;
 			s.latestLevel = 0xff;
