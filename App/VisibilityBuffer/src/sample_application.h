@@ -18,6 +18,7 @@
 #include "sl12/scene_mesh.h"
 #include "sl12/texture_streamer.h"
 #include "sl12/timestamp.h"
+#include "sl12/work_graph.h"
 
 
 class SampleApplication
@@ -239,6 +240,14 @@ private:
 	UniqueHandle<sl12::BufferView> CurtainMeshletBV_;
 	UniqueHandle<sl12::BufferView> SphereMeshletBV_;
 
+	// work graphs.
+	UniqueHandle<sl12::RootSignature>		rsWg_;
+	UniqueHandle<sl12::WorkGraphState>		materialResolveState_;
+	UniqueHandle<sl12::WorkGraphContext>	materialResolveContext_;
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
+	UniqueHandle<sl12::Buffer>				materialDataB_, materialDataCopyB_;
+	UniqueHandle<sl12::BufferView>			materialDataBV_;
+	
 	// shaders.
 	std::vector<sl12::ShaderHandle>	hShaders_;
 
@@ -266,6 +275,7 @@ private:
 	// rendering parameters.
 	bool					bEnableVisibilityBuffer_ = false;
 	bool					bEnableMeshShader_ = false;
+	bool					bEnableWorkGraph_ = false;
 	
 	// light parameters.
 	float					skyColor_[3] = {0.565f, 0.843f, 0.925f};

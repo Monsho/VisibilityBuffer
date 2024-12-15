@@ -60,9 +60,12 @@ namespace
 		desc.name = "GBufferA";
 		desc.width = width;
 		desc.height = height;
-		desc.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		desc.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		//desc.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess | sl12::ResourceUsage::RenderTarget;
 		desc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		desc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(0, 0, 0));
+		desc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
 		gGBufferDescs.push_back(desc);
 
 		desc.name = "GBufferB";
@@ -75,9 +78,10 @@ namespace
 
 		desc.name = "Depth";
 		desc.format = DXGI_FORMAT_D32_FLOAT;
-		desc.rtvDescs.clear();
-		desc.dsvDescs.push_back(sl12::RenderGraphDSVDesc(0, 0, 0));
 		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::DepthStencil;
+		desc.rtvDescs.clear();
+		desc.uavDescs.clear();
+		desc.dsvDescs.push_back(sl12::RenderGraphDSVDesc(0, 0, 0));
 		gGBufferDescs.push_back(desc);
 
 		gAccumDesc.name = "Accum";
@@ -221,6 +225,7 @@ namespace
 		VisibilityMeshM,
 		VisibilityMeshP,
 		DepthReductionP,
+		MaterialResolveLib,
 
 		MAX
 	};
@@ -261,6 +266,7 @@ namespace
 		"visibility_mesh.m.hlsl",			"main",
 		"visibility_mesh.p.hlsl",			"main",
 		"depth_reduction.p.hlsl",			"main",
+		"material_resolve.lib.hlsl",		"main",
 	};
 
 	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
@@ -336,7 +342,7 @@ bool SampleApplication::Initialize()
 		const char* entry = kShaderFileAndEntry[i * 2 + 1];
 		auto handle = shaderMan_->CompileFromFile(
 			sl12::JoinPath(shaderBaseDir, file),
-			entry, sl12::GetShaderTypeFromFileName(file), 6, 5, nullptr, nullptr);
+			entry, sl12::GetShaderTypeFromFileName(file), 6, 8, nullptr, nullptr);
 		hShaders_.push_back(handle);
 	}
 	
@@ -1159,6 +1165,48 @@ bool SampleApplication::Initialize()
 		}
 	}
 
+	// initialize work graphs.
+	rsWg_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
+	materialResolveState_ = sl12::MakeUnique<sl12::WorkGraphState>(&device_);
+	materialResolveContext_ = sl12::MakeUnique<sl12::WorkGraphContext>(&device_);
+	{
+		sl12::RootBindlessInfo info;
+		info.index_ = 0;
+		info.space_ = 32;
+		info.maxResources_ = 0;
+		for (auto mesh : sceneMeshes_)
+		{
+			info.maxResources_ += (sl12::u32)(mesh->GetParentResource()->GetMaterials().size() * 3);
+		}
+		info.maxResources_ += 32;	// add buffer.
+		rsWg_->InitializeWithBindless(&device_, hShaders_[MaterialResolveLib].GetShader(), &info, 1);
+	}
+	{
+		static LPCWSTR kProgramName = L"MaterialResolveWG";
+		static LPCWSTR kEntryPoint = L"DistributeMaterialNode";
+
+		D3D12_NODE_ID entryPoint{};
+		entryPoint.Name = kEntryPoint;
+		entryPoint.ArrayIndex = 0;
+
+		sl12::WorkGraphStateDesc desc;
+		desc.AddDxilLibrary(hShaders_[MaterialResolveLib].GetShader()->GetData(), hShaders_[MaterialResolveLib].GetShader()->GetSize(), nullptr, 0);
+		desc.AddWorkGraph(kProgramName, D3D12_WORK_GRAPH_FLAG_INCLUDE_ALL_AVAILABLE_NODES, 1, &entryPoint);
+		desc.AddGlobalRootSignature(*&rsWg_);
+
+		if (!materialResolveState_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init work graph state.");
+			return false;
+		}
+		
+		if (!materialResolveContext_->Initialize(&device_, &materialResolveState_, kProgramName))
+		{
+			sl12::ConsolePrint("Error: failed to init work graph context.");
+			return false;
+		}
+	}
+
 	{
 		tileDrawIndirect_ = sl12::MakeUnique<sl12::IndirectExecuter>(&device_);
 		if (!tileDrawIndirect_->Initialize(&device_, sl12::IndirectType::Draw, 0))
@@ -1417,41 +1465,61 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 			passes.push_back(visibility2ndPass);
 		}
 
-		// material depth pass.
-		sl12::RenderPass matDepthPass{};
-		matDepthPass.input.push_back(OutContainer.visibilityTargetID);
-		matDepthPass.input.push_back(OutContainer.gbufferTargetIDs[3]);
-		matDepthPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		matDepthPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		matDepthPass.output.push_back(OutContainer.matDepthTargetID);
-		matDepthPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		passes.push_back(matDepthPass);
+		if (!bEnableWorkGraph_)
+		{
+			// material depth pass.
+			sl12::RenderPass matDepthPass{};
+			matDepthPass.input.push_back(OutContainer.visibilityTargetID);
+			matDepthPass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+			matDepthPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matDepthPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matDepthPass.output.push_back(OutContainer.matDepthTargetID);
+			matDepthPass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			passes.push_back(matDepthPass);
 
-		// classify pass.
-		sl12::RenderPass classifyPass{};
-		classifyPass.input.push_back(OutContainer.visibilityTargetID);
-		classifyPass.input.push_back(OutContainer.gbufferTargetIDs[3]);
-		classifyPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		classifyPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		passes.push_back(classifyPass);
+			// classify pass.
+			sl12::RenderPass classifyPass{};
+			classifyPass.input.push_back(OutContainer.visibilityTargetID);
+			classifyPass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+			classifyPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			classifyPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			passes.push_back(classifyPass);
 
-		// material tile pass.
-		sl12::RenderPass matTilePass{};
-		matTilePass.input.push_back(OutContainer.visibilityTargetID);
-		matTilePass.input.push_back(OutContainer.gbufferTargetIDs[3]);
-		matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
-		matTilePass.output.push_back(OutContainer.gbufferTargetIDs[0]);
-		matTilePass.output.push_back(OutContainer.gbufferTargetIDs[1]);
-		matTilePass.output.push_back(OutContainer.gbufferTargetIDs[2]);
-		matTilePass.output.push_back(OutContainer.gbufferTargetIDs[3]);
-		matTilePass.output.push_back(OutContainer.miplevelTargetID);
-		matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
-		matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		passes.push_back(matTilePass);
+			// material tile pass.
+			sl12::RenderPass matTilePass{};
+			matTilePass.input.push_back(OutContainer.visibilityTargetID);
+			matTilePass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+			matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matTilePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matTilePass.output.push_back(OutContainer.gbufferTargetIDs[0]);
+			matTilePass.output.push_back(OutContainer.gbufferTargetIDs[1]);
+			matTilePass.output.push_back(OutContainer.gbufferTargetIDs[2]);
+			matTilePass.output.push_back(OutContainer.matDepthTargetID);
+			matTilePass.output.push_back(OutContainer.miplevelTargetID);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_DEPTH_WRITE);
+			matTilePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			passes.push_back(matTilePass);
+		}
+		else
+		{
+			sl12::RenderPass matResolvePass{};
+			matResolvePass.input.push_back(OutContainer.visibilityTargetID);
+			matResolvePass.input.push_back(OutContainer.gbufferTargetIDs[3]);
+			matResolvePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matResolvePass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
+			matResolvePass.output.push_back(OutContainer.gbufferTargetIDs[0]);
+			matResolvePass.output.push_back(OutContainer.gbufferTargetIDs[1]);
+			matResolvePass.output.push_back(OutContainer.gbufferTargetIDs[2]);
+			matResolvePass.output.push_back(OutContainer.miplevelTargetID);
+			matResolvePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			matResolvePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			matResolvePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			matResolvePass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			passes.push_back(matResolvePass);
+		}
 	}
 
 	// feedback miplevel pass.
@@ -1829,6 +1897,8 @@ bool SampleApplication::Execute()
 			{
 				if (ImGui::Checkbox("Mesh Shader", &bEnableMeshShader_))
 				{}
+				if (ImGui::Checkbox("Work Graph", &bEnableWorkGraph_))
+				{}
 			}
 		}
 
@@ -1884,7 +1954,7 @@ bool SampleApplication::Execute()
 			};
 			ImGui::Combo("Type", &ssaoType_, kTypes, ARRAYSIZE(kTypes));
 			ImGui::SliderFloat("Intensity", &ssaoIntensity_, 0.0f, 10.0f);
-			ImGui::SliderFloat("GI Intensity", &ssgiIntensity_, 0.0f, 40.0f);
+			ImGui::SliderFloat("GI Intensity", &ssgiIntensity_, 0.0f, 200.0f);
 			ImGui::SliderInt("Slice Count", &ssaoSliceCount_, 1, 16);
 			ImGui::SliderInt("Step Count", &ssaoStepCount_, 1, 16);
 			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 512);
@@ -1995,7 +2065,7 @@ bool SampleApplication::Execute()
 				ImGui::Text("Indirect: %f (ms)", GetMS(indirect));
 				ImGui::Text("Tonemap : %f (ms)", GetMS(tonemap));
 			}
-			else
+			else if (!bEnableWorkGraph_)
 			{
 				uint64_t visibility = GetTime();
 				uint64_t depth = GetTime();
@@ -2012,6 +2082,24 @@ bool SampleApplication::Execute()
 				ImGui::Text("Depth      : %f (ms)", GetMS(depth));
 				ImGui::Text("Classify   : %f (ms)", GetMS(classify));
 				ImGui::Text("MatTile    : %f (ms)", GetMS(tile));
+				ImGui::Text("Lighting   : %f (ms)", GetMS(lighting));
+				ImGui::Text("SSAO       : %f (ms)", GetMS(ssao));
+				ImGui::Text("Indirect   : %f (ms)", GetMS(indirect));
+				ImGui::Text("Tonemap    : %f (ms)", GetMS(tonemap));
+			}
+			else
+			{
+				uint64_t visibility = GetTime();
+				uint64_t resolve = GetTime();
+				uint64_t lighting = GetTime();
+				uint64_t ssao = GetTime();
+				uint64_t indirect = GetTime();
+				uint64_t tonemap = GetTime();
+				uint64_t total = GetTotalTime();
+
+				ImGui::Text("Total      : %f (ms)", GetMS(total));
+				ImGui::Text("Visibility : %f (ms)", GetMS(visibility));
+				ImGui::Text("Resolve    : %f (ms)", GetMS(resolve));
 				ImGui::Text("Lighting   : %f (ms)", GetMS(lighting));
 				ImGui::Text("SSAO       : %f (ms)", GetMS(ssao));
 				ImGui::Text("Indirect   : %f (ms)", GetMS(indirect));
@@ -3019,228 +3107,291 @@ bool SampleApplication::Execute()
 			renderGraph_->EndPass();
 		}
 		
-		// material depth pass.
-		pTimestamp->Query(pCmdList);
-		renderGraph_->NextPass(pCmdList);
+		if (!bEnableWorkGraph_)
 		{
-			GPU_MARKER(pCmdList, 1, "MaterialDepthPass");
-			
-			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
-
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
-			pCmdList->GetLatestCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
-
-			// set viewport.
-			D3D12_VIEWPORT vp;
-			vp.TopLeftX = vp.TopLeftY = 0.0f;
-			vp.Width = (float)displayWidth_;
-			vp.Height = (float)displayHeight_;
-			vp.MinDepth = 0.0f;
-			vp.MaxDepth = 1.0f;
-			pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
-
-			// set scissor rect.
-			D3D12_RECT rect;
-			rect.left = rect.top = 0;
-			rect.right = displayWidth_;
-			rect.bottom = displayHeight_;
-			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
-
-			// set descriptors.
-			sl12::DescriptorSet descSet;
-			descSet.Reset();
-			descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoMatDepth_->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
-
-			// draw fullscreen.
-			pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
-		}
-		renderGraph_->EndPass();
-
-		// classify pass.
-		sl12::CbvHandle hTileCB;
-		pTimestamp->Query(pCmdList);
-		renderGraph_->NextPass(pCmdList);
-		{
-			UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
-			UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
-			TileCB cb;
-			cb.numX = x;
-			cb.numY = y;
-			cb.tileMax = x * y;
-			cb.materialMax = (sl12::u32)workMaterials_.size();
-			hTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
-			
-			GPU_MARKER(pCmdList, 2, "ClassifyPass");
-			
-			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
-			pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-			// set descriptors.
-			sl12::DescriptorSet descSet;
-			descSet.Reset();
-			descSet.SetCsCbv(0, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(0, drawArgUAV_->GetDescInfo().cpuHandle);
-
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoClearArg_->GetPSO());
-			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
-
-			// dispatch.
-			UINT t = (cb.materialMax + 32 - 1) / 32;
-			pCmdList->GetLatestCommandList()->Dispatch(t, 1, 1);
-			
-			// set descriptors.
-			descSet.Reset();
-			descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetCsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(0, drawArgUAV_->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(1, tileIndexUAV_->GetDescInfo().cpuHandle);
-
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoClassify_->GetPSO());
-			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
-
-			// dispatch.
-			pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
-
-			pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
-			pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
-		}
-		renderGraph_->EndPass();
-
-		// material tile pass.
-		pTimestamp->Query(pCmdList);
-		renderGraph_->NextPass(pCmdList);
-		{
-			GPU_MARKER(pCmdList, 1, "MaterialTilePass");
-			
-			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
-
-			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
-			};
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
-			pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
-
-			// set viewport.
-			D3D12_VIEWPORT vp;
-			vp.TopLeftX = vp.TopLeftY = 0.0f;
-			vp.Width = (float)displayWidth_;
-			vp.Height = (float)displayHeight_;
-			vp.MinDepth = 0.0f;
-			vp.MaxDepth = 1.0f;
-			pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
-
-			// set scissor rect.
-			D3D12_RECT rect;
-			rect.left = rect.top = 0;
-			rect.right = displayWidth_;
-			rect.bottom = displayHeight_;
-			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
-
-			// set descriptors.
-			auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
-			sl12::DescriptorSet descSet;
-			descSet.Reset();
-			descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetVsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetVsSrv(0, tileIndexBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetPsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(3, instanceBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(5, meshletBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(6, drawCallBV_->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(7, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-			if (detailType_ != 3)
+			// material depth pass.
+			pTimestamp->Query(pCmdList);
+			renderGraph_->NextPass(pCmdList);
 			{
-				descSet.SetPsSrv(11, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+				GPU_MARKER(pCmdList, 1, "MaterialDepthPass");
+			
+				// output barrier.
+				renderGraph_->BarrierOutputsAll(pCmdList);
+
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
+				pCmdList->GetLatestCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
+
+				// set viewport.
+				D3D12_VIEWPORT vp;
+				vp.TopLeftX = vp.TopLeftY = 0.0f;
+				vp.Width = (float)displayWidth_;
+				vp.Height = (float)displayHeight_;
+				vp.MinDepth = 0.0f;
+				vp.MaxDepth = 1.0f;
+				pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+				// set scissor rect.
+				D3D12_RECT rect;
+				rect.left = rect.top = 0;
+				rect.right = displayWidth_;
+				rect.bottom = displayHeight_;
+				pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+				// set descriptors.
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoMatDepth_->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+
+				// draw fullscreen.
+				pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
 			}
-			else
+			renderGraph_->EndPass();
+
+			// classify pass.
+			sl12::CbvHandle hTileCB;
+			pTimestamp->Query(pCmdList);
+			renderGraph_->NextPass(pCmdList);
 			{
-				descSet.SetPsSrv(11, detailDerivSrv_->GetDescInfo().cpuHandle);
-			}
-			descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
-			descSet.SetPsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-
-			sl12::GraphicsPipelineState* NowPSO = nullptr;
-
-			sl12::u32 matIndex = 0;
-			for (auto&& work : workMaterials_)
-			{
-				sl12::GraphicsPipelineState* pso = &psoMaterialTile_;
-				if (work.psoType == 1)
-				{
-					pso = &psoMaterialTileTriplanar_;
-				}
-
-				if (NowPSO != pso)
-				{
-					// set pipeline.
-					pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
-					pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-					NowPSO = pso;
-				}
+				UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+				UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+				TileCB cb;
+				cb.numX = x;
+				cb.numY = y;
+				cb.tileMax = x * y;
+				cb.materialMax = (sl12::u32)workMaterials_.size();
+				hTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
 			
-				MaterialTileCB cb;
-				cb.materialIndex = matIndex;
-				sl12::CbvHandle hMatTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
-				descSet.SetVsCbv(2, hMatTileCB.GetCBV()->GetDescInfo().cpuHandle);
+				GPU_MARKER(pCmdList, 2, "ClassifyPass");
+			
+				// output barrier.
+				renderGraph_->BarrierOutputsAll(pCmdList);
+				pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-				if (work.psoType == 0)
+				// set descriptors.
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				descSet.SetCsCbv(0, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(0, drawArgUAV_->GetDescInfo().cpuHandle);
+
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoClearArg_->GetPSO());
+				pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+				// dispatch.
+				UINT t = (cb.materialMax + 32 - 1) / 32;
+				pCmdList->GetLatestCommandList()->Dispatch(t, 1, 1);
+			
+				// set descriptors.
+				descSet.Reset();
+				descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetCsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(0, drawArgUAV_->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(1, tileIndexUAV_->GetDescInfo().cpuHandle);
+
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(psoClassify_->GetPSO());
+				pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
+
+				// dispatch.
+				pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+				pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
+				pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
+			}
+			renderGraph_->EndPass();
+
+			// material tile pass.
+			pTimestamp->Query(pCmdList);
+			renderGraph_->NextPass(pCmdList);
+			{
+				GPU_MARKER(pCmdList, 1, "MaterialTilePass");
+			
+				// output barrier.
+				renderGraph_->BarrierOutputsAll(pCmdList);
+
+				D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
+					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
+				};
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
+				pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
+
+				// set viewport.
+				D3D12_VIEWPORT vp;
+				vp.TopLeftX = vp.TopLeftY = 0.0f;
+				vp.Width = (float)displayWidth_;
+				vp.Height = (float)displayHeight_;
+				vp.MinDepth = 0.0f;
+				vp.MaxDepth = 1.0f;
+				pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+				// set scissor rect.
+				D3D12_RECT rect;
+				rect.left = rect.top = 0;
+				rect.right = displayWidth_;
+				rect.bottom = displayHeight_;
+				pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+				// set descriptors.
+				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetVsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetVsSrv(0, tileIndexBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetPsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(3, instanceBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(5, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(6, drawCallBV_->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(7, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				if (detailType_ != 3)
 				{
-					auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, device_.GetDummyTextureView(sl12::DummyTex::Black));
-					auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, device_.GetDummyTextureView(sl12::DummyTex::FlatNormal));
-					auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, device_.GetDummyTextureView(sl12::DummyTex::Black));
-
-					descSet.SetPsSrv(8, bc_tex_view->GetDescInfo().cpuHandle);
-					descSet.SetPsSrv(9, nm_tex_view->GetDescInfo().cpuHandle);
-					descSet.SetPsSrv(10, orm_tex_view->GetDescInfo().cpuHandle);
+					descSet.SetPsSrv(11, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 				}
 				else
 				{
-					auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
-					descSet.SetPsSrv(8, dot_res->GetTextureView().GetDescInfo().cpuHandle);
+					descSet.SetPsSrv(11, detailDerivSrv_->GetDescInfo().cpuHandle);
 				}
+				descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
+				descSet.SetPsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
-				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
-				pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rsVsPsC1_->GetRootConstantIndex(), matIndex, 0);
+				sl12::GraphicsPipelineState* NowPSO = nullptr;
 
-				pCmdList->GetLatestCommandList()->ExecuteIndirect(
-					tileDrawIndirect_->GetCommandSignature(),	// command signature
-					1,											// max command count
-					drawArgB_->GetResourceDep(),				// argument buffer
-					tileDrawIndirect_->GetStride() * matIndex,	// argument buffer offset
-					nullptr,									// count buffer
-					0);							// count buffer offset
+				sl12::u32 matIndex = 0;
+				for (auto&& work : workMaterials_)
+				{
+					sl12::GraphicsPipelineState* pso = &psoMaterialTile_;
+					if (work.psoType == 1)
+					{
+						pso = &psoMaterialTileTriplanar_;
+					}
+
+					if (NowPSO != pso)
+					{
+						// set pipeline.
+						pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+						pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+						NowPSO = pso;
+					}
+			
+					MaterialTileCB cb;
+					cb.materialIndex = matIndex;
+					sl12::CbvHandle hMatTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
+					descSet.SetVsCbv(2, hMatTileCB.GetCBV()->GetDescInfo().cpuHandle);
+
+					if (work.psoType == 0)
+					{
+						auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, device_.GetDummyTextureView(sl12::DummyTex::Black));
+						auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, device_.GetDummyTextureView(sl12::DummyTex::FlatNormal));
+						auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, device_.GetDummyTextureView(sl12::DummyTex::Black));
+
+						descSet.SetPsSrv(8, bc_tex_view->GetDescInfo().cpuHandle);
+						descSet.SetPsSrv(9, nm_tex_view->GetDescInfo().cpuHandle);
+						descSet.SetPsSrv(10, orm_tex_view->GetDescInfo().cpuHandle);
+					}
+					else
+					{
+						auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
+						descSet.SetPsSrv(8, dot_res->GetTextureView().GetDescInfo().cpuHandle);
+					}
+
+					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
+					pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rsVsPsC1_->GetRootConstantIndex(), matIndex, 0);
+
+					pCmdList->GetLatestCommandList()->ExecuteIndirect(
+						tileDrawIndirect_->GetCommandSignature(),	// command signature
+						1,											// max command count
+						drawArgB_->GetResourceDep(),				// argument buffer
+						tileDrawIndirect_->GetStride() * matIndex,	// argument buffer offset
+						nullptr,									// count buffer
+						0);							// count buffer offset
 				
-				matIndex++;
+					matIndex++;
+				}
 			}
+			renderGraph_->EndPass();
 		}
-		renderGraph_->EndPass();
+		else
+		{
+			// material resolve pass.
+			pTimestamp->Query(pCmdList);
+			renderGraph_->NextPass(pCmdList);
+			{
+				GPU_MARKER(pCmdList, 1, "MaterialResolvePass");
+
+				renderGraph_->BarrierOutputsAll(pCmdList);
+
+				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+
+				sl12::DescriptorSet descSet;
+				descSet.Reset();
+				descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetCsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(3, instanceBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(5, meshletBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(6, drawCallBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(7, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(8, materialDataBV_->GetDescInfo().cpuHandle);
+				if (detailType_ != 3)
+				{
+					descSet.SetCsSrv(9, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+				}
+				else
+				{
+					descSet.SetCsSrv(9, detailDerivSrv_->GetDescInfo().cpuHandle);
+				}
+				descSet.SetCsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(2, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(3, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->uavs[0]->GetDescInfo().cpuHandle);
+
+				// set program.
+				materialResolveContext_->SetProgram(pCmdList, D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE);
+
+				std::vector<std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>> bindlessArrays;
+				bindlessArrays.push_back(bindlessTextures_);
+				pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsWg_, &descSet, &bindlessArrays);
+
+				// dispatch graph.
+				struct DistributeNodeRecord
+				{
+					UINT GridSize[3];
+				};
+				DistributeNodeRecord record;
+				static const int kTileSize = 8;
+				record.GridSize[0] = (screenWidth_ + kTileSize - 1) / kTileSize;
+				record.GridSize[1] = (screenHeight_ + kTileSize - 1) / kTileSize;
+				record.GridSize[2] = 1;
+				materialResolveContext_->DispatchGraphCPU(pCmdList, 0, 1, sizeof(DistributeNodeRecord), &record);
+			}
+			renderGraph_->EndPass();
+		}
 	}
 
 	// feedback miplevel pass.
@@ -3704,6 +3855,68 @@ void SampleApplication::CreateMaterialList()
 		}
 	}
 
+	// work graph resources.
+	{
+		sl12::BufferDesc desc{};
+		desc.heap = sl12::BufferHeap::Default;
+		desc.usage = sl12::ResourceUsage::ShaderResource;
+		desc.stride = sizeof(MaterialData);
+		desc.size = desc.stride * workMaterials_.size();
+		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+
+		materialDataB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+		materialDataCopyB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+		materialDataBV_ = sl12::MakeUnique<sl12::BufferView>(&device_);
+		materialDataB_->Initialize(&device_, desc);
+		materialDataBV_->Initialize(&device_, &materialDataB_, 0, (sl12::u32)workMaterials_.size(), sizeof(MaterialData));
+		desc.heap = sl12::BufferHeap::Dynamic;
+		materialDataCopyB_->Initialize(&device_, desc);
+
+		MaterialData* data = static_cast<MaterialData*>(materialDataCopyB_->Map());
+		auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
+		bindlessTextures_.clear();
+		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
+		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
+		bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
+		for (auto&& work : workMaterials_)
+		{
+			if (work.psoType == 0)
+			{
+				data->shaderIndex = 0;
+				// default.
+				data->colorTexIndex = data->ormTexIndex = 0;
+				data->normalTexIndex = 1;
+				// each textures.
+				auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
+				if (resTex)
+				{
+					data->colorTexIndex = (UINT)bindlessTextures_.size();
+					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+				}
+				resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
+				if (resTex)
+				{
+					data->normalTexIndex = (UINT)bindlessTextures_.size();
+					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+				}
+				resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
+				if (resTex)
+				{
+					data->ormTexIndex = (UINT)bindlessTextures_.size();
+					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+				}
+			}
+			else
+			{
+				data->shaderIndex = 1;
+				data->colorTexIndex = data->ormTexIndex = 0;
+				data->normalTexIndex = 2;
+			}
+			data++;
+		}
+		materialDataCopyB_->Unmap();
+	}
+
 	// create miplevel feedback buffer.
 	{
 		sl12::BufferDesc desc{};
@@ -4024,6 +4237,21 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	pCmdList->TransitionBarrier(&submeshB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 	pCmdList->TransitionBarrier(&meshletB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 	pCmdList->TransitionBarrier(&drawCallB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+	// copy work buffer resource.
+	if (materialDataCopyB_.IsValid())
+	{
+		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
+		pCmdList->AddTransitionBarrier(&materialDataCopyB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		pCmdList->FlushBarriers();
+
+		pCmdList->GetLatestCommandList()->CopyBufferRegion(materialDataB_->GetResourceDep(), 0, materialDataCopyB_->GetResourceDep(), 0, materialDataCopyB_->GetBufferDesc().size);
+
+		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+		pCmdList->FlushBarriers();
+
+		materialDataCopyB_.Reset();
+	}
 }
 
 void SampleApplication::CreateMeshletBounds(sl12::CommandList* pCmdList)

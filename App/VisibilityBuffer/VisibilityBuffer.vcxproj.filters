@@ -107,5 +107,16 @@
     <None Include="shaders\ssgi_deinterleave.c.hlsl" />
     <None Include="shaders\ssgi_standard.c.hlsl" />
     <None Include="shaders\denoise_with_gi.c.hlsl" />
+    <None Include="shaders\meshlet_cull.c.hlsl" />
+    <None Include="shaders\depth.vv.hlsl" />
+    <None Include="shaders\miplevel_feedback.c.hlsl" />
+    <None Include="shaders\visibility_mesh.a.hlsl" />
+    <None Include="shaders\visibility_mesh.m.hlsl" />
+    <None Include="shaders\visibility_mesh.p.hlsl" />
+    <None Include="shaders\depth_reduction.p.hlsl" />
+    <None Include="shaders\visibility_mesh_1st.a.hlsl" />
+    <None Include="shaders\visibility_mesh_2nd.a.hlsl" />
+    <None Include="shaders\culling.hlsli" />
+    <None Include="shaders\mesh_shader.hlsli" />
   </ItemGroup>
 </Project>

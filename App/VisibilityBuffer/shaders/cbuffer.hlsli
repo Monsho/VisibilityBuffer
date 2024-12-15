@@ -158,6 +158,14 @@ struct DrawCallData
 	uint	meshletIndex;
 };
 
+struct MaterialData
+{
+	uint	colorTexIndex;
+	uint	ormTexIndex;
+	uint	normalTexIndex;
+	uint	shaderIndex;
+};
+
 #define CLASSIFY_TILE_WIDTH (64)
 #define CLASSIFY_THREAD_WIDTH (16)
 #define CLASSIFY_MATERIAL_MAX (256)
