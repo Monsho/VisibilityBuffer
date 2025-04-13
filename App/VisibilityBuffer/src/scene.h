@@ -1,0 +1,267 @@
+﻿#include <memory>
+#include <queue>
+#include <vector>
+
+#include "sl12/resource_loader.h"
+#include "sl12/shader_manager.h"
+#include "sl12/command_list.h"
+#include "sl12/gui.h"
+#include "sl12/root_signature.h"
+#include "sl12/pipeline_state.h"
+#include "sl12/unique_handle.h"
+#include "sl12/cbv_manager.h"
+#include "sl12/render_graph_deprecated.h"
+#include "sl12/indirect_executer.h"
+#include "sl12/sampler.h"
+
+#include "sl12/resource_streaming_texture.h"
+#include "sl12/scene_mesh.h"
+#include "sl12/texture_streamer.h"
+#include "sl12/timestamp.h"
+#include "sl12/work_graph.h"
+
+template <typename T> using UniqueHandle = sl12::UniqueHandle<T>;
+
+//----
+struct ShaderInitDesc
+{
+	std::string					baseDir;
+	std::vector<std::string>	includeDirs;
+	sl12::ShaderPDB::Type		pdbType;
+	std::string					pdbDir;
+};
+
+//----
+struct WorkMaterial
+{
+	const sl12::ResourceItemMesh::Material*	pResMaterial;
+	std::vector<sl12::ResourceHandle>		texHandles;
+	int										psoType;
+
+	bool operator==(const WorkMaterial& rhs) const
+	{
+		return pResMaterial == rhs.pResMaterial;
+	}
+	bool operator!=(const WorkMaterial& rhs) const
+	{
+		return !operator==(rhs);
+	}
+
+	sl12::u32 GetCurrentMiplevel() const
+	{
+		if (!texHandles.empty())
+		{
+			auto sTex = texHandles[0].GetItem<sl12::ResourceItemStreamingTexture>();
+			if (sTex)
+			{
+				return sTex->GetCurrMipLevel();
+			}
+		}
+		return 0;
+	}
+};	// struct WorkMaterial
+
+//----
+struct NeededMiplevel
+{
+	sl12::u32	minLevel;
+	sl12::u32	latestLevel;
+	int			time;
+};	// struct NeededMiplevel
+
+//----
+class RenderSystem
+{
+public:
+	RenderSystem(sl12::Device* pDev, const std::string& resDir, const ShaderInitDesc& shaderDesc);
+	~RenderSystem();
+
+	void WaitLoadAndCompile();
+	
+	sl12::ResourceLoader* GetResourceLoader()
+	{
+		return &resLoader_;
+	}
+	sl12::ShaderManager* GetShaderManager()
+	{
+		return &shaderMan_;
+	}
+	sl12::MeshManager* GetMeshManager()
+	{
+		return &meshMan_;
+	}
+	sl12::TextureStreamer* GetTextureStreamer()
+	{
+		return &texStreamer_;
+	}
+	sl12::CbvManager* GetCbvManager()
+	{
+		return &cbvMan_;
+	}
+
+	sl12::ShaderHandle GetShaderHandle(int index)
+	{
+		return hShaders_[index];
+	}
+	sl12::Shader* GetShader(int index)
+	{
+		return GetShaderHandle(index).GetShader();
+	}
+
+	sl12::Sampler* GetLinearWrapSampler()
+	{
+		return &linearWrapSampler_;
+	}
+	sl12::Sampler* GetLinearClampSampler()
+	{
+		return &linearClampSampler_;
+	}
+	sl12::Sampler* GetShadowSampler()
+	{
+		return &shadowSampler_;
+	}
+	
+private:
+	UniqueHandle<sl12::ResourceLoader>	resLoader_;
+	UniqueHandle<sl12::ShaderManager>	shaderMan_;
+	UniqueHandle<sl12::MeshManager>		meshMan_;
+	UniqueHandle<sl12::TextureStreamer>	texStreamer_;
+	UniqueHandle<sl12::CbvManager>		cbvMan_;
+
+	// shader handles.
+	std::vector<sl12::ShaderHandle>	hShaders_;
+
+	// samplers.
+	UniqueHandle<sl12::Sampler>	linearWrapSampler_;
+	UniqueHandle<sl12::Sampler>	linearClampSampler_;
+	UniqueHandle<sl12::Sampler>	shadowSampler_;
+};	// class RenderSystem
+
+//----
+class Scene
+{
+public:
+	Scene();
+	~Scene();
+
+	bool Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshType);
+	void Finalize();
+
+	bool CreateSceneMeshes(int meshType);
+	void CreateMaterialList();
+	void CopyMaterialData(sl12::CommandList* pCmdList);
+
+	sl12::ResourceHandle GetSuzanneMeshHandle()
+	{
+		return hSuzanneMesh_;
+	}
+	sl12::ResourceHandle GetSponzaMeshHandle()
+	{
+		return hSponzaMesh_;
+	}
+	sl12::ResourceHandle GetCurtainMeshHandle()
+	{
+		return hCurtainMesh_;
+	}
+	sl12::ResourceHandle GetSphereMeshHandle()
+	{
+		return hSphereMesh_;
+	}
+	sl12::ResourceHandle GetDetailTexHandle()
+	{
+		return hDetailTex_;
+	}
+	sl12::ResourceHandle GetDotTexHandle()
+	{
+		return hDotTex_;
+	}
+	std::vector<std::shared_ptr<sl12::SceneMesh>>& GetSceneMeshes()
+	{
+		return sceneMeshes_;
+	}
+	void GetSceneAABB(DirectX::XMFLOAT3& aabbMin, DirectX::XMFLOAT3& aabbMax)
+	{
+		aabbMin = sceneAABBMin_;
+		aabbMax = sceneAABBMax_;
+	}
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>& GetBindlessTextures()
+	{
+		return bindlessTextures_;
+	}
+	sl12::Buffer* GetMaterialDataB()
+	{
+		return &materialDataB_;
+	}
+	sl12::Buffer* GetMaterialDataCopyB()
+	{
+		return &materialDataCopyB_;
+	}
+	sl12::BufferView* GetMaterialDataBV()
+	{
+		return &materialDataBV_;
+	}
+	std::vector<WorkMaterial>& GetWorkMaterials()
+	{
+		return workMaterials_;
+	}
+	int GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat);
+	sl12::Buffer* GetMiplevelBuffer()
+	{
+		return &miplevelBuffer_;
+	}
+	sl12::Buffer* GetMiplevelCopySrc()
+	{
+		return &miplevelCopySrc_;
+	}
+	sl12::UnorderedAccessView* GetMiplevelUAV()
+	{
+		return &miplevelUAV_;
+	}
+	UniqueHandle<sl12::Buffer>* GetMiplevelReadbacks()
+	{
+		return miplevelReadbacks_;
+	}
+	std::vector<NeededMiplevel>& GetNeededMiplevels()
+	{
+		return neededMiplevels_;
+	}
+	
+private:
+	void ComputeSceneAABB();
+
+private:
+	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
+
+private:
+	std::string		homeDir_;
+	std::string		appShaderDir_, sysShaderInclDir_;
+
+	sl12::Device*	pDevice_ = nullptr;
+	RenderSystem*	pRenderSystem_ = nullptr;
+
+	// resource handles.
+	sl12::ResourceHandle	hSuzanneMesh_;
+	sl12::ResourceHandle	hSponzaMesh_;
+	sl12::ResourceHandle	hCurtainMesh_;
+	sl12::ResourceHandle	hSphereMesh_;
+	sl12::ResourceHandle	hDetailTex_;
+	sl12::ResourceHandle	hDotTex_;
+
+	// scene meshes.
+	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
+	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
+
+	// work graph resources.
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
+	UniqueHandle<sl12::Buffer>					materialDataB_, materialDataCopyB_;
+	UniqueHandle<sl12::BufferView>				materialDataBV_;
+	std::vector<WorkMaterial>					workMaterials_;
+
+	// miplevel feedback resources.
+	UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;
+	UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
+	UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
+	std::vector<NeededMiplevel>				neededMiplevels_;
+};	// class Scene
+
+//	EOF

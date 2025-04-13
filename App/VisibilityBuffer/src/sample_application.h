@@ -1,4 +1,6 @@
-﻿#include "sl12/application.h"
+﻿#include "scene.h"
+
+#include "sl12/application.h"
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
 #include "sl12/command_list.h"
@@ -7,7 +9,7 @@
 #include "sl12/pipeline_state.h"
 #include "sl12/unique_handle.h"
 #include "sl12/cbv_manager.h"
-#include "sl12/render_graph.h"
+#include "sl12/render_graph_deprecated.h"
 #include "sl12/indirect_executer.h"
 
 #include <memory>
@@ -73,27 +75,25 @@ public:
 	virtual int Input(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-	void CreateMaterialList();
+	// void CreateMaterialList();
 	void CreateBuffers(sl12::CommandList* pCmdList);
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
-	void ComputeSceneAABB();
-
 	void SetupRenderGraph(struct TargetIDContainer& OutContainer);
 	void SetupConstantBuffers(struct TemporalCB& OutCBs);
 
-	int GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat)
-	{
-		auto it = std::find_if(
-			workMaterials_.begin(), workMaterials_.end(),
-			[mat](const WorkMaterial& rhs){ return mat == rhs.pResMaterial; });
-		if (it == workMaterials_.end())
-			return -1;
-		auto index = std::distance(workMaterials_.begin(), it);
-		return (int)index;
-	};
+	// int GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat)
+	// {
+	// 	auto it = std::find_if(
+	// 		workMaterials_.begin(), workMaterials_.end(),
+	// 		[mat](const WorkMaterial& rhs){ return mat == rhs.pResMaterial; });
+	// 	if (it == workMaterials_.end())
+	// 		return -1;
+	// 	auto index = std::distance(workMaterials_.begin(), it);
+	// 	return (int)index;
+	// };
 
 	void ManageTextureStream(const std::vector<sl12::u32>& miplevels);
 
@@ -157,14 +157,11 @@ private:
 private:
 	std::string		homeDir_;
 	std::string		appShaderDir_, sysShaderInclDir_;
-	
-	UniqueHandle<sl12::ResourceLoader>	resLoader_;
-	UniqueHandle<sl12::ShaderManager>	shaderMan_;
-	UniqueHandle<sl12::MeshManager>		meshMan_;
-	UniqueHandle<sl12::TextureStreamer>	texStreamer_;
+
+	UniqueHandle<RenderSystem>	renderSys_;
+	UniqueHandle<Scene>			scene_;
 	UniqueHandle<CommandLists>			mainCmdList_;
-	UniqueHandle<sl12::CbvManager>		cbvMan_;
-	UniqueHandle<sl12::RenderGraph>		renderGraph_;
+	UniqueHandle<sl12::RenderGraph_Deprecated>		renderGraphDeprecated_;
 
 	// root sig & pso.
 	UniqueHandle<sl12::RootSignature>			rsVsPs_, rsVsPsC1_;
@@ -192,11 +189,6 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoMeshletCull_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearMip_, psoFeedbackMip_;
 
-	UniqueHandle<sl12::Sampler>				linearSampler_;
-	UniqueHandle<sl12::Sampler>				linearClampSampler_;
-	UniqueHandle<sl12::Sampler>				shadowSampler_;
-	UniqueHandle<sl12::Sampler>				evsmSampler_;
-
 	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
 	
 	UniqueHandle<sl12::Buffer>				instanceB_, submeshB_, meshletB_, drawCallB_;
@@ -214,21 +206,13 @@ private:
 	UniqueHandle<sl12::IndirectExecuter>	meshletIndirectStandard_, meshletIndirectVisbuffer_;
 	std::vector<sl12::CbvHandle>			meshletCBs_;
 
-	UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;
-	UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
-	UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
-	std::vector<NeededMiplevel>				neededMiplevels_;
+	// UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;
+	// UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
+	// UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
+	// std::vector<NeededMiplevel>				neededMiplevels_;
 	
 	UniqueHandle<sl12::Gui>		gui_;
 	sl12::InputData				inputData_{};
-
-	// resources.
-	sl12::ResourceHandle	hSuzanneMesh_;
-	sl12::ResourceHandle	hSponzaMesh_;
-	sl12::ResourceHandle	hCurtainMesh_;
-	sl12::ResourceHandle	hSphereMesh_;
-	sl12::ResourceHandle	hDetailTex_;
-	sl12::ResourceHandle	hDotTex_;
 
 	// meshlet bounds buffer.
 	UniqueHandle<sl12::Buffer> SuzanneMeshletB_;
@@ -244,14 +228,11 @@ private:
 	UniqueHandle<sl12::RootSignature>		rsWg_;
 	UniqueHandle<sl12::WorkGraphState>		materialResolveState_;
 	UniqueHandle<sl12::WorkGraphContext>	materialResolveContext_;
-	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
-	UniqueHandle<sl12::Buffer>				materialDataB_, materialDataCopyB_;
-	UniqueHandle<sl12::BufferView>			materialDataBV_;
-	
-	// shaders.
-	std::vector<sl12::ShaderHandle>	hShaders_;
-
-	std::vector<WorkMaterial>	workMaterials_;
+	// std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
+	// UniqueHandle<sl12::Buffer>				materialDataB_, materialDataCopyB_;
+	// UniqueHandle<sl12::BufferView>			materialDataBV_;
+	//
+	// std::vector<WorkMaterial>	workMaterials_;
 	
 	// history.
 	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;
@@ -259,9 +240,6 @@ private:
 	sl12::RenderGraphTargetID	ssaoHistory_ = sl12::kInvalidTargetID;
 	sl12::RenderGraphTargetID	ssgiHistory_ = sl12::kInvalidTargetID;
 	DirectX::XMMATRIX		mtxPrevWorldToView_, mtxPrevViewToClip_, mtxPrevWorldToClip_;
-
-	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
-	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
 
 	sl12::Timestamp			timestamps_[2];
 	sl12::u32				timestampIndex_ = 0;

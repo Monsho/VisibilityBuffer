@@ -1,4 +1,5 @@
 ﻿#include "sample_application.h"
+#include "shader_types.h"
 
 #include "sl12/resource_mesh.h"
 #include "sl12/string_util.h"
@@ -6,6 +7,7 @@
 #include "sl12/descriptor_set.h"
 #include "sl12/resource_texture.h"
 #include "sl12/command_queue.h"
+#include "sl12/resource_streaming_texture.h"
 
 #define NOMINMAX
 #include <windowsx.h>
@@ -14,7 +16,6 @@
 
 #define USE_IN_CPP
 #include "../shaders/cbuffer.hlsli"
-#include "sl12/resource_streaming_texture.h"
 
 namespace
 {
@@ -187,88 +188,6 @@ namespace
 		gDrawFlagDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0, 0));
 	}
 
-	enum ShaderName
-	{
-		DepthVV,
-		MeshVV,
-		MeshP,
-		VisibilityVV,
-		VisibilityP,
-		LightingC,
-		IndirectC,
-		FullscreenVV,
-		TonemapP,
-		ClassifyC,
-		MatDepthP,
-		ClearArgC,
-		MaterialTileVV,
-		MaterialTileP,
-		ShadowVV,
-		ShadowP,
-		BlurP,
-		NormalToDerivC,
-		TriplanarVV,
-		TriplanarP,
-		MaterialTileTriplanarP,
-		SsaoHbaoC,
-		SsaoBitmaskC,
-		SsgiC,
-		SsgiDIC,
-		DenoiseC,
-		DenoiseWithGIC,
-		DeinterleaveC,
-		MeshletCullC,
-		ClearMipC,
-		FeedbackMipC,
-		VisibilityMesh1stA,
-		VisibilityMesh2ndA,
-		VisibilityMeshM,
-		VisibilityMeshP,
-		DepthReductionP,
-		MaterialResolveLib,
-
-		MAX
-	};
-	static const char* kShaderFileAndEntry[] = {
-		"depth.vv.hlsl",					"main",
-		"mesh.vv.hlsl",						"main",
-		"mesh.p.hlsl",						"main",
-		"visibility.vv.hlsl",				"main",
-		"visibility.p.hlsl",				"main",
-		"lighting.c.hlsl",					"main",
-		"indirect_lighting.c.hlsl",			"main",
-		"fullscreen.vv.hlsl",				"main",
-		"tonemap.p.hlsl",					"main",
-		"classify.c.hlsl",					"main",
-		"material_depth.p.hlsl",			"main",
-		"clear_arg.c.hlsl",					"main",
-		"material_tile.vv.hlsl",			"main",
-		"material_tile.p.hlsl",				"main",
-		"shadow.vv.hlsl",					"main",
-		"shadow.p.hlsl",					"main",
-		"blur.p.hlsl",						"main",
-		"ts_normal_to_deriv.c.hlsl",		"main",
-		"triplanar.vv.hlsl",				"main",
-		"triplanar.p.hlsl",					"main",
-		"material_tile_triplanar.p.hlsl",	"main",
-		"ssao_hbao.c.hlsl",					"main",
-		"ssao_bitmask.c.hlsl",				"main",
-		"ssgi_standard.c.hlsl",				"main",
-		"ssgi_deinterleave.c.hlsl",			"main",
-		"denoise.c.hlsl",					"main",
-		"denoise_with_gi.c.hlsl",			"main",
-		"deinterleave.c.hlsl",				"main",
-		"meshlet_cull.c.hlsl",				"main",
-		"miplevel_feedback.c.hlsl",			"ClearCS",
-		"miplevel_feedback.c.hlsl",			"FeedbackCS",
-		"visibility_mesh_1st.a.hlsl",		"main",
-		"visibility_mesh_2nd.a.hlsl",		"main",
-		"visibility_mesh.m.hlsl",			"main",
-		"visibility_mesh.p.hlsl",			"main",
-		"depth_reduction.p.hlsl",			"main",
-		"material_resolve.lib.hlsl",		"main",
-	};
-
 	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
 	{
 		auto resTex = resTexHandle.GetItem<sl12::ResourceItemTextureBase>();
@@ -298,71 +217,25 @@ SampleApplication::~SampleApplication()
 
 bool SampleApplication::Initialize()
 {
-	// initialize mesh manager.
-	const size_t kVertexBufferSize = 512 * 1024 * 1024;		// 512MB
-	const size_t kIndexBufferSize = 64 * 1024 * 1024;		// 64MB
-	meshMan_ = sl12::MakeUnique<sl12::MeshManager>(&device_, &device_, kVertexBufferSize, kIndexBufferSize);
-	
-	// initialize resource loader.
-	resLoader_ = sl12::MakeUnique<sl12::ResourceLoader>(nullptr);
-	if (!resLoader_->Initialize(&device_, &meshMan_, sl12::JoinPath(homeDir_, kResourceDir)))
-	{
-		sl12::ConsolePrint("Error: failed to init resource loader.");
-		return false;
-	}
-
-	// initialize texture streamer.
-	texStreamer_ = sl12::MakeUnique<sl12::TextureStreamer>(&device_);
-	if (!texStreamer_->Initialize(&device_))
-	{
-		sl12::ConsolePrint("Error: failed to init texture streamer.");
-		return false;
-	}
-
-	// initialize shader manager.
-	std::vector<std::string> shaderIncludeDirs;
-	shaderIncludeDirs.push_back(sl12::JoinPath(homeDir_, sysShaderInclDir_));
-	shaderMan_ = sl12::MakeUnique<sl12::ShaderManager>(nullptr);
-	sl12::ShaderPDB::Type pdbType = sl12::ShaderPDB::None;
-	std::string pdbDir = sl12::JoinPath(homeDir_, kShaderPDBDir);
+	// init render system.
+	const std::string resDir = sl12::JoinPath(homeDir_, kResourceDir);
+	ShaderInitDesc shaderDesc{};
+	shaderDesc.baseDir = sl12::JoinPath(homeDir_, appShaderDir_);
+	shaderDesc.includeDirs.push_back(sl12::JoinPath(homeDir_, sysShaderInclDir_));
+	shaderDesc.pdbDir = sl12::JoinPath(homeDir_, kShaderPDBDir);
+	shaderDesc.pdbType = sl12::ShaderPDB::None;
 #if 0 // if 1, output shader debug files
-	pdbType = sl12::ShaderPDB::Full;
+	shaderDesc.pdbType = sl12::ShaderPDB::Full;
 #endif
-	if (!shaderMan_->Initialize(&device_, &shaderIncludeDirs, pdbType, &pdbDir))
+	renderSys_ = sl12::MakeUnique<RenderSystem>(nullptr, &device_, resDir, shaderDesc);
+
+	// init scene.
+	scene_ = sl12::MakeUnique<Scene>(nullptr);
+	if (!scene_->Initialize(&device_, &renderSys_, meshType_))
 	{
-		sl12::ConsolePrint("Error: failed to init shader manager.");
+		sl12::ConsolePrint("Error: Failed to init scene.\n");
 		return false;
 	}
-
-	// compile shaders.
-	const std::string shaderBaseDir = sl12::JoinPath(homeDir_, appShaderDir_);
-	for (int i = 0; i < ShaderName::MAX; i++)
-	{
-		const char* file = kShaderFileAndEntry[i * 2 + 0];
-		const char* entry = kShaderFileAndEntry[i * 2 + 1];
-		auto handle = shaderMan_->CompileFromFile(
-			sl12::JoinPath(shaderBaseDir, file),
-			entry, sl12::GetShaderTypeFromFileName(file), 6, 8, nullptr, nullptr);
-		hShaders_.push_back(handle);
-	}
-	
-	// load request.
-	if (meshType_ == 0)
-	{
-		hSuzanneMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/hp_suzanne/hp_suzanne.rmesh");
-	}
-	else if (meshType_ == 1)
-	{
-		hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sponza/sponza.rmesh");
-		hSphereMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/sphere/sphere.rmesh");
-	}
-	else if (meshType_ == 2)
-	{
-		hSponzaMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/IntelSponza/IntelSponza.rmesh");
-		hCurtainMesh_ = resLoader_->LoadRequest<sl12::ResourceItemMesh>("mesh/IntelCurtain/IntelCurtain.rmesh");
-	}
-	hDetailTex_ = resLoader_->LoadRequest<sl12::ResourceItemTexture>("texture/detail_normal.dds");
-	hDotTex_ = resLoader_->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
 
 	// init command list.
 	mainCmdList_ = sl12::MakeUnique<CommandLists>(nullptr);
@@ -372,43 +245,14 @@ bool SampleApplication::Initialize()
 		return false;
 	}
 
-	// init cbv manager.
-	cbvMan_ = sl12::MakeUnique<sl12::CbvManager>(nullptr, &device_);
-
 	// init render graph.
-	renderGraph_ = sl12::MakeUnique<sl12::RenderGraph>(nullptr);
+	renderGraphDeprecated_ = sl12::MakeUnique<sl12::RenderGraph_Deprecated>(nullptr);
 
 	// get GBuffer target descs.
 	SetGBufferDesc(displayWidth_, displayHeight_);
 	
-	// create sampler.
-	{
-		linearSampler_ = sl12::MakeUnique<sl12::Sampler>(&device_);
-		linearClampSampler_ = sl12::MakeUnique<sl12::Sampler>(&device_);
-		shadowSampler_ = sl12::MakeUnique<sl12::Sampler>(&device_);
-
-		D3D12_SAMPLER_DESC desc{};
-		desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		desc.MaxLOD = FLT_MAX;
-		desc.MinLOD = 0.0f;
-		desc.MipLODBias = 0.0f;
-		linearSampler_->Initialize(&device_, desc);
-
-		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		linearClampSampler_->Initialize(&device_, desc);
-
-		desc.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
-		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_GREATER;
-		shadowSampler_->Initialize(&device_, desc);
-	}
-	
 	// wait compile and load.
-	while (shaderMan_->IsCompiling() || resLoader_->IsLoading())
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
+	renderSys_->WaitLoadAndCompile();
 	
 	// init utility command list.
 	auto utilCmdList = sl12::MakeUnique<sl12::CommandList>(&device_);
@@ -443,95 +287,8 @@ bool SampleApplication::Initialize()
 	device_.WaitDrawDone();
 
 	// create scene meshes.
-	if (meshType_ == 0)
-	{
-		static const int kMeshWidth = 32;
-		static const float kMeshInter = 100.0f;
-		static const float kMeshOrigin = -(kMeshWidth - 1) * kMeshInter * 0.5f;
-		std::random_device seed_gen;
-		std::mt19937 rnd(seed_gen());
-		auto RandRange = [&rnd](float minV, float maxV)
-		{
-			sl12::u32 val = rnd();
-			float v0_1 = (float)val / (float)0xffffffff;
-			return minV + (maxV - minV) * v0_1;
-		};
-		for (int x = 0; x < kMeshWidth; x++)
-		{
-			for (int y = 0; y < kMeshWidth; y++)
-			{
-				auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>());
-				DirectX::XMFLOAT3 pos(kMeshOrigin + x * kMeshInter, RandRange(-100.0f, 100.0f), kMeshOrigin + y * kMeshInter);
-				DirectX::XMFLOAT4X4 mat;
-				DirectX::XMMATRIX m = DirectX::XMMatrixRotationRollPitchYaw(RandRange(-DirectX::XM_PI, DirectX::XM_PI), RandRange(-DirectX::XM_PI, DirectX::XM_PI), RandRange(-DirectX::XM_PI, DirectX::XM_PI))
-										* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-				DirectX::XMStoreFloat4x4(&mat, m);
-				mesh->SetMtxLocalToWorld(mat);
-
-				sceneMeshes_.push_back(mesh);
-			}
-		}
-	}
-	else if (meshType_ == 1)
-	{
-		// sponza
-		{
-			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSponzaMesh_.GetItem<sl12::ResourceItemMesh>());
-			DirectX::XMFLOAT3 pos(0.0f, -300.0f, 100.0f);
-			DirectX::XMFLOAT3 scl(0.02f, 0.02f, 0.02f);
-			DirectX::XMFLOAT4X4 mat;
-			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
-									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-			DirectX::XMStoreFloat4x4(&mat, m);
-			mesh->SetMtxLocalToWorld(mat);
-
-			sceneMeshes_.push_back(mesh);
-		}
-		// sphere
-		{
-			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSphereMesh_.GetItem<sl12::ResourceItemMesh>());
-			DirectX::XMFLOAT3 pos(0.0f, 2000.0f, 0.0f);
-			DirectX::XMFLOAT3 scl(200.0f, 200.0f, 200.0f);
-			DirectX::XMFLOAT4X4 mat;
-			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
-									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-			DirectX::XMStoreFloat4x4(&mat, m);
-			mesh->SetMtxLocalToWorld(mat);
-
-			sceneMeshes_.push_back(mesh);
-		}
-	}
-	else if (meshType_ == 2)
-	{
-		// sponza
-		{
-			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hSponzaMesh_.GetItem<sl12::ResourceItemMesh>());
-			DirectX::XMFLOAT3 pos(0.0f, 100.0f, 0.0f);
-			DirectX::XMFLOAT3 scl(100.0f, 100.0f, 100.0f);
-			DirectX::XMFLOAT4X4 mat;
-			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
-									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-			DirectX::XMStoreFloat4x4(&mat, m);
-			mesh->SetMtxLocalToWorld(mat);
-
-			sceneMeshes_.push_back(mesh);
-		}
-		// curtain
-		{
-			auto mesh = std::make_shared<sl12::SceneMesh>(&device_, hCurtainMesh_.GetItem<sl12::ResourceItemMesh>());
-			DirectX::XMFLOAT3 pos(0.0f, 100.0f, 0.0f);
-			DirectX::XMFLOAT3 scl(100.0f, 100.0f, 100.0f);
-			DirectX::XMFLOAT4X4 mat;
-			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
-									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
-			DirectX::XMStoreFloat4x4(&mat, m);
-			mesh->SetMtxLocalToWorld(mat);
-
-			sceneMeshes_.push_back(mesh);
-		}
-	}
-	ComputeSceneAABB();
-	CreateMaterialList();
+	scene_->CreateSceneMeshes(meshType_);
+	// CreateMaterialList();
 	
 	// init root signature and pipeline state.
 	rsVsPs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
@@ -551,9 +308,9 @@ bool SampleApplication::Initialize()
 	psoShadowExp_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoBlur_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoDepthReduction_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
-	rsVsPs_->Initialize(&device_, hShaders_[ShaderName::MeshVV].GetShader(), hShaders_[ShaderName::MeshP].GetShader(), nullptr, nullptr, nullptr);
-	rsVsPsC1_->Initialize(&device_, hShaders_[ShaderName::VisibilityVV].GetShader(), hShaders_[ShaderName::VisibilityP].GetShader(), nullptr, nullptr, nullptr, 1);
-	rsMs_->Initialize(&device_, hShaders_[ShaderName::VisibilityMesh1stA].GetShader(), hShaders_[ShaderName::VisibilityMeshM].GetShader(), hShaders_[ShaderName::VisibilityMeshP].GetShader(), 0);
+	rsVsPs_->Initialize(&device_, renderSys_->GetShader(ShaderName::MeshVV), renderSys_->GetShader(ShaderName::MeshP), nullptr, nullptr, nullptr);
+	rsVsPsC1_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityVV), renderSys_->GetShader(ShaderName::VisibilityP), nullptr, nullptr, nullptr, 1);
+	rsMs_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityMesh1stA), renderSys_->GetShader(ShaderName::VisibilityMeshM), renderSys_->GetShader(ShaderName::VisibilityMeshP), 0);
 
 	const DXGI_FORMAT kPositionFormat = sl12::ResourceItemMesh::GetPositionFormat();
 	const DXGI_FORMAT kNormalFormat = sl12::ResourceItemMesh::GetNormalFormat();
@@ -562,7 +319,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::DepthVV].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::DepthVV);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -597,8 +354,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
-		desc.pVS = hShaders_[ShaderName::MeshVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::MeshP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::MeshVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::MeshP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -639,8 +396,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
-		desc.pVS = hShaders_[ShaderName::TriplanarVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::TriplanarP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::TriplanarVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::TriplanarP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -681,8 +438,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
-		desc.pVS = hShaders_[ShaderName::VisibilityVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::VisibilityP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::VisibilityVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -718,9 +475,9 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsMs_;
-		desc.pAS = hShaders_[ShaderName::VisibilityMesh1stA].GetShader();
-		desc.pMS = hShaders_[ShaderName::VisibilityMeshM].GetShader();
-		desc.pPS = hShaders_[ShaderName::VisibilityMeshP].GetShader();
+		desc.pAS = renderSys_->GetShader(ShaderName::VisibilityMesh1stA);
+		desc.pMS = renderSys_->GetShader(ShaderName::VisibilityMeshM);
+		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityMeshP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -747,7 +504,7 @@ bool SampleApplication::Initialize()
 			return false;
 		}
 
-		desc.pAS = hShaders_[ShaderName::VisibilityMesh2ndA].GetShader();
+		desc.pAS = renderSys_->GetShader(ShaderName::VisibilityMesh2ndA);
 		if (!psoVisibilityMesh2nd_->Initialize(&device_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
@@ -757,8 +514,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::TonemapP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::TonemapP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -787,8 +544,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::MatDepthP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::MatDepthP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -817,8 +574,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
-		desc.pVS = hShaders_[ShaderName::MaterialTileVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::MaterialTileP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::MaterialTileVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::MaterialTileP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -847,7 +604,7 @@ bool SampleApplication::Initialize()
 			return false;
 		}
 
-		desc.pPS = hShaders_[ShaderName::MaterialTileTriplanarP].GetShader();
+		desc.pPS = renderSys_->GetShader(ShaderName::MaterialTileTriplanarP);
 
 		if (!psoMaterialTileTriplanar_->Initialize(&device_, desc))
 		{
@@ -858,7 +615,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::ShadowVV].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::ShadowVV);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -894,8 +651,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::ShadowP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::ShadowP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -924,8 +681,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::BlurP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::BlurP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -954,8 +711,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = hShaders_[ShaderName::FullscreenVV].GetShader();
-		desc.pPS = hShaders_[ShaderName::DepthReductionP].GetShader();
+		desc.pVS = renderSys_->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::DepthReductionP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -998,11 +755,11 @@ bool SampleApplication::Initialize()
 	psoMeshletCull_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoClearMip_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoFeedbackMip_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
-	rsCs_->Initialize(&device_, hShaders_[ShaderName::LightingC].GetShader());
+	rsCs_->Initialize(&device_, renderSys_->GetShader(ShaderName::LightingC));
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::LightingC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::LightingC);
 
 		if (!psoLighting_->Initialize(&device_, desc))
 		{
@@ -1013,7 +770,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::IndirectC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::IndirectC);
 
 		if (!psoIndirect_->Initialize(&device_, desc))
 		{
@@ -1024,7 +781,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::ClassifyC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::ClassifyC);
 
 		if (!psoClassify_->Initialize(&device_, desc))
 		{
@@ -1035,7 +792,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::ClearArgC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::ClearArgC);
 
 		if (!psoClearArg_->Initialize(&device_, desc))
 		{
@@ -1046,7 +803,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::NormalToDerivC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::NormalToDerivC);
 
 		if (!psoNormalToDeriv_->Initialize(&device_, desc))
 		{
@@ -1057,7 +814,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::SsaoHbaoC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::SsaoHbaoC);
 
 		if (!psoSsaoHbao_->Initialize(&device_, desc))
 		{
@@ -1068,7 +825,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::SsaoBitmaskC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::SsaoBitmaskC);
 
 		if (!psoSsaoBitmask_->Initialize(&device_, desc))
 		{
@@ -1079,7 +836,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::SsgiC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::SsgiC);
 
 		if (!psoSsgi_->Initialize(&device_, desc))
 		{
@@ -1090,7 +847,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::SsgiDIC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::SsgiDIC);
 
 		if (!psoSsgiDI_->Initialize(&device_, desc))
 		{
@@ -1101,7 +858,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::DenoiseC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::DenoiseC);
 
 		if (!psoDenoise_->Initialize(&device_, desc))
 		{
@@ -1112,7 +869,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::DenoiseWithGIC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::DenoiseWithGIC);
 
 		if (!psoDenoiseGI_->Initialize(&device_, desc))
 		{
@@ -1123,7 +880,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::DeinterleaveC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::DeinterleaveC);
 
 		if (!psoDeinterleave_->Initialize(&device_, desc))
 		{
@@ -1134,7 +891,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::MeshletCullC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::MeshletCullC);
 
 		if (!psoMeshletCull_->Initialize(&device_, desc))
 		{
@@ -1145,7 +902,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::ClearMipC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::ClearMipC);
 
 		if (!psoClearMip_->Initialize(&device_, desc))
 		{
@@ -1156,7 +913,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
-		desc.pCS = hShaders_[ShaderName::FeedbackMipC].GetShader();
+		desc.pCS = renderSys_->GetShader(ShaderName::FeedbackMipC);
 
 		if (!psoFeedbackMip_->Initialize(&device_, desc))
 		{
@@ -1174,12 +931,12 @@ bool SampleApplication::Initialize()
 		info.index_ = 0;
 		info.space_ = 32;
 		info.maxResources_ = 0;
-		for (auto mesh : sceneMeshes_)
+		for (auto mesh : scene_->GetSceneMeshes())
 		{
 			info.maxResources_ += (sl12::u32)(mesh->GetParentResource()->GetMaterials().size() * 3);
 		}
 		info.maxResources_ += 32;	// add buffer.
-		rsWg_->InitializeWithBindless(&device_, hShaders_[MaterialResolveLib].GetShader(), &info, 1);
+		rsWg_->InitializeWithBindless(&device_, renderSys_->GetShader(MaterialResolveLib), &info, 1);
 	}
 	{
 		static LPCWSTR kProgramName = L"MaterialResolveWG";
@@ -1190,7 +947,7 @@ bool SampleApplication::Initialize()
 		entryPoint.ArrayIndex = 0;
 
 		sl12::WorkGraphStateDesc desc;
-		desc.AddDxilLibrary(hShaders_[MaterialResolveLib].GetShader()->GetData(), hShaders_[MaterialResolveLib].GetShader()->GetSize(), nullptr, 0);
+		desc.AddDxilLibrary(renderSys_->GetShader(MaterialResolveLib)->GetData(), renderSys_->GetShader(MaterialResolveLib)->GetSize(), nullptr, 0);
 		desc.AddWorkGraph(kProgramName, D3D12_WORK_GRAPH_FLAG_INCLUDE_ALL_AVAILABLE_NODES, 1, &entryPoint);
 		desc.AddGlobalRootSignature(*&rsWg_);
 
@@ -1233,8 +990,8 @@ void SampleApplication::Finalize()
 	device_.Present(1);
 
 	// destroy render objects.
-	miplevelUAV_.Reset();
-	miplevelBuffer_.Reset();
+	// miplevelUAV_.Reset();
+	// miplevelBuffer_.Reset();
 	SuzanneMeshletBV_.Reset();
 	SponzaMeshletBV_.Reset();
 	CurtainMeshletBV_.Reset();
@@ -1280,13 +1037,11 @@ void SampleApplication::Finalize()
 	rsCs_.Reset();
 	rsVsPsC1_.Reset();
 	rsVsPs_.Reset();
-	renderGraph_.Reset();
-	cbvMan_.Reset();
+	renderGraphDeprecated_.Reset();
 	mainCmdList_.Reset();
-	shaderMan_.Reset();
-	texStreamer_.Reset();
-	resLoader_.Reset();
-	meshMan_.Reset();
+
+	scene_.Reset();
+	renderSys_.Reset();
 }
 
 struct TargetIDContainer
@@ -1309,31 +1064,31 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 
 	for (auto&& desc : gGBufferDescs)
 	{
-		OutContainer.gbufferTargetIDs.push_back(renderGraph_->AddTarget(desc));
+		OutContainer.gbufferTargetIDs.push_back(renderGraphDeprecated_->AddTarget(desc));
 	}
-	OutContainer.accumTargetID = renderGraph_->AddTarget(gAccumDesc);
-	OutContainer.visibilityTargetID = renderGraph_->AddTarget(gVisibilityDesc);
-	OutContainer.matDepthTargetID = renderGraph_->AddTarget(gMatDepthDesc);
-	OutContainer.shadowExpTargetID = renderGraph_->AddTarget(gShadowExpDesc);
-	OutContainer.shadowExpTmpTargetID = renderGraph_->AddTarget(gShadowExpDesc);
-	OutContainer.shadowDepthTargetID = renderGraph_->AddTarget(gShadowDepthDesc);
-	OutContainer.ssaoTargetID = renderGraph_->AddTarget(gAoDesc);
-	OutContainer.ssgiTargetID = renderGraph_->AddTarget(gGiDesc);
-	OutContainer.denoiseTargetID = renderGraph_->AddTarget(gAoDesc);
-	OutContainer.denoiseGITargetID = renderGraph_->AddTarget(gGiDesc);
+	OutContainer.accumTargetID = renderGraphDeprecated_->AddTarget(gAccumDesc);
+	OutContainer.visibilityTargetID = renderGraphDeprecated_->AddTarget(gVisibilityDesc);
+	OutContainer.matDepthTargetID = renderGraphDeprecated_->AddTarget(gMatDepthDesc);
+	OutContainer.shadowExpTargetID = renderGraphDeprecated_->AddTarget(gShadowExpDesc);
+	OutContainer.shadowExpTmpTargetID = renderGraphDeprecated_->AddTarget(gShadowExpDesc);
+	OutContainer.shadowDepthTargetID = renderGraphDeprecated_->AddTarget(gShadowDepthDesc);
+	OutContainer.ssaoTargetID = renderGraphDeprecated_->AddTarget(gAoDesc);
+	OutContainer.ssgiTargetID = renderGraphDeprecated_->AddTarget(gGiDesc);
+	OutContainer.denoiseTargetID = renderGraphDeprecated_->AddTarget(gAoDesc);
+	OutContainer.denoiseGITargetID = renderGraphDeprecated_->AddTarget(gGiDesc);
 	if (bNeedDeinterleave)
 	{
-		OutContainer.diDepthTargetID = renderGraph_->AddTarget(gDiDepthDesc);
-		OutContainer.diNormalTargetID = renderGraph_->AddTarget(gDiNormalDesc);
-		OutContainer.diAccumTargetID = renderGraph_->AddTarget(gAccumDesc);
+		OutContainer.diDepthTargetID = renderGraphDeprecated_->AddTarget(gDiDepthDesc);
+		OutContainer.diNormalTargetID = renderGraphDeprecated_->AddTarget(gDiNormalDesc);
+		OutContainer.diAccumTargetID = renderGraphDeprecated_->AddTarget(gAccumDesc);
 	}
-	OutContainer.miplevelTargetID = renderGraph_->AddTarget(gMiplevelDesc);
-	OutContainer.hiZTargetID = renderGraph_->AddTarget(gHiZDesc);
+	OutContainer.miplevelTargetID = renderGraphDeprecated_->AddTarget(gMiplevelDesc);
+	OutContainer.hiZTargetID = renderGraphDeprecated_->AddTarget(gHiZDesc);
 	if (bEnableVisibilityBuffer_ && bEnableMeshShader_)
 	{
 		// count total meshlets.
 		size_t totalMeshlets = 0;
-		for (auto&& mesh : sceneMeshes_)
+		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			auto res = mesh->GetParentResource();
 			for (auto&& submesh : res->GetSubmeshes())
@@ -1342,7 +1097,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 			}
 		}
 		gDrawFlagDesc.width = totalMeshlets * 4;
-		OutContainer.drawFlagTargetID = renderGraph_->AddTarget(gDrawFlagDesc);
+		OutContainer.drawFlagTargetID = renderGraphDeprecated_->AddTarget(gDrawFlagDesc);
 	}
 
 	// create render passes.
@@ -1652,7 +1407,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	tonemapPass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 	passes.push_back(tonemapPass);
 
-	renderGraph_->CreateRenderPasses(&device_, passes, histories, returns);
+	renderGraphDeprecated_->CreateRenderPasses(&device_, passes, histories, returns);
 }
 
 struct TemporalCB
@@ -1666,6 +1421,7 @@ struct TemporalCB
 };
 void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 {
+	auto cbvMan = renderSys_->GetCbvManager();
 	{
 		DirectX::XMFLOAT3 upVec(0.0f, 1.0f, 0.0f);
 		float Zn = 0.1f;
@@ -1712,11 +1468,11 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbScene.feedbackIndex.x = (frameIndex_ % 16) % 4;
 		cbScene.feedbackIndex.y = (frameIndex_ % 16) / 4;
 
-		OutCBs.hSceneCB = cbvMan_->GetTemporal(&cbScene, sizeof(cbScene));
+		OutCBs.hSceneCB = cbvMan->GetTemporal(&cbScene, sizeof(cbScene));
 
 		FrustumCB cbFrustum;
 		sl12::CalcFrustumPlanes(mtxWorldToClip, true, true, cbFrustum.frustumPlanes);
-		OutCBs.hFrustumCB = cbvMan_->GetTemporal(&cbFrustum, sizeof(cbFrustum));
+		OutCBs.hFrustumCB = cbvMan->GetTemporal(&cbFrustum, sizeof(cbFrustum));
 
 		mtxPrevWorldToView_ = mtxWorldToView;
 		mtxPrevWorldToClip_ = mtxWorldToClip;
@@ -1739,7 +1495,7 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbLight.directionalColor.y = directionalColor_[1] * directionalIntensity_;
 		cbLight.directionalColor.z = directionalColor_[2] * directionalIntensity_;
 
-		OutCBs.hLightCB = cbvMan_->GetTemporal(&cbLight, sizeof(cbLight));
+		OutCBs.hLightCB = cbvMan->GetTemporal(&cbLight, sizeof(cbLight));
 
 		// NOTE: dirF3 is invert light vector.
 		DirectX::XMFLOAT3 lightDir = DirectX::XMFLOAT3(-dirF3.x, -dirF3.y, -dirF3.z);
@@ -1758,15 +1514,17 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		right = DirectX::XMVector3Normalize(right);
 		up = DirectX::XMVector3Normalize(DirectX::XMVector3Cross(right, front));
 
+		DirectX::XMFLOAT3 sceneAABBMin, sceneAABBMax;
+		scene_->GetSceneAABB(sceneAABBMin, sceneAABBMax);
 		DirectX::XMVECTOR pnts[] = {
-			DirectX::XMVectorSet(sceneAABBMax_.x, sceneAABBMax_.y, sceneAABBMax_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMax_.x, sceneAABBMax_.y, sceneAABBMin_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMax_.x, sceneAABBMin_.y, sceneAABBMax_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMax_.x, sceneAABBMin_.y, sceneAABBMin_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMin_.x, sceneAABBMax_.y, sceneAABBMax_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMin_.x, sceneAABBMax_.y, sceneAABBMin_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMin_.x, sceneAABBMin_.y, sceneAABBMax_.z, 1.0f),
-			DirectX::XMVectorSet(sceneAABBMin_.x, sceneAABBMin_.y, sceneAABBMin_.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMax.x, sceneAABBMax.y, sceneAABBMax.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMax.x, sceneAABBMax.y, sceneAABBMin.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMax.x, sceneAABBMin.y, sceneAABBMax.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMax.x, sceneAABBMin.y, sceneAABBMin.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMin.x, sceneAABBMax.y, sceneAABBMax.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMin.x, sceneAABBMax.y, sceneAABBMin.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMin.x, sceneAABBMin.y, sceneAABBMax.z, 1.0f),
+			DirectX::XMVectorSet(sceneAABBMin.x, sceneAABBMin.y, sceneAABBMin.z, 1.0f),
 		};
 		DirectX::XMFLOAT3 lsAABBMax(-FLT_MAX, -FLT_MAX, -FLT_MAX), lsAABBMin(FLT_MAX, FLT_MAX, FLT_MAX);
 		for (auto pnt : pnts)
@@ -1800,7 +1558,7 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbShadow.exponent = DirectX::XMFLOAT2(shadowExponent_, shadowExponent_);
 		cbShadow.constBias = shadowBias_;
 
-		OutCBs.hShadowCB = cbvMan_->GetTemporal(&cbShadow, sizeof(cbShadow));
+		OutCBs.hShadowCB = cbvMan->GetTemporal(&cbShadow, sizeof(cbShadow));
 	}
 	{
 		const float kSigma = 2.0f;
@@ -1820,10 +1578,10 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbBlur.kernel0 = DirectX::XMFLOAT4(gaussianKernels[0], gaussianKernels[1], gaussianKernels[2], gaussianKernels[3]);
 		cbBlur.kernel1 = DirectX::XMFLOAT4(gaussianKernels[4], 0.0f, 0.0f, 0.0f);
 		cbBlur.offset = DirectX::XMFLOAT2(1.5f / (float)displayWidth_, 0.0f);
-		OutCBs.hBlurXCB = cbvMan_->GetTemporal(&cbBlur, sizeof(cbBlur));
+		OutCBs.hBlurXCB = cbvMan->GetTemporal(&cbBlur, sizeof(cbBlur));
 
 		cbBlur.offset = DirectX::XMFLOAT2(0.0f, 1.5f / (float)displayHeight_);
-		OutCBs.hBlurYCB = cbvMan_->GetTemporal(&cbBlur, sizeof(cbBlur));
+		OutCBs.hBlurYCB = cbvMan->GetTemporal(&cbBlur, sizeof(cbBlur));
 	}
 	{
 		DetailCB cbDetail;
@@ -1834,7 +1592,7 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbDetail.triplanarType = triplanarType_;
 		cbDetail.triplanarTile = triplanarTile_;
 
-		OutCBs.hDetailCB = cbvMan_->GetTemporal(&cbDetail, sizeof(cbDetail));
+		OutCBs.hDetailCB = cbvMan->GetTemporal(&cbDetail, sizeof(cbDetail));
 	}
 	{
 		AmbOccCB cbAO;
@@ -1858,14 +1616,14 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 		cbAO.denoiseBaseWeight = denoiseBaseWeight_;
 		cbAO.denoiseDepthSigma = denoiseDepthSigma_;
 
-		OutCBs.hAmbOccCB = cbvMan_->GetTemporal(&cbAO, sizeof(cbAO));
+		OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
 	}
 	{
 		DebugCB cbDebug;
 
 		cbDebug.displayMode = displayMode_;
 
-		OutCBs.hDebugCB = cbvMan_->GetTemporal(&cbDebug, sizeof(cbDebug));
+		OutCBs.hDebugCB = cbvMan->GetTemporal(&cbDebug, sizeof(cbDebug));
 	}
 }
 
@@ -1996,7 +1754,7 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Texture Streaming", &bIsTexStreaming_);
 			if (ImGui::Button("Miplevel Print"))
 			{
-				for (auto&& work : workMaterials_)
+				for (auto&& work : scene_->GetWorkMaterials())
 				{
 					if (!work.pResMaterial->baseColorTex.IsValid())
 						continue;
@@ -2112,22 +1870,25 @@ bool SampleApplication::Execute()
 	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
 
 	device_.WaitPresent();
-	device_.GetTextureStreamAllocator()->GabageCollect(&texStreamer_);
+	device_.GetTextureStreamAllocator()->GabageCollect(renderSys_->GetTextureStreamer());
 	device_.SyncKillObjects();
+
+	auto meshMan = renderSys_->GetMeshManager();
+	auto cbvMan = renderSys_->GetCbvManager();
 	
 	pTimestamp->Reset();
 	pTimestamp->Query(pCmdList);
 	device_.LoadRenderCommands(pCmdList);
-	meshMan_->BeginNewFrame(pCmdList);
-	cbvMan_->BeginNewFrame();
-	renderGraph_->BeginNewFrame();
+	meshMan->BeginNewFrame(pCmdList);
+	cbvMan->BeginNewFrame();
+	renderGraphDeprecated_->BeginNewFrame();
 
 	if (!detailDerivTex_.IsValid())
 	{
 		detailDerivTex_ = sl12::MakeUnique<sl12::Texture>(&device_);
 		detailDerivSrv_ = sl12::MakeUnique<sl12::TextureView>(&device_);
 
-		auto detail_res = hDetailTex_.GetItem<sl12::ResourceItemTextureBase>();
+		auto detail_res = scene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>();
 		sl12::TextureDesc desc = detail_res->GetTexture().GetTextureDesc();
 		desc.format = DXGI_FORMAT_R8G8_UNORM;
 		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
@@ -2175,14 +1936,14 @@ bool SampleApplication::Execute()
 
 	// create mesh cbuffers.
 	std::vector<sl12::CbvHandle> MeshCBs;
-	for (auto&& mesh : sceneMeshes_)
+	for (auto&& mesh : scene_->GetSceneMeshes())
 	{
 		// set mesh constant.
 		MeshCB cbMesh;
 		cbMesh.mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
 		cbMesh.mtxLocalToWorld = mesh->GetMtxLocalToWorld();
 		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
-		MeshCBs.push_back(cbvMan_->GetTemporal(&cbMesh, sizeof(cbMesh)));
+		MeshCBs.push_back(cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh)));
 	}
 
 	// create meshlet buffers.
@@ -2196,7 +1957,7 @@ bool SampleApplication::Execute()
 		indirectArgBufferState = D3D12_RESOURCE_STATE_COMMON;
 
 		sl12::u32 numMeshlets = 0;
-		for (auto&& mesh : sceneMeshes_)
+		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
 			sl12::u32 cnt = 0;
@@ -2210,13 +1971,13 @@ bool SampleApplication::Execute()
 			cb.meshletCount = cnt;
 			cb.argStartAddress = numMeshlets * kIndirectArgsBufferStride;
 
-			auto handle = cbvMan_->GetResident(sizeof(cb));
-			cbvMan_->RequestResidentCopy(handle, &cb, sizeof(cb));
+			auto handle = cbvMan->GetResident(sizeof(cb));
+			cbvMan->RequestResidentCopy(handle, &cb, sizeof(cb));
 			meshletCBs_.push_back(std::move(handle));
 
 			numMeshlets += cnt;
 		}
-		cbvMan_->ExecuteCopy(pCmdList);
+		cbvMan->ExecuteCopy(pCmdList);
 
 		// create buffers.
 		indirectArgBuffer_ = sl12::MakeUnique<sl12::Buffer>(&device_);
@@ -2239,7 +2000,7 @@ bool SampleApplication::Execute()
 
 		// build upload buffer.
 		sl12::u8* pUpload = static_cast<sl12::u8*>(indirectArgUpload_->Map());
-		for (auto&& mesh : sceneMeshes_)
+		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
 			for (auto&& submesh : submeshes)
@@ -2272,15 +2033,15 @@ bool SampleApplication::Execute()
 	pCmdList->GetLatestCommandList()->CopyResource(indirectArgBuffer_->GetResourceDep(), indirectArgUpload_->GetResourceDep());
 
 	// shadow depth pass.
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 0, "ShadowDepthPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// clear rt.
-		D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.shadowDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
+		D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.shadowDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
 		float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 		pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
@@ -2314,7 +2075,7 @@ bool SampleApplication::Execute()
 
 		// draw meshes.
 		uint meshIndex = 0;
-		for (auto&& mesh : sceneMeshes_)
+		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			// set mesh constant.
 			descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
@@ -2348,7 +2109,7 @@ bool SampleApplication::Execute()
 			meshIndex++;
 		}
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 #if SHADOW_TYPE == 1
 	// shadow exponent pass.
@@ -2453,29 +2214,29 @@ bool SampleApplication::Execute()
 		descSet.SetCsUav(0, indirectArgUAV_->GetDescInfo().cpuHandle);
 
 		sl12::u32 meshIndex = 0;
-		for (auto&& mesh : sceneMeshes_)
+		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			// set mesh constant.
 			descSet.SetCsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetCsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 			sl12::u32 meshletCnt = 0;
-			if (hSuzanneMesh_.IsValid() && mesh->GetParentResource() == hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>())
+			if (scene_->GetSuzanneMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
 				descSet.SetCsSrv(0, SuzanneMeshletBV_->GetDescInfo().cpuHandle);
 				meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
 			}
-			else if (hSponzaMesh_.IsValid() && mesh->GetParentResource() == hSponzaMesh_.GetItem<sl12::ResourceItemMesh>())
+			else if (scene_->GetSponzaMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
 				descSet.SetCsSrv(0, SponzaMeshletBV_->GetDescInfo().cpuHandle);
 				meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
 			}
-			else if (hCurtainMesh_.IsValid() && mesh->GetParentResource() == hCurtainMesh_.GetItem<sl12::ResourceItemMesh>())
+			else if (scene_->GetCurtainMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
 				descSet.SetCsSrv(0, CurtainMeshletBV_->GetDescInfo().cpuHandle);
 				meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
 			}
-			else if (hSphereMesh_.IsValid() && mesh->GetParentResource() == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+			else if (scene_->GetSphereMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
 				descSet.SetCsSrv(0, SphereMeshletBV_->GetDescInfo().cpuHandle);
 				meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
@@ -2495,17 +2256,17 @@ bool SampleApplication::Execute()
 	}
 
 	// clear miplevel pass.
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "ClearMiplevelPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
 		descSet.Reset();
-		descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 		// set pipeline.
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoClearMip_->GetPSO());
@@ -2519,10 +2280,12 @@ bool SampleApplication::Execute()
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
 		// feedback clear.
-		pCmdList->TransitionBarrier(&miplevelBuffer_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-		pCmdList->GetLatestCommandList()->CopyResource(miplevelBuffer_->GetResourceDep(), miplevelCopySrc_->GetResourceDep());
+		auto miplevelBuffer = scene_->GetMiplevelBuffer();
+		auto miplevelCopySrc = scene_->GetMiplevelCopySrc();
+		pCmdList->TransitionBarrier(miplevelBuffer, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
+		pCmdList->GetLatestCommandList()->CopyResource(miplevelBuffer->GetResourceDep(), miplevelCopySrc->GetResourceDep());
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 	
 	if (!bEnableVisibilityBuffer_)
 	{
@@ -2535,15 +2298,15 @@ bool SampleApplication::Execute()
 		}
 
 		// depth pre pass.
-		renderGraph_->NextPass(pCmdList);
+		renderGraphDeprecated_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 0, "DepthPrePass");
 
 			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
+			renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 			// clear depth.
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
+			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
 			pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
 			// set render targets.
@@ -2566,7 +2329,7 @@ bool SampleApplication::Execute()
 			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 			// set descriptors.
-			auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+			auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -2577,7 +2340,7 @@ bool SampleApplication::Execute()
 			// draw meshes.
 			sl12::u32 meshIndex = 0;
 			sl12::u32 meshletTotal = 0;
-			for (auto&& mesh : sceneMeshes_)
+			for (auto&& mesh : scene_->GetSceneMeshes())
 			{
 				auto meshRes = mesh->GetParentResource();
 				
@@ -2616,26 +2379,26 @@ bool SampleApplication::Execute()
 				meshIndex++;
 			}
 		}
-		renderGraph_->EndPass();
+		renderGraphDeprecated_->EndPass();
 		
 		// gbuffer pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->NextPass(pCmdList);
+		renderGraphDeprecated_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 0, "GBufferPass");
 
 			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
+			renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 			// clear depth.
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
+			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
 			pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
 			// set render targets.
 			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
-				renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
 			};
 			pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
 
@@ -2656,7 +2419,7 @@ bool SampleApplication::Execute()
 			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 			// set descriptors.
-			auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+			auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -2670,20 +2433,20 @@ bool SampleApplication::Execute()
 			{
 				descSet.SetPsSrv(3, detailDerivSrv_->GetDescInfo().cpuHandle);
 			}
-			descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
-			descSet.SetPsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetPsSampler(0, renderSys_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+			descSet.SetPsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 			sl12::GraphicsPipelineState* NowPSO = nullptr;
 
 			// draw meshes.
 			sl12::u32 meshIndex = 0;
 			sl12::u32 meshletTotal = 0;
-			for (auto&& mesh : sceneMeshes_)
+			for (auto&& mesh : scene_->GetSceneMeshes())
 			{
 				// select pso.
 				auto meshRes = mesh->GetParentResource();
 				sl12::GraphicsPipelineState* pso = &psoMesh_;
-				if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+				if (scene_->GetSphereMeshHandle().IsValid() && meshRes == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 				{
 					pso = &psoTriplanar_;
 				}
@@ -2730,12 +2493,12 @@ bool SampleApplication::Execute()
 					}
 					else
 					{
-						auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
+						auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 						descSet.SetPsSrv(0, dot_res->GetTextureView().GetDescInfo().cpuHandle);
 					}
 
 					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPsC1_, &descSet);
-					pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rsVsPsC1_->GetRootConstantIndex(), (UINT)GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]), 0);
+					pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rsVsPsC1_->GetRootConstantIndex(), (UINT)scene_->GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]), 0);
 
 #if 0
 					UINT StartIndexLocation = (UINT)(submesh.indexOffsetBytes / sl12::ResourceItemMesh::GetIndexStride());
@@ -2758,7 +2521,7 @@ bool SampleApplication::Execute()
 				meshIndex++;
 			}
 		}
-		renderGraph_->EndPass();
+		renderGraphDeprecated_->EndPass();
 	}
 	else
 	{
@@ -2775,20 +2538,20 @@ bool SampleApplication::Execute()
 
 		// visibility pass.
 		pTimestamp->Query(pCmdList);
-		renderGraph_->NextPass(pCmdList);
+		renderGraphDeprecated_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 0, "VisibilityPass");
 
 			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
+			renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 			// clear depth.
-			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
+			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
 			pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
 			// set render targets.
 			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
-				renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->rtvs[0]->GetDescInfo().cpuHandle,
+				renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->rtvs[0]->GetDescInfo().cpuHandle,
 			};
 			pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
 
@@ -2824,7 +2587,7 @@ bool SampleApplication::Execute()
 				// draw meshes.
 				sl12::u32 meshIndex = 0;
 				sl12::u32 meshletTotal = 0;
-				for (auto&& mesh : sceneMeshes_)
+				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					// set mesh constant.
 					descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
@@ -2872,19 +2635,19 @@ bool SampleApplication::Execute()
 				descSet.SetAsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
 				if (hiZHistory_ != sl12::kInvalidTargetID)
 				{
-					descSet.SetAsSrv(1, renderGraph_->GetTarget(hiZHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+					descSet.SetAsSrv(1, renderGraphDeprecated_->GetTarget(hiZHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
 				}
 				else
 				{
 					auto black = device_.GetDummyTextureView(sl12::DummyTex::Black);
 					descSet.SetAsSrv(1, black->GetDescInfo().cpuHandle);
 				}
-				descSet.SetAsUav(0, renderGraph_->GetTarget(TargetContainer.drawFlagTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetAsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.drawFlagTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 				// ms
 				descSet.SetMsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetMsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetMsSrv(0, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
-				descSet.SetMsSrv(1, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(0, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(1, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(2, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(3, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(4, drawCallBV_->GetDescInfo().cpuHandle);
@@ -2897,28 +2660,28 @@ bool SampleApplication::Execute()
 				// draw meshes.
 				sl12::u32 meshIndex = 0;
 				sl12::u32 meshletTotal = 0;
-				for (auto&& mesh : sceneMeshes_)
+				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					auto meshRes = mesh->GetParentResource();
 
 					sl12::BufferView* pMeshletBoundSrv = nullptr;
 					UINT meshletCnt = 0;
-					if (hSuzanneMesh_.IsValid() && meshRes == hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>())
+					if (scene_->GetSuzanneMeshHandle().IsValid() && meshRes == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SuzanneMeshletBV_;
 						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hSponzaMesh_.IsValid() && meshRes == hSponzaMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetSponzaMeshHandle().IsValid() && meshRes == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SponzaMeshletBV_;
 						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hCurtainMesh_.IsValid() && meshRes == hCurtainMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetCurtainMeshHandle().IsValid() && meshRes == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &CurtainMeshletBV_;
 						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetSphereMeshHandle().IsValid() && meshRes == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SphereMeshletBV_;
 						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
@@ -2941,20 +2704,20 @@ bool SampleApplication::Execute()
 				}
 			}
 		}
-		renderGraph_->EndPass();
+		renderGraphDeprecated_->EndPass();
 
 		if (bEnableMeshShader_)
 		{
 			// depth reduction pass.
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				GPU_MARKER(pCmdList, 1, "DepthReductionPass");
 				
 				// output barrier.
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
-				auto srv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
-				auto target = renderGraph_->GetTarget(TargetContainer.hiZTargetID);
+				auto srv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
+				auto target = renderGraphDeprecated_->GetTarget(TargetContainer.hiZTargetID);
 				auto width = gHiZDesc.width;
 				auto height = gHiZDesc.height;
 				for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
@@ -3004,20 +2767,20 @@ bool SampleApplication::Execute()
 				// render graph glitch.
 				pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				GPU_MARKER(pCmdList, 0, "VisibilityPass2nd");
 
 				// output barrier.
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 				// set render targets.
 				D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
-					renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->rtvs[0]->GetDescInfo().cpuHandle,
 				};
-				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
 				pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
 
 				// set viewport.
@@ -3042,13 +2805,13 @@ bool SampleApplication::Execute()
 				// as
 				descSet.SetAsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetAsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetAsSrv(1, renderGraph_->GetTarget(TargetContainer.hiZTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-				descSet.SetAsSrv(2, renderGraph_->GetTarget(TargetContainer.drawFlagTargetID)->bufferSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetAsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.hiZTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetAsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.drawFlagTargetID)->bufferSrvs[0]->GetDescInfo().cpuHandle);
 				// ms
 				descSet.SetMsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetMsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetMsSrv(0, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
-				descSet.SetMsSrv(1, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(0, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetMsSrv(1, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(2, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(3, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetMsSrv(4, drawCallBV_->GetDescInfo().cpuHandle);
@@ -3061,28 +2824,28 @@ bool SampleApplication::Execute()
 				// draw meshes.
 				sl12::u32 meshIndex = 0;
 				sl12::u32 meshletTotal = 0;
-				for (auto&& mesh : sceneMeshes_)
+				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					auto meshRes = mesh->GetParentResource();
 
 					sl12::BufferView* pMeshletBoundSrv = nullptr;
 					UINT meshletCnt = 0;
-					if (hSuzanneMesh_.IsValid() && meshRes == hSuzanneMesh_.GetItem<sl12::ResourceItemMesh>())
+					if (scene_->GetSuzanneMeshHandle().IsValid() && meshRes == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SuzanneMeshletBV_;
 						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hSponzaMesh_.IsValid() && meshRes == hSponzaMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetSponzaMeshHandle().IsValid() && meshRes == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SponzaMeshletBV_;
 						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hCurtainMesh_.IsValid() && meshRes == hCurtainMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetCurtainMeshHandle().IsValid() && meshRes == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &CurtainMeshletBV_;
 						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
 					}
-					else if (hSphereMesh_.IsValid() && meshRes == hSphereMesh_.GetItem<sl12::ResourceItemMesh>())
+					else if (scene_->GetSphereMeshHandle().IsValid() && meshRes == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
 						pMeshletBoundSrv = &SphereMeshletBV_;
 						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
@@ -3104,21 +2867,21 @@ bool SampleApplication::Execute()
 					meshIndex++;
 				}
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 		}
 		
 		if (!bEnableWorkGraph_)
 		{
 			// material depth pass.
 			pTimestamp->Query(pCmdList);
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				GPU_MARKER(pCmdList, 1, "MaterialDepthPass");
 			
 				// output barrier.
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
-				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
 				pCmdList->GetLatestCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
 
 				// set viewport.
@@ -3140,11 +2903,11 @@ bool SampleApplication::Execute()
 				// set descriptors.
 				sl12::DescriptorSet descSet;
 				descSet.Reset();
-				descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(4, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 
 				// set pipeline.
 				pCmdList->GetLatestCommandList()->SetPipelineState(psoMatDepth_->GetPSO());
@@ -3154,12 +2917,12 @@ bool SampleApplication::Execute()
 				// draw fullscreen.
 				pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 
 			// classify pass.
 			sl12::CbvHandle hTileCB;
 			pTimestamp->Query(pCmdList);
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 				UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
@@ -3167,13 +2930,13 @@ bool SampleApplication::Execute()
 				cb.numX = x;
 				cb.numY = y;
 				cb.tileMax = x * y;
-				cb.materialMax = (sl12::u32)workMaterials_.size();
-				hTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
+				cb.materialMax = (sl12::u32)scene_->GetWorkMaterials().size();
+				hTileCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 			
 				GPU_MARKER(pCmdList, 2, "ClassifyPass");
 			
 				// output barrier.
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 				pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 				pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -3195,11 +2958,11 @@ bool SampleApplication::Execute()
 				descSet.Reset();
 				descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetCsCbv(1, hTileCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(1, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(2, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(3, drawCallBV_->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(4, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 				descSet.SetCsUav(0, drawArgUAV_->GetDescInfo().cpuHandle);
 				descSet.SetCsUav(1, tileIndexUAV_->GetDescInfo().cpuHandle);
 
@@ -3213,23 +2976,23 @@ bool SampleApplication::Execute()
 				pCmdList->TransitionBarrier(&drawArgB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
 				pCmdList->TransitionBarrier(&tileIndexB_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 
 			// material tile pass.
 			pTimestamp->Query(pCmdList);
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				GPU_MARKER(pCmdList, 1, "MaterialTilePass");
 			
 				// output barrier.
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 				D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
-					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
-					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
-					renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[0])->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[1])->rtvs[0]->GetDescInfo().cpuHandle,
+					renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->rtvs[0]->GetDescInfo().cpuHandle,
 				};
-				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraph_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
+				D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.matDepthTargetID)->dsvs[0]->GetDescInfo().cpuHandle;
 				pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
 
 				// set viewport.
@@ -3249,7 +3012,7 @@ bool SampleApplication::Execute()
 				pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 				// set descriptors.
-				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 				sl12::DescriptorSet descSet;
 				descSet.Reset();
 				descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -3257,14 +3020,14 @@ bool SampleApplication::Execute()
 				descSet.SetVsSrv(0, tileIndexBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetPsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(1, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(2, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(3, instanceBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(5, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(6, drawCallBV_->GetDescInfo().cpuHandle);
-				descSet.SetPsSrv(7, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSrv(7, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 				if (detailType_ != 3)
 				{
 					descSet.SetPsSrv(11, detail_res->GetTextureView().GetDescInfo().cpuHandle);
@@ -3273,13 +3036,13 @@ bool SampleApplication::Execute()
 				{
 					descSet.SetPsSrv(11, detailDerivSrv_->GetDescInfo().cpuHandle);
 				}
-				descSet.SetPsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
-				descSet.SetPsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetPsSampler(0, renderSys_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+				descSet.SetPsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 				sl12::GraphicsPipelineState* NowPSO = nullptr;
 
 				sl12::u32 matIndex = 0;
-				for (auto&& work : workMaterials_)
+				for (auto&& work : scene_->GetWorkMaterials())
 				{
 					sl12::GraphicsPipelineState* pso = &psoMaterialTile_;
 					if (work.psoType == 1)
@@ -3297,7 +3060,7 @@ bool SampleApplication::Execute()
 			
 					MaterialTileCB cb;
 					cb.materialIndex = matIndex;
-					sl12::CbvHandle hMatTileCB = cbvMan_->GetTemporal(&cb, sizeof(cb));
+					sl12::CbvHandle hMatTileCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 					descSet.SetVsCbv(2, hMatTileCB.GetCBV()->GetDescInfo().cpuHandle);
 
 					if (work.psoType == 0)
@@ -3312,7 +3075,7 @@ bool SampleApplication::Execute()
 					}
 					else
 					{
-						auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
+						auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 						descSet.SetPsSrv(8, dot_res->GetTextureView().GetDescInfo().cpuHandle);
 					}
 
@@ -3330,33 +3093,33 @@ bool SampleApplication::Execute()
 					matIndex++;
 				}
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 		}
 		else
 		{
 			// material resolve pass.
 			pTimestamp->Query(pCmdList);
-			renderGraph_->NextPass(pCmdList);
+			renderGraphDeprecated_->NextPass(pCmdList);
 			{
 				GPU_MARKER(pCmdList, 1, "MaterialResolvePass");
 
-				renderGraph_->BarrierOutputsAll(pCmdList);
+				renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
-				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(hDetailTex_.GetItem<sl12::ResourceItemTextureBase>());
+				auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 
 				sl12::DescriptorSet descSet;
 				descSet.Reset();
 				descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 				descSet.SetCsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(1, meshMan_->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(2, meshMan_->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.visibilityTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(1, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(2, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(3, instanceBV_->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(4, submeshBV_->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(5, meshletBV_->GetDescInfo().cpuHandle);
 				descSet.SetCsSrv(6, drawCallBV_->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(7, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-				descSet.SetCsSrv(8, materialDataBV_->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(7, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(8, scene_->GetMaterialDataBV()->GetDescInfo().cpuHandle);
 				if (detailType_ != 3)
 				{
 					descSet.SetCsSrv(9, detail_res->GetTextureView().GetDescInfo().cpuHandle);
@@ -3365,17 +3128,17 @@ bool SampleApplication::Execute()
 				{
 					descSet.SetCsSrv(9, detailDerivSrv_->GetDescInfo().cpuHandle);
 				}
-				descSet.SetCsSampler(0, linearSampler_->GetDescInfo().cpuHandle);
-				descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-				descSet.SetCsUav(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->uavs[0]->GetDescInfo().cpuHandle);
-				descSet.SetCsUav(2, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->uavs[0]->GetDescInfo().cpuHandle);
-				descSet.SetCsUav(3, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSampler(0, renderSys_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.miplevelTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(1, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[0])->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(2, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[1])->uavs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsUav(3, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->uavs[0]->GetDescInfo().cpuHandle);
 
 				// set program.
 				materialResolveContext_->SetProgram(pCmdList, D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE);
 
 				std::vector<std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>> bindlessArrays;
-				bindlessArrays.push_back(bindlessTextures_);
+				bindlessArrays.push_back(scene_->GetBindlessTextures());
 				pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsWg_, &descSet, &bindlessArrays);
 
 				// dispatch graph.
@@ -3390,24 +3153,24 @@ bool SampleApplication::Execute()
 				record.GridSize[2] = 1;
 				materialResolveContext_->DispatchGraphCPU(pCmdList, 0, 1, sizeof(DistributeNodeRecord), &record);
 			}
-			renderGraph_->EndPass();
+			renderGraphDeprecated_->EndPass();
 		}
 	}
 
 	// feedback miplevel pass.
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "FeedbackMiplevelPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
-		pCmdList->TransitionBarrier(&miplevelBuffer_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
+		pCmdList->TransitionBarrier(scene_->GetMiplevelBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
 		descSet.Reset();
-		descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.miplevelTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsUav(0, miplevelUAV_->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.miplevelTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, scene_->GetMiplevelUAV()->GetDescInfo().cpuHandle);
 
 		// set pipeline.
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoFeedbackMip_->GetPSO());
@@ -3420,16 +3183,16 @@ bool SampleApplication::Execute()
 		UINT y = (w + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// lighting pass.
 	pTimestamp->Query(pCmdList);
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "LightingPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
@@ -3437,18 +3200,18 @@ bool SampleApplication::Execute()
 		descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(2, TempCB.hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(3, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(3, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 #if SHADOW_TYPE == 0
-		descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.shadowDepthTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(4, renderGraphDeprecated_->GetTarget(TargetContainer.shadowDepthTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 #else
 		descSet.SetCsSrv(4, renderGraph_->GetTarget(shadowExpTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 #endif
-		descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 #if SHADOW_TYPE == 0
-		descSet.SetCsSampler(0, shadowSampler_->GetDescInfo().cpuHandle);
+		descSet.SetCsSampler(0, renderSys_->GetShadowSampler()->GetDescInfo().cpuHandle);
 #else
 		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
 #endif
@@ -3462,18 +3225,18 @@ bool SampleApplication::Execute()
 		UINT y = (displayHeight_ + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// depth reduction pass.
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "DepthReductionPass");
 		
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
-		auto srv = renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
-		auto target = renderGraph_->GetTarget(TargetContainer.hiZTargetID);
+		auto srv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
+		auto target = renderGraphDeprecated_->GetTarget(TargetContainer.hiZTargetID);
 		auto width = gHiZDesc.width;
 		auto height = gHiZDesc.height;
 		for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
@@ -3523,28 +3286,28 @@ bool SampleApplication::Execute()
 		// render graph glitch.
 		pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// deinterleave pass.
 	if (bNeedDeinterleave)
 	{
-		renderGraph_->NextPass(pCmdList);
+		renderGraphDeprecated_->NextPass(pCmdList);
 		{
 			GPU_MARKER(pCmdList, 1, "DeinterleavePass");
 
 			// output barrier.
-			renderGraph_->BarrierOutputsAll(pCmdList);
+			renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 			// set descriptors.
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
 			descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.diDepthTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(1, renderGraph_->GetTarget(TargetContainer.diNormalTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsUav(2, renderGraph_->GetTarget(TargetContainer.diAccumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.diDepthTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(1, renderGraphDeprecated_->GetTarget(TargetContainer.diNormalTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(2, renderGraphDeprecated_->GetTarget(TargetContainer.diAccumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 			// set pipeline.
 			pCmdList->GetLatestCommandList()->SetPipelineState(psoDeinterleave_->GetPSO());
@@ -3555,17 +3318,17 @@ bool SampleApplication::Execute()
 			UINT y = (displayHeight_ + 7) / 8;
 			pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 		}
-		renderGraph_->EndPass();
+		renderGraphDeprecated_->EndPass();
 	}
 	
 	// ssao pass.
 	pTimestamp->Query(pCmdList);
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "SSAOPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
@@ -3574,25 +3337,25 @@ bool SampleApplication::Execute()
 		descSet.SetCsCbv(1, TempCB.hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
 		if (bNeedDeinterleave)
 		{
-			descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.diDepthTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.diNormalTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.diDepthTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.diNormalTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		}
 		else
 		{
-			descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		}
 		if (ssaoType_ == 2)
 		{
 			if (bNeedDeinterleave)
-				descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.diAccumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.diAccumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 			else
-				descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		}
 
-		descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.ssaoTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsUav(1, renderGraph_->GetTarget(TargetContainer.ssgiTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.ssaoTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(1, renderGraphDeprecated_->GetTarget(TargetContainer.ssgiTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSampler(0, renderSys_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 		// set pipeline.
 		switch (ssaoType_)
@@ -3617,42 +3380,42 @@ bool SampleApplication::Execute()
 		UINT y = (displayHeight_ + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// denoise pass.
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "DenoisePass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
 		descSet.Reset();
 		descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(1, TempCB.hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		if (depthHistory_ != sl12::kInvalidTargetID)
-			descSet.SetCsSrv(2, renderGraph_->GetTarget(depthHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(depthHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		else
-			descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
 		if (ssaoHistory_ != sl12::kInvalidTargetID)
-			descSet.SetCsSrv(3, renderGraph_->GetTarget(ssaoHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(3, renderGraphDeprecated_->GetTarget(ssaoHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		else
-			descSet.SetCsSrv(3, renderGraph_->GetTarget(TargetContainer.ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.denoiseTargetID)->uavs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsUav(1, renderGraph_->GetTarget(TargetContainer.denoiseGITargetID)->uavs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSampler(0, linearClampSampler_->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(3, renderGraphDeprecated_->GetTarget(TargetContainer.ssaoTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.denoiseTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(1, renderGraphDeprecated_->GetTarget(TargetContainer.denoiseGITargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSampler(0, renderSys_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 		if (ssaoType_ == 2)
 		{
-			descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(4, renderGraphDeprecated_->GetTarget(TargetContainer.ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 			if (ssgiHistory_ != sl12::kInvalidTargetID)
-				descSet.SetCsSrv(5, renderGraph_->GetTarget(ssgiHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(5, renderGraphDeprecated_->GetTarget(ssgiHistory_)->textureSrvs[0]->GetDescInfo().cpuHandle);
 			else
-				descSet.SetCsSrv(5, renderGraph_->GetTarget(TargetContainer.ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+				descSet.SetCsSrv(5, renderGraphDeprecated_->GetTarget(TargetContainer.ssgiTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 		}
 
 		// set pipeline.
@@ -3667,16 +3430,16 @@ bool SampleApplication::Execute()
 		UINT y = (displayHeight_ + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// indirect lighing pass.
 	pTimestamp->Query(pCmdList);
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 1, "Indirect LightingPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set descriptors.
 		sl12::DescriptorSet descSet;
@@ -3684,13 +3447,13 @@ bool SampleApplication::Execute()
 		descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetCsCbv(2, TempCB.hDebugCB.GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(0, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(1, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(2, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(3, renderGraph_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(4, renderGraph_->GetTarget(TargetContainer.denoiseTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsSrv(5, renderGraph_->GetTarget(TargetContainer.denoiseGITargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
-		descSet.SetCsUav(0, renderGraph_->GetTarget(TargetContainer.accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[0])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(1, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[1])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(2, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[2])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(3, renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(4, renderGraphDeprecated_->GetTarget(TargetContainer.denoiseTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(5, renderGraphDeprecated_->GetTarget(TargetContainer.denoiseGITargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, renderGraphDeprecated_->GetTarget(TargetContainer.accumTargetID)->uavs[0]->GetDescInfo().cpuHandle);
 
 		// set pipeline.
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoIndirect_->GetPSO());
@@ -3701,16 +3464,16 @@ bool SampleApplication::Execute()
 		UINT y = (displayHeight_ + 7) / 8;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// tonemap pass.
 	pTimestamp->Query(pCmdList);
-	renderGraph_->NextPass(pCmdList);
+	renderGraphDeprecated_->NextPass(pCmdList);
 	{
 		GPU_MARKER(pCmdList, 3, "TonemapPass");
 
 		// output barrier.
-		renderGraph_->BarrierOutputsAll(pCmdList);
+		renderGraphDeprecated_->BarrierOutputsAll(pCmdList);
 
 		// set render targets.
 		auto&& rtv = swapchain.GetCurrentRenderTargetView(kSwapchainBufferOffset)->GetDescInfo().cpuHandle;
@@ -3735,7 +3498,7 @@ bool SampleApplication::Execute()
 		// set descriptors.
 		sl12::DescriptorSet descSet;
 		descSet.Reset();
-		descSet.SetPsSrv(0, renderGraph_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
+		descSet.SetPsSrv(0, renderGraphDeprecated_->GetTarget(TargetContainer.accumTargetID)->textureSrvs[0]->GetDescInfo().cpuHandle);
 
 		// set pipeline.
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoTonemap_->GetPSO());
@@ -3745,7 +3508,7 @@ bool SampleApplication::Execute()
 		// draw fullscreen.
 		pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
 	}
-	renderGraph_->EndPass();
+	renderGraphDeprecated_->EndPass();
 
 	// draw GUI.
 	pTimestamp->Query(pCmdList);
@@ -3754,15 +3517,19 @@ bool SampleApplication::Execute()
 	// miplevel readback.
 	if (bIsTexStreaming_)
 	{
+		auto miplevelBuffer = scene_->GetMiplevelBuffer();
+		auto miplevelReadbacks = scene_->GetMiplevelReadbacks();
+		auto&& workMaterials = scene_->GetWorkMaterials();
+
 		// process copied buffer.
 		std::vector<sl12::u32> mipResults;
-		if (miplevelReadbacks_[1].IsValid())
+		if (miplevelReadbacks[1].IsValid())
 		{
-			mipResults.resize(miplevelReadbacks_[0]->GetBufferDesc().size / sizeof(sl12::u32));
-			void* p = miplevelReadbacks_[0]->Map();
-			memcpy(mipResults.data(), p, miplevelReadbacks_[0]->GetBufferDesc().size);
-			miplevelReadbacks_[0]->Unmap();
-			miplevelReadbacks_[0] = std::move(miplevelReadbacks_[1]);
+			mipResults.resize(miplevelReadbacks[0]->GetBufferDesc().size / sizeof(sl12::u32));
+			void* p = miplevelReadbacks[0]->Map();
+			memcpy(mipResults.data(), p, miplevelReadbacks[0]->GetBufferDesc().size);
+			miplevelReadbacks[0]->Unmap();
+			miplevelReadbacks[0] = std::move(miplevelReadbacks[1]);
 		}
 
 		ManageTextureStream(mipResults);
@@ -3771,18 +3538,18 @@ bool SampleApplication::Execute()
 		UniqueHandle<sl12::Buffer> readback = sl12::MakeUnique<sl12::Buffer>(&device_);
 		sl12::BufferDesc desc{};
 		desc.heap = sl12::BufferHeap::ReadBack;
-		desc.size = sizeof(sl12::u32) * workMaterials_.size();
+		desc.size = sizeof(sl12::u32) * workMaterials.size();
 		desc.usage = sl12::ResourceUsage::Unknown;
 		readback->Initialize(&device_, desc);
-		pCmdList->TransitionBarrier(&miplevelBuffer_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
-		pCmdList->GetLatestCommandList()->CopyResource(readback->GetResourceDep(), miplevelBuffer_->GetResourceDep());
-		if (!miplevelReadbacks_[0].IsValid())
+		pCmdList->TransitionBarrier(miplevelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
+		pCmdList->GetLatestCommandList()->CopyResource(readback->GetResourceDep(), miplevelBuffer->GetResourceDep());
+		if (!miplevelReadbacks[0].IsValid())
 		{
-			miplevelReadbacks_[0] = std::move(readback);
+			miplevelReadbacks[0] = std::move(readback);
 		}
 		else
 		{
-			miplevelReadbacks_[1] = std::move(readback);
+			miplevelReadbacks[1] = std::move(readback);
 		}
 
 	}
@@ -3816,142 +3583,142 @@ bool SampleApplication::Execute()
 	return true;
 }
 
-void SampleApplication::CreateMaterialList()
-{
-	if (!workMaterials_.empty())
-	{
-		return;
-	}
-
-	// list material.
-	for (auto&& mesh : sceneMeshes_)
-	{
-		auto meshRes = mesh->GetParentResource();
-
-		// select pso type.
-		int psoType = 0;
-		if (hSphereMesh_.IsValid() && hSphereMesh_.GetItem<sl12::ResourceItemMesh>() == meshRes)
-		{
-			psoType = 1;
-		}
-		
-		for (auto&& mat : meshRes->GetMaterials())
-		{
-			auto it = std::find_if(
-				workMaterials_.begin(), workMaterials_.end(),
-				[&mat](const WorkMaterial& rhs) { return rhs.pResMaterial == &mat; });
-			if (it == workMaterials_.end())
-			{
-				WorkMaterial work{};
-				work.pResMaterial = &mat;
-				work.psoType = psoType;
-				work.texHandles.push_back(work.pResMaterial->baseColorTex);
-				work.texHandles.push_back(work.pResMaterial->normalTex);
-				work.texHandles.push_back(work.pResMaterial->ormTex);
-
-				// add to list.
-				workMaterials_.push_back(work);
-			}
-		}
-	}
-
-	// work graph resources.
-	{
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Default;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.stride = sizeof(MaterialData);
-		desc.size = desc.stride * workMaterials_.size();
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-
-		materialDataB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-		materialDataCopyB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-		materialDataBV_ = sl12::MakeUnique<sl12::BufferView>(&device_);
-		materialDataB_->Initialize(&device_, desc);
-		materialDataBV_->Initialize(&device_, &materialDataB_, 0, (sl12::u32)workMaterials_.size(), sizeof(MaterialData));
-		desc.heap = sl12::BufferHeap::Dynamic;
-		materialDataCopyB_->Initialize(&device_, desc);
-
-		MaterialData* data = static_cast<MaterialData*>(materialDataCopyB_->Map());
-		auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
-		bindlessTextures_.clear();
-		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
-		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
-		bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
-		for (auto&& work : workMaterials_)
-		{
-			if (work.psoType == 0)
-			{
-				data->shaderIndex = 0;
-				// default.
-				data->colorTexIndex = data->ormTexIndex = 0;
-				data->normalTexIndex = 1;
-				// each textures.
-				auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->colorTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-				resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->normalTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-				resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->ormTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-			}
-			else
-			{
-				data->shaderIndex = 1;
-				data->colorTexIndex = data->ormTexIndex = 0;
-				data->normalTexIndex = 2;
-			}
-			data++;
-		}
-		materialDataCopyB_->Unmap();
-	}
-
-	// create miplevel feedback buffer.
-	{
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Default;
-		desc.size = sizeof(sl12::u32) * workMaterials_.size();
-		desc.stride = 0;
-		desc.usage = sl12::ResourceUsage::UnorderedAccess;
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-
-		miplevelBuffer_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-		miplevelBuffer_->Initialize(&device_, desc);
-		miplevelUAV_ = sl12::MakeUnique<sl12::UnorderedAccessView>(&device_);
-		miplevelUAV_->Initialize(&device_, &miplevelBuffer_, 0, 0, 0, 0);
-
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.usage = sl12::ResourceUsage::Unknown;
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-		miplevelCopySrc_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-		miplevelCopySrc_->Initialize(&device_, desc);
-
-		void* p = miplevelCopySrc_->Map();
-		memset(p, 0xff, desc.size);
-		miplevelCopySrc_->Unmap();
-	}
-
-	neededMiplevels_.resize(workMaterials_.size());
-	for (auto&& s : neededMiplevels_)
-	{
-		s.minLevel = 0xff;
-		s.latestLevel = 0xff;
-		s.time = 0;
-	}
-	miplevelReadbacks_[0].Reset();
-	miplevelReadbacks_[1].Reset();
-}
+// void SampleApplication::CreateMaterialList()
+// {
+// 	if (!workMaterials_.empty())
+// 	{
+// 		return;
+// 	}
+//
+// 	// list material.
+// 	for (auto&& mesh : scene_->GetSceneMeshes())
+// 	{
+// 		auto meshRes = mesh->GetParentResource();
+//
+// 		// select pso type.
+// 		int psoType = 0;
+// 		if (scene_->GetSphereMeshHandle().IsValid() && scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>() == meshRes)
+// 		{
+// 			psoType = 1;
+// 		}
+// 		
+// 		for (auto&& mat : meshRes->GetMaterials())
+// 		{
+// 			auto it = std::find_if(
+// 				workMaterials_.begin(), workMaterials_.end(),
+// 				[&mat](const WorkMaterial& rhs) { return rhs.pResMaterial == &mat; });
+// 			if (it == workMaterials_.end())
+// 			{
+// 				WorkMaterial work{};
+// 				work.pResMaterial = &mat;
+// 				work.psoType = psoType;
+// 				work.texHandles.push_back(work.pResMaterial->baseColorTex);
+// 				work.texHandles.push_back(work.pResMaterial->normalTex);
+// 				work.texHandles.push_back(work.pResMaterial->ormTex);
+//
+// 				// add to list.
+// 				workMaterials_.push_back(work);
+// 			}
+// 		}
+// 	}
+//
+// 	// work graph resources.
+// 	{
+// 		sl12::BufferDesc desc{};
+// 		desc.heap = sl12::BufferHeap::Default;
+// 		desc.usage = sl12::ResourceUsage::ShaderResource;
+// 		desc.stride = sizeof(MaterialData);
+// 		desc.size = desc.stride * workMaterials_.size();
+// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+//
+// 		materialDataB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+// 		materialDataCopyB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+// 		materialDataBV_ = sl12::MakeUnique<sl12::BufferView>(&device_);
+// 		materialDataB_->Initialize(&device_, desc);
+// 		materialDataBV_->Initialize(&device_, &materialDataB_, 0, (sl12::u32)workMaterials_.size(), sizeof(MaterialData));
+// 		desc.heap = sl12::BufferHeap::Dynamic;
+// 		materialDataCopyB_->Initialize(&device_, desc);
+//
+// 		MaterialData* data = static_cast<MaterialData*>(materialDataCopyB_->Map());
+// 		auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
+// 		bindlessTextures_.clear();
+// 		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
+// 		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
+// 		bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
+// 		for (auto&& work : workMaterials_)
+// 		{
+// 			if (work.psoType == 0)
+// 			{
+// 				data->shaderIndex = 0;
+// 				// default.
+// 				data->colorTexIndex = data->ormTexIndex = 0;
+// 				data->normalTexIndex = 1;
+// 				// each textures.
+// 				auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
+// 				if (resTex)
+// 				{
+// 					data->colorTexIndex = (UINT)bindlessTextures_.size();
+// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+// 				}
+// 				resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
+// 				if (resTex)
+// 				{
+// 					data->normalTexIndex = (UINT)bindlessTextures_.size();
+// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+// 				}
+// 				resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
+// 				if (resTex)
+// 				{
+// 					data->ormTexIndex = (UINT)bindlessTextures_.size();
+// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+// 				}
+// 			}
+// 			else
+// 			{
+// 				data->shaderIndex = 1;
+// 				data->colorTexIndex = data->ormTexIndex = 0;
+// 				data->normalTexIndex = 2;
+// 			}
+// 			data++;
+// 		}
+// 		materialDataCopyB_->Unmap();
+// 	}
+//
+// 	// create miplevel feedback buffer.
+// 	{
+// 		sl12::BufferDesc desc{};
+// 		desc.heap = sl12::BufferHeap::Default;
+// 		desc.size = sizeof(sl12::u32) * workMaterials_.size();
+// 		desc.stride = 0;
+// 		desc.usage = sl12::ResourceUsage::UnorderedAccess;
+// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+//
+// 		miplevelBuffer_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+// 		miplevelBuffer_->Initialize(&device_, desc);
+// 		miplevelUAV_ = sl12::MakeUnique<sl12::UnorderedAccessView>(&device_);
+// 		miplevelUAV_->Initialize(&device_, &miplevelBuffer_, 0, 0, 0, 0);
+//
+// 		desc.heap = sl12::BufferHeap::Dynamic;
+// 		desc.usage = sl12::ResourceUsage::Unknown;
+// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+// 		miplevelCopySrc_ = sl12::MakeUnique<sl12::Buffer>(&device_);
+// 		miplevelCopySrc_->Initialize(&device_, desc);
+//
+// 		void* p = miplevelCopySrc_->Map();
+// 		memset(p, 0xff, desc.size);
+// 		miplevelCopySrc_->Unmap();
+// 	}
+//
+// 	neededMiplevels_.resize(workMaterials_.size());
+// 	for (auto&& s : neededMiplevels_)
+// 	{
+// 		s.minLevel = 0xff;
+// 		s.latestLevel = 0xff;
+// 		s.time = 0;
+// 	}
+// 	miplevelReadbacks_[0].Reset();
+// 	miplevelReadbacks_[1].Reset();
+// }
 
 void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 {
@@ -3964,7 +3731,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	sl12::u32 submeshCount = 0;
 	sl12::u32 meshletCount = 0;
 	sl12::u32 drawCallCount = 0;
-	for (auto&& mesh : sceneMeshes_)
+	for (auto&& mesh : scene_->GetSceneMeshes())
 	{
 		auto meshRes = mesh->GetParentResource();
 		auto it = meshMap.find(meshRes);
@@ -3990,7 +3757,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	}
 
 	// create buffers.
-	if (instanceB_.IsValid() && (instanceB_->GetBufferDesc().size < sceneMeshes_.size() * sizeof(InstanceData)))
+	if (instanceB_.IsValid() && (instanceB_->GetBufferDesc().size < scene_->GetSceneMeshes().size() * sizeof(InstanceData)))
 	{
 		instanceB_.Reset();
 		instanceBV_.Reset();
@@ -4018,10 +3785,10 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 		sl12::BufferDesc desc;
 		desc.heap = sl12::BufferHeap::Default;
 		desc.stride = sizeof(InstanceData);
-		desc.size = sceneMeshes_.size() * desc.stride;
+		desc.size = scene_->GetSceneMeshes().size() * desc.stride;
 		desc.usage = sl12::ResourceUsage::ShaderResource;
 		instanceB_->Initialize(&device_, desc);
-		instanceBV_->Initialize(&device_, &instanceB_, 0, (sl12::u32)sceneMeshes_.size(), sizeof(InstanceData));
+		instanceBV_->Initialize(&device_, &instanceB_, 0, (sl12::u32)scene_->GetSceneMeshes().size(), sizeof(InstanceData));
 	}
 	if (!submeshB_.IsValid())
 	{
@@ -4072,7 +3839,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 		sl12::BufferDesc desc;
 		desc.heap = sl12::BufferHeap::Dynamic;
 		desc.stride = sizeof(InstanceData);
-		desc.size = sceneMeshes_.size() * desc.stride;
+		desc.size = scene_->GetSceneMeshes().size() * desc.stride;
 		desc.usage = sl12::ResourceUsage::Unknown;
 		instanceSrc->Initialize(&device_, desc);
 	}
@@ -4111,7 +3878,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	{
 		// select pso type.
 		int psoType = 0;
-		if (hSphereMesh_.IsValid() && hSphereMesh_.GetItem<sl12::ResourceItemMesh>() == meshRes)
+		if (scene_->GetSphereMeshHandle().IsValid() && scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>() == meshRes)
 		{
 			psoType = 1;
 		}
@@ -4120,7 +3887,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 		for (auto&& submesh : submeshes)
 		{
 			sl12::u32 submeshIndexOffset = (sl12::u32)(meshRes->GetIndexHandle().offset + submesh.indexOffsetBytes);
-			submeshData->materialIndex = GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]);
+			submeshData->materialIndex = scene_->GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]);
 			submeshData->posOffset = (sl12::u32)(meshRes->GetPositionHandle().offset + submesh.positionOffsetBytes);
 			submeshData->normalOffset = (sl12::u32)(meshRes->GetNormalHandle().offset + submesh.normalOffsetBytes);
 			submeshData->tangentOffset = (sl12::u32)(meshRes->GetTangentHandle().offset + submesh.tangentOffsetBytes);
@@ -4145,7 +3912,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 		}
 	}
 	sl12::u32 instanceIndex = 0;
-	for (auto&& mesh : sceneMeshes_)
+	for (auto&& mesh : scene_->GetSceneMeshes())
 	{
 		auto meshRes = mesh->GetParentResource();
 		auto meshIndex = meshMap[meshRes];
@@ -4181,15 +3948,16 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	drawCallSrc->Unmap();
 
 	// create draw args.
+	auto&& workMaterials = scene_->GetWorkMaterials();
 	UINT tileXCount = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileYCount = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileMax = tileXCount * tileYCount;
-	if (drawArgB_.IsValid() && (drawArgB_->GetBufferDesc().size < tileDrawIndirect_->GetStride() * workMaterials_.size()))
+	if (drawArgB_.IsValid() && (drawArgB_->GetBufferDesc().size < tileDrawIndirect_->GetStride() * workMaterials.size()))
 	{
 		drawArgB_.Reset();
 		drawArgUAV_.Reset();
 	}
-	if (tileIndexB_.IsValid() && (tileIndexB_->GetBufferDesc().size < sizeof(sl12::u32) * tileMax * workMaterials_.size()))
+	if (tileIndexB_.IsValid() && (tileIndexB_->GetBufferDesc().size < sizeof(sl12::u32) * tileMax * workMaterials.size()))
 	{
 		tileIndexB_.Reset();
 		tileIndexBV_.Reset();
@@ -4202,7 +3970,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 
 		sl12::BufferDesc desc;
 		desc.heap = sl12::BufferHeap::Default;
-		desc.size = tileDrawIndirect_->GetStride() * workMaterials_.size();
+		desc.size = tileDrawIndirect_->GetStride() * workMaterials.size();
 		desc.stride = 0;
 		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		drawArgB_->Initialize(&device_, desc);
@@ -4216,7 +3984,7 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 
 		sl12::BufferDesc desc;
 		desc.heap = sl12::BufferHeap::Default;
-		desc.size = sizeof(sl12::u32) * tileMax * workMaterials_.size();
+		desc.size = sizeof(sl12::u32) * tileMax * workMaterials.size();
 		desc.stride = 0;
 		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		tileIndexB_->Initialize(&device_, desc);
@@ -4239,19 +4007,20 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 	pCmdList->TransitionBarrier(&drawCallB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 
 	// copy work buffer resource.
-	if (materialDataCopyB_.IsValid())
-	{
-		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-		pCmdList->AddTransitionBarrier(&materialDataCopyB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE);
-		pCmdList->FlushBarriers();
-
-		pCmdList->GetLatestCommandList()->CopyBufferRegion(materialDataB_->GetResourceDep(), 0, materialDataCopyB_->GetResourceDep(), 0, materialDataCopyB_->GetBufferDesc().size);
-
-		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-		pCmdList->FlushBarriers();
-
-		materialDataCopyB_.Reset();
-	}
+	scene_->CopyMaterialData(pCmdList);
+	// if (materialDataCopyB_.IsValid())
+	// {
+	// 	pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
+	// 	pCmdList->AddTransitionBarrier(&materialDataCopyB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	// 	pCmdList->FlushBarriers();
+	//
+	// 	pCmdList->GetLatestCommandList()->CopyBufferRegion(materialDataB_->GetResourceDep(), 0, materialDataCopyB_->GetResourceDep(), 0, materialDataCopyB_->GetBufferDesc().size);
+	//
+	// 	pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+	// 	pCmdList->FlushBarriers();
+	//
+	// 	materialDataCopyB_.Reset();
+	// }
 }
 
 void SampleApplication::CreateMeshletBounds(sl12::CommandList* pCmdList)
@@ -4307,21 +4076,21 @@ void SampleApplication::CreateMeshletBounds(sl12::CommandList* pCmdList)
 		pCmdList->TransitionBarrier(&B, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 	};
 
-	if (hSuzanneMesh_.IsValid())
+	if (scene_->GetSuzanneMeshHandle().IsValid())
 	{
-		CreateAndCopy(hSuzanneMesh_, SuzanneMeshletB_, SuzanneMeshletBV_);
+		CreateAndCopy(scene_->GetSuzanneMeshHandle(), SuzanneMeshletB_, SuzanneMeshletBV_);
 	}
-	if (hSponzaMesh_.IsValid())
+	if (scene_->GetSponzaMeshHandle().IsValid())
 	{
-		CreateAndCopy(hSponzaMesh_, SponzaMeshletB_, SponzaMeshletBV_);
+		CreateAndCopy(scene_->GetSponzaMeshHandle(), SponzaMeshletB_, SponzaMeshletBV_);
 	}
-	if (hCurtainMesh_.IsValid())
+	if (scene_->GetCurtainMeshHandle().IsValid())
 	{
-		CreateAndCopy(hCurtainMesh_, CurtainMeshletB_, CurtainMeshletBV_);
+		CreateAndCopy(scene_->GetCurtainMeshHandle(), CurtainMeshletB_, CurtainMeshletBV_);
 	}
-	if (hSphereMesh_.IsValid())
+	if (scene_->GetSphereMeshHandle().IsValid())
 	{
-		CreateAndCopy(hSphereMesh_, SphereMeshletB_, SphereMeshletBV_);
+		CreateAndCopy(scene_->GetSphereMeshHandle(), SphereMeshletB_, SphereMeshletBV_);
 	}
 }
 
@@ -4423,52 +4192,20 @@ void SampleApplication::ControlCamera(float deltaTime)
 	DirectX::XMStoreFloat3(&cameraDir_, c_forward);
 }
 
-void SampleApplication::ComputeSceneAABB()
-{
-	DirectX::XMFLOAT3 aabbMax(-FLT_MAX, -FLT_MAX, -FLT_MAX), aabbMin(FLT_MAX, FLT_MAX, FLT_MAX);
-	for (auto&& mesh : sceneMeshes_)
-	{
-		auto mtx = DirectX::XMLoadFloat4x4(&mesh->GetMtxLocalToWorld());
-		auto&& bound = mesh->GetParentResource()->GetBoundingInfo();
-		DirectX::XMFLOAT3 pnts[] = {
-			DirectX::XMFLOAT3(bound.box.aabbMax.x, bound.box.aabbMax.y, bound.box.aabbMax.z),
-			DirectX::XMFLOAT3(bound.box.aabbMax.x, bound.box.aabbMax.y, bound.box.aabbMin.z),
-			DirectX::XMFLOAT3(bound.box.aabbMax.x, bound.box.aabbMin.y, bound.box.aabbMax.z),
-			DirectX::XMFLOAT3(bound.box.aabbMax.x, bound.box.aabbMin.y, bound.box.aabbMin.z),
-			DirectX::XMFLOAT3(bound.box.aabbMin.x, bound.box.aabbMax.y, bound.box.aabbMax.z),
-			DirectX::XMFLOAT3(bound.box.aabbMin.x, bound.box.aabbMax.y, bound.box.aabbMin.z),
-			DirectX::XMFLOAT3(bound.box.aabbMin.x, bound.box.aabbMin.y, bound.box.aabbMax.z),
-			DirectX::XMFLOAT3(bound.box.aabbMin.x, bound.box.aabbMin.y, bound.box.aabbMin.z),
-		};
-		for (auto pnt : pnts)
-		{
-			auto p = DirectX::XMLoadFloat3(&pnt);
-			p = DirectX::XMVector3TransformCoord(p, mtx);
-			DirectX::XMStoreFloat3(&pnt, p);
-
-			aabbMax.x = std::max(pnt.x, aabbMax.x);
-			aabbMax.y = std::max(pnt.y, aabbMax.y);
-			aabbMax.z = std::max(pnt.z, aabbMax.z);
-			aabbMin.x = std::min(pnt.x, aabbMin.x);
-			aabbMin.y = std::min(pnt.y, aabbMin.y);
-			aabbMin.z = std::min(pnt.z, aabbMin.z);
-		}
-	}
-	sceneAABBMax_ = aabbMax;
-	sceneAABBMin_ = aabbMin;
-}
-
 void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplevels)
 {
 	int index = 0;
+
+	auto&& neededMiplevels = scene_->GetNeededMiplevels();
+	auto&& workMaterials = scene_->GetWorkMaterials();
 	
 	// process needed levels.
 	if (!miplevels.empty())
 	{
 		auto p = miplevels.data();
-		for (auto&& s : neededMiplevels_)
+		for (auto&& s : neededMiplevels)
 		{
-			auto currLevel = workMaterials_[index].GetCurrentMiplevel();
+			auto currLevel = workMaterials[index].GetCurrentMiplevel();
 			
 			s.latestLevel = std::min(*p++, 0xffu);
 			sl12::u32 minL = std::min(s.latestLevel, s.minLevel);
@@ -4491,7 +4228,7 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 
 	// request texture streaming.
 	int i = 0;
-	for (auto&& s : neededMiplevels_)
+	for (auto&& s : neededMiplevels)
 	{
 		bool bLatestCheck = (s.minLevel > s.latestLevel ? s.minLevel - s.latestLevel : s.latestLevel - s.minLevel) <= 1;
 		if (!bLatestCheck)
@@ -4505,9 +4242,9 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 		if (s.time >= 30)
 		{
 			sl12::u32 targetWidth = std::max(4096u >> s.minLevel, 1u);
-			for (auto handle : workMaterials_[i].texHandles)
+			for (auto handle : workMaterials[i].texHandles)
 			{
-				texStreamer_->RequestStreaming(handle, targetWidth);
+				renderSys_->GetTextureStreamer()->RequestStreaming(handle, targetWidth);
 			}
 			s.minLevel = 0xff;
 			s.latestLevel = 0xff;

@@ -83,6 +83,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\scene.cpp" />
     <None Include="shaders\classify.c.hlsl" />
     <None Include="shaders\clear_arg.c.hlsl" />
     <None Include="shaders\fullscreen.vv.hlsl" />
@@ -125,6 +126,8 @@
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\scene.h" />
+    <ClInclude Include="src\shader_types.h" />
     <None Include="shaders\cbuffer.hlsli" />
     <None Include="shaders\surface_gradient.hlsli" />
     <None Include="shaders\visibility_buffer.hlsli" />
