@@ -1,6 +1,10 @@
-﻿#include <memory>
+﻿#pragma once
+
+#include <memory>
 #include <queue>
 #include <vector>
+
+#include "app_pass_base.h"
 
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
@@ -137,6 +141,43 @@ private:
 	UniqueHandle<sl12::Sampler>	shadowSampler_;
 };	// class RenderSystem
 
+struct TemporalCBs
+{
+	sl12::CbvHandle hSceneCB, hFrustumCB;
+	sl12::CbvHandle hLightCB, hShadowCB;
+	sl12::CbvHandle hDetailCB;
+	sl12::CbvHandle hBlurXCB, hBlurYCB;
+	sl12::CbvHandle hAmbOccCB;
+	sl12::CbvHandle hDebugCB;
+	std::vector<sl12::CbvHandle> hMeshCBs;
+
+	void Clear()
+	{
+		hSceneCB.Reset();
+		hFrustumCB.Reset();
+		hLightCB.Reset();
+		hShadowCB.Reset();
+		hDetailCB.Reset();
+		hBlurXCB.Reset();
+		hBlurYCB.Reset();
+		hAmbOccCB.Reset();
+		hDebugCB.Reset();
+		hMeshCBs.clear();
+	}
+};
+
+struct RenderPassSetupDesc
+{
+	bool operator==(const RenderPassSetupDesc& rhs) const
+	{
+		return true;
+	}
+	bool operator!=(const RenderPassSetupDesc& rhs) const
+	{
+		return operator==(rhs);
+	}
+};
+
 //----
 class Scene
 {
@@ -147,9 +188,25 @@ public:
 	bool Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshType);
 	void Finalize();
 
+	void SetViewportResolution(sl12::u32 width, sl12::u32 height);
 	bool CreateSceneMeshes(int meshType);
 	void CreateMaterialList();
 	void CopyMaterialData(sl12::CommandList* pCmdList);
+	void CreateMeshletBounds(sl12::CommandList* pCmdList);
+
+	bool InitRenderPass();
+	void SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc);
+	void LoadRenderGraphCommand();
+	void ExecuteRenderGraphCommand();
+
+	sl12::u32 GetScreenWidth() const
+	{
+		return screenWidth_;
+	}
+	sl12::u32 GetScreenHeight() const
+	{
+		return screenHeight_;
+	}
 
 	sl12::ResourceHandle GetSuzanneMeshHandle()
 	{
@@ -174,6 +231,22 @@ public:
 	sl12::ResourceHandle GetDotTexHandle()
 	{
 		return hDotTex_;
+	}
+	sl12::BufferView* GetSuzanneMeshletBV()
+	{
+		return &SuzanneMeshletBV_;
+	}
+	sl12::BufferView* GetSponzaMeshletBV()
+	{
+		return &SponzaMeshletBV_;
+	}
+	sl12::BufferView* GetCurtainMeshletBV()
+	{
+		return &CurtainMeshletBV_;
+	}
+	sl12::BufferView* GetSphereMeshletBV()
+	{
+		return &SphereMeshletBV_;
 	}
 	std::vector<std::shared_ptr<sl12::SceneMesh>>& GetSceneMeshes()
 	{
@@ -225,9 +298,19 @@ public:
 	{
 		return neededMiplevels_;
 	}
-	
+
+	TemporalCBs& GetTemporalCBs()
+	{
+		return tempCBs_;
+	}
+	std::vector<sl12::CbvHandle>& GetMeshletCBs()
+	{
+		return meshletCBs_;
+	}
+
 private:
 	void ComputeSceneAABB();
+	void SetupRenderPassGraph(const RenderPassSetupDesc& desc);
 
 private:
 	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
@@ -239,6 +322,8 @@ private:
 	sl12::Device*	pDevice_ = nullptr;
 	RenderSystem*	pRenderSystem_ = nullptr;
 
+	sl12::u32		screenWidth_, screenHeight_;
+	
 	// resource handles.
 	sl12::ResourceHandle	hSuzanneMesh_;
 	sl12::ResourceHandle	hSponzaMesh_;
@@ -246,6 +331,16 @@ private:
 	sl12::ResourceHandle	hSphereMesh_;
 	sl12::ResourceHandle	hDetailTex_;
 	sl12::ResourceHandle	hDotTex_;
+
+	// meshlet bounds buffer.
+	UniqueHandle<sl12::Buffer> SuzanneMeshletB_;
+	UniqueHandle<sl12::Buffer> SponzaMeshletB_;
+	UniqueHandle<sl12::Buffer> CurtainMeshletB_;
+	UniqueHandle<sl12::Buffer> SphereMeshletB_;
+	UniqueHandle<sl12::BufferView> SuzanneMeshletBV_;
+	UniqueHandle<sl12::BufferView> SponzaMeshletBV_;
+	UniqueHandle<sl12::BufferView> CurtainMeshletBV_;
+	UniqueHandle<sl12::BufferView> SphereMeshletBV_;
 
 	// scene meshes.
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
@@ -262,6 +357,15 @@ private:
 	UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
 	UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
 	std::vector<NeededMiplevel>				neededMiplevels_;
+
+	// temporal cbuffers.
+	TemporalCBs tempCBs_;
+	std::vector<sl12::CbvHandle> meshletCBs_;
+
+	// render pass.
+	UniqueHandle<sl12::RenderGraph>						renderGraph_;
+	std::map<AppPassType, std::unique_ptr<AppPassBase>>	passes_;
+	RenderPassSetupDesc									lastRenderPassDesc_;
 };	// class Scene
 
 //	EOF

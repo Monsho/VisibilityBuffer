@@ -2,6 +2,10 @@
 #include "shader_types.h"
 #include "sl12/resource_texture.h"
 #include "sl12/string_util.h"
+#include "pass/gbuffer_pass.h"
+#include "pass/shadowmap_pass.h"
+#include "pass/utility_pass.h"
+#include "pass/visibility_pass.h"
 
 #define NOMINMAX
 #include <windowsx.h>
@@ -10,7 +14,20 @@
 
 #define USE_IN_CPP
 #include "../shaders/cbuffer.hlsli"
+#include "pass/render_resource_settings.h"
 
+namespace
+{
+	struct MeshletBound
+	{
+		DirectX::XMFLOAT3		aabbMin;
+		DirectX::XMFLOAT3		aabbMax;
+		DirectX::XMFLOAT3		coneApex;
+		DirectX::XMFLOAT3		coneAxis;
+		float					coneCutoff;
+		sl12::u32				pad[3];
+	};	// struct MeshletBound
+}
 
 //----------------
 //----
@@ -151,6 +168,13 @@ void Scene::Finalize()
 	miplevelUAV_.Reset();
 	miplevelReadbacks_[0].Reset();
 	miplevelReadbacks_[1].Reset();
+}
+
+//----
+void Scene::SetViewportResolution(sl12::u32 width, sl12::u32 height)
+{
+	screenWidth_ = width;
+	screenHeight_ = height;
 }
 
 //----
@@ -452,6 +476,144 @@ void Scene::CopyMaterialData(sl12::CommandList* pCmdList)
 
 		materialDataCopyB_.Reset();
 	}
+}
+
+//----
+void Scene::CreateMeshletBounds(sl12::CommandList* pCmdList)
+{
+	auto CreateAndCopy = [&](sl12::ResourceHandle hRes, UniqueHandle<sl12::Buffer>& B, UniqueHandle<sl12::BufferView>& BV)
+	{
+		auto resMesh = hRes.GetItem<sl12::ResourceItemMesh>();
+		auto&& submeshes = resMesh->GetSubmeshes();
+
+		// count meshlets.
+		sl12::u32 meshletTotal = 0;
+		for (auto&& submesh : submeshes)
+		{
+			meshletTotal += (sl12::u32)submesh.meshlets.size();
+		}
+
+		// create buffers.
+		B = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+		BV = sl12::MakeUnique<sl12::BufferView>(pDevice_);
+		UniqueHandle<sl12::Buffer> UploadB = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+		
+		sl12::BufferDesc desc{};
+		desc.heap = sl12::BufferHeap::Default;
+		desc.stride = sizeof(MeshletBound);
+		desc.size = desc.stride * meshletTotal;
+		desc.usage = sl12::ResourceUsage::ShaderResource;
+		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+
+		B->Initialize(pDevice_, desc);
+		BV->Initialize(pDevice_, &B, 0, 0, (sl12::u32)desc.stride);
+
+		desc.heap = sl12::BufferHeap::Dynamic;
+		UploadB->Initialize(pDevice_, desc);
+
+		// fill upload buffer.
+		MeshletBound* pBound = static_cast<MeshletBound*>(UploadB->Map());
+		for (auto&& submesh : submeshes)
+		{
+			for (auto&& meshlet : submesh.meshlets)
+			{
+				pBound->aabbMin = meshlet.boundingInfo.box.aabbMin;
+				pBound->aabbMax = meshlet.boundingInfo.box.aabbMax;
+				pBound->coneAxis = meshlet.boundingInfo.cone.axis;
+				pBound->coneApex = meshlet.boundingInfo.cone.apex;
+				pBound->coneCutoff = meshlet.boundingInfo.cone.cutoff;
+				pBound++;
+			}
+		}
+		UploadB->Unmap();
+
+		// copy buffer.
+		pCmdList->GetLatestCommandList()->CopyResource(B->GetResourceDep(), UploadB->GetResourceDep());
+		pCmdList->TransitionBarrier(&B, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+	};
+
+	if (hSuzanneMesh_.IsValid())
+	{
+		CreateAndCopy(hSuzanneMesh_, SuzanneMeshletB_, SuzanneMeshletBV_);
+	}
+	if (hSponzaMesh_.IsValid())
+	{
+		CreateAndCopy(hSponzaMesh_, SponzaMeshletB_, SponzaMeshletBV_);
+	}
+	if (hCurtainMesh_.IsValid())
+	{
+		CreateAndCopy(hCurtainMesh_, CurtainMeshletB_, CurtainMeshletBV_);
+	}
+	if (hSphereMesh_.IsValid())
+	{
+		CreateAndCopy(hSphereMesh_, SphereMeshletB_, SphereMeshletBV_);
+	}
+}
+
+//----
+bool Scene::InitRenderPass()
+{
+	renderGraph_ = sl12::MakeUnique<sl12::RenderGraph>(nullptr);
+	renderGraph_->Initialize(pDevice_);
+	
+	passes_.emplace(AppPassType::MeshletArgCopy, std::make_unique<MeshletArgCopyPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::MeshletCulling, std::make_unique<MeshletCullingPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::ClearMiplevel, std::make_unique<ClearMiplevelPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::FeedbackMiplevel, std::make_unique<FeedbackMiplevelPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::DepthPre, std::make_unique<DepthPrePass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::GBuffer, std::make_unique<GBufferPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::ShadowMap, std::make_unique<ShadowMapPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::ShadowExp, std::make_unique<ShadowExpPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::ShadowBlurX, std::make_unique<ShadowExpBlurPass>(pDevice_, pRenderSystem_, this, true));
+	passes_.emplace(AppPassType::ShadowBlurY, std::make_unique<ShadowExpBlurPass>(pDevice_, pRenderSystem_, this, false));
+	passes_.emplace(AppPassType::Lighting, std::make_unique<LightingPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::HiZ, std::make_unique<HiZPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::Tonemap, std::make_unique<TonemapPass>(pDevice_, pRenderSystem_, this));
+
+	RenderPassSetupDesc defaultDesc;
+	SetupRenderPassGraph(defaultDesc);
+	
+	return true;
+}
+
+//----
+void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
+{
+	renderGraph_->ClearPasses();
+	renderGraph_->AddPass(passes_[AppPassType::ShadowMap].get(), nullptr);
+	renderGraph_->AddPass(passes_[AppPassType::MeshletArgCopy].get(), passes_[AppPassType::ShadowMap].get());
+	renderGraph_->AddPass(passes_[AppPassType::MeshletCulling].get(), passes_[AppPassType::MeshletArgCopy].get());
+	renderGraph_->AddPass(passes_[AppPassType::ClearMiplevel].get(), passes_[AppPassType::MeshletCulling].get());
+	renderGraph_->AddPass(passes_[AppPassType::DepthPre].get(), passes_[AppPassType::ClearMiplevel].get());
+	renderGraph_->AddPass(passes_[AppPassType::GBuffer].get(), passes_[AppPassType::DepthPre].get());
+	renderGraph_->AddPass(passes_[AppPassType::FeedbackMiplevel].get(), passes_[AppPassType::GBuffer].get());
+	renderGraph_->AddPass(passes_[AppPassType::Lighting].get(), passes_[AppPassType::FeedbackMiplevel].get());
+	renderGraph_->AddPass(passes_[AppPassType::HiZ].get(), passes_[AppPassType::Lighting].get());
+	renderGraph_->AddPass(passes_[AppPassType::Tonemap].get(), passes_[AppPassType::HiZ].get());
+
+	lastRenderPassDesc_ = desc;
+}
+
+//----
+void Scene::SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc)
+{
+	if (lastRenderPassDesc_ != desc)
+	{
+		SetupRenderPassGraph(desc);
+	}
+
+	renderGraph_->AddExternalTexture(kSwapchainID, pSwapchainTarget, sl12::TransientState::Present);
+	renderGraph_->Compile();
+}
+
+void Scene::LoadRenderGraphCommand()
+{
+	renderGraph_->LoadCommand();
+}
+
+void Scene::ExecuteRenderGraphCommand()
+{
+	renderGraph_->Execute();
 }
 
 

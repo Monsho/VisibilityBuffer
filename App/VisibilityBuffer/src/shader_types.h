@@ -38,6 +38,7 @@ enum ShaderName
 	VisibilityMeshM,
 	VisibilityMeshP,
 	DepthReductionP,
+	DepthReductionC,
 	MaterialResolveLib,
 
 	MAX
@@ -80,6 +81,7 @@ static const char* kShaderFileAndEntry[] = {
 	"visibility_mesh.m.hlsl",			"main",
 	"visibility_mesh.p.hlsl",			"main",
 	"depth_reduction.p.hlsl",			"main",
+	"depth_reduction.c.hlsl",			"main",
 	"material_resolve.lib.hlsl",		"main",
 };
 

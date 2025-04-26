@@ -83,6 +83,11 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="shaders\depth_reduction.c.hlsl" />
+    <ClCompile Include="src\pass\gbuffer_pass.cpp" />
+    <ClCompile Include="src\pass\shadowmap_pass.cpp" />
+    <ClCompile Include="src\pass\utility_pass.cpp" />
+    <ClCompile Include="src\pass\visibility_pass.cpp" />
     <ClCompile Include="src\scene.cpp" />
     <None Include="shaders\classify.c.hlsl" />
     <None Include="shaders\clear_arg.c.hlsl" />
@@ -126,6 +131,12 @@
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\app_pass_base.h" />
+    <ClInclude Include="src\pass\gbuffer_pass.h" />
+    <ClInclude Include="src\pass\render_resource_settings.h" />
+    <ClInclude Include="src\pass\shadowmap_pass.h" />
+    <ClInclude Include="src\pass\utility_pass.h" />
+    <ClInclude Include="src\pass\visibility_pass.h" />
     <ClInclude Include="src\scene.h" />
     <ClInclude Include="src\shader_types.h" />
     <None Include="shaders\cbuffer.hlsli" />

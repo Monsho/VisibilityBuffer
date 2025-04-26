@@ -77,23 +77,11 @@ public:
 private:
 	// void CreateMaterialList();
 	void CreateBuffers(sl12::CommandList* pCmdList);
-	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
 	void SetupRenderGraph(struct TargetIDContainer& OutContainer);
-	void SetupConstantBuffers(struct TemporalCB& OutCBs);
-
-	// int GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat)
-	// {
-	// 	auto it = std::find_if(
-	// 		workMaterials_.begin(), workMaterials_.end(),
-	// 		[mat](const WorkMaterial& rhs){ return mat == rhs.pResMaterial; });
-	// 	if (it == workMaterials_.end())
-	// 		return -1;
-	// 	auto index = std::distance(workMaterials_.begin(), it);
-	// 	return (int)index;
-	// };
+	void SetupConstantBuffers(struct TemporalCBs& OutCBs);
 
 	void ManageTextureStream(const std::vector<sl12::u32>& miplevels);
 
@@ -160,7 +148,9 @@ private:
 
 	UniqueHandle<RenderSystem>	renderSys_;
 	UniqueHandle<Scene>			scene_;
-	UniqueHandle<CommandLists>			mainCmdList_;
+	UniqueHandle<CommandLists>	mainCmdList_;
+	UniqueHandle<CommandLists>	frameStartCmdlist_;
+	UniqueHandle<CommandLists>	frameEndCmdList_;
 	UniqueHandle<sl12::RenderGraph_Deprecated>		renderGraphDeprecated_;
 
 	// root sig & pso.
@@ -187,6 +177,7 @@ private:
 	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_, psoDenoiseGI_;
 	UniqueHandle<sl12::ComputePipelineState>	psoDeinterleave_;
 	UniqueHandle<sl12::ComputePipelineState>	psoMeshletCull_;
+	UniqueHandle<sl12::ComputePipelineState>	psoHiZ_;
 	UniqueHandle<sl12::ComputePipelineState>	psoClearMip_, psoFeedbackMip_;
 
 	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
@@ -204,35 +195,14 @@ private:
 	UniqueHandle<sl12::Buffer>				indirectArgUpload_;
 	UniqueHandle<sl12::UnorderedAccessView>	indirectArgUAV_;
 	UniqueHandle<sl12::IndirectExecuter>	meshletIndirectStandard_, meshletIndirectVisbuffer_;
-	std::vector<sl12::CbvHandle>			meshletCBs_;
 
-	// UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;
-	// UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
-	// UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
-	// std::vector<NeededMiplevel>				neededMiplevels_;
-	
 	UniqueHandle<sl12::Gui>		gui_;
 	sl12::InputData				inputData_{};
-
-	// meshlet bounds buffer.
-	UniqueHandle<sl12::Buffer> SuzanneMeshletB_;
-	UniqueHandle<sl12::Buffer> SponzaMeshletB_;
-	UniqueHandle<sl12::Buffer> CurtainMeshletB_;
-	UniqueHandle<sl12::Buffer> SphereMeshletB_;
-	UniqueHandle<sl12::BufferView> SuzanneMeshletBV_;
-	UniqueHandle<sl12::BufferView> SponzaMeshletBV_;
-	UniqueHandle<sl12::BufferView> CurtainMeshletBV_;
-	UniqueHandle<sl12::BufferView> SphereMeshletBV_;
 
 	// work graphs.
 	UniqueHandle<sl12::RootSignature>		rsWg_;
 	UniqueHandle<sl12::WorkGraphState>		materialResolveState_;
 	UniqueHandle<sl12::WorkGraphContext>	materialResolveContext_;
-	// std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
-	// UniqueHandle<sl12::Buffer>				materialDataB_, materialDataCopyB_;
-	// UniqueHandle<sl12::BufferView>			materialDataBV_;
-	//
-	// std::vector<WorkMaterial>	workMaterials_;
 	
 	// history.
 	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;

@@ -166,19 +166,21 @@ namespace
 		gHiZDesc.name = "HiZ";
 		gHiZDesc.width = width / 2;
 		gHiZDesc.height = height / 2;
-		gHiZDesc.mipLevels = 5;
+		gHiZDesc.mipLevels = 6;
 		gHiZDesc.format = DXGI_FORMAT_R32_FLOAT;
-		gHiZDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::RenderTarget;
+		gHiZDesc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
 		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 0, 0, 0));
 		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(0, 1, 0, 0));
 		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(1, 1, 0, 0));
 		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(2, 1, 0, 0));
 		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(3, 1, 0, 0));
-		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(0, 0, 0));
-		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(1, 0, 0));
-		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(2, 0, 0));
-		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(3, 0, 0));
-		gHiZDesc.rtvDescs.push_back(sl12::RenderGraphRTVDesc(4, 0, 0));
+		gHiZDesc.srvDescs.push_back(sl12::RenderGraphSRVDesc(4, 1, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(0, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(1, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(2, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(3, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(4, 0, 0));
+		gHiZDesc.uavDescs.push_back(sl12::RenderGraphUAVDesc(5, 0, 0));
 
 		gDrawFlagDesc.name = "DrawFlag";
 		gDrawFlagDesc.width = 0;
@@ -236,12 +238,25 @@ bool SampleApplication::Initialize()
 		sl12::ConsolePrint("Error: Failed to init scene.\n");
 		return false;
 	}
+	scene_->SetViewportResolution(screenWidth_, screenHeight_);
 
 	// init command list.
 	mainCmdList_ = sl12::MakeUnique<CommandLists>(nullptr);
 	if (!mainCmdList_->Initialize(&device_, &device_.GetGraphicsQueue()))
 	{
 		sl12::ConsolePrint("Error: failed to init main command list.");
+		return false;
+	}
+	frameStartCmdlist_ = sl12::MakeUnique<CommandLists>(nullptr);
+	if (!frameStartCmdlist_->Initialize(&device_, &device_.GetGraphicsQueue()))
+	{
+		sl12::ConsolePrint("Error: failed to init frame start command list.");
+		return false;
+	}
+	frameEndCmdList_ = sl12::MakeUnique<CommandLists>(nullptr);
+	if (!frameEndCmdList_->Initialize(&device_, &device_.GetGraphicsQueue()))
+	{
+		sl12::ConsolePrint("Error: failed to init frame end command list.");
 		return false;
 	}
 
@@ -253,7 +268,10 @@ bool SampleApplication::Initialize()
 	
 	// wait compile and load.
 	renderSys_->WaitLoadAndCompile();
-	
+
+	// init render graph.
+	scene_->InitRenderPass();
+
 	// init utility command list.
 	auto utilCmdList = sl12::MakeUnique<sl12::CommandList>(&device_);
 	utilCmdList->Initialize(&device_, &device_.GetGraphicsQueue());
@@ -279,7 +297,7 @@ bool SampleApplication::Initialize()
 	}
 
 	// create meshlet bounds buffers.
-	CreateMeshletBounds(&utilCmdList);
+	scene_->CreateMeshletBounds(&utilCmdList);
 	
 	// execute utility commands.
 	utilCmdList->Close();
@@ -288,7 +306,6 @@ bool SampleApplication::Initialize()
 
 	// create scene meshes.
 	scene_->CreateSceneMeshes(meshType_);
-	// CreateMaterialList();
 	
 	// init root signature and pipeline state.
 	rsVsPs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
@@ -753,6 +770,7 @@ bool SampleApplication::Initialize()
 	psoDenoiseGI_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoDeinterleave_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoMeshletCull_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
+	psoHiZ_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoClearMip_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	psoFeedbackMip_ = sl12::MakeUnique<sl12::ComputePipelineState>(&device_);
 	rsCs_->Initialize(&device_, renderSys_->GetShader(ShaderName::LightingC));
@@ -902,6 +920,17 @@ bool SampleApplication::Initialize()
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rsCs_;
+		desc.pCS = renderSys_->GetShader(ShaderName::DepthReductionC);
+
+		if (!psoHiZ_->Initialize(&device_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init HiZ pso.");
+			return false;
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCs_;
 		desc.pCS = renderSys_->GetShader(ShaderName::ClearMipC);
 
 		if (!psoClearMip_->Initialize(&device_, desc))
@@ -990,17 +1019,6 @@ void SampleApplication::Finalize()
 	device_.Present(1);
 
 	// destroy render objects.
-	// miplevelUAV_.Reset();
-	// miplevelBuffer_.Reset();
-	SuzanneMeshletBV_.Reset();
-	SponzaMeshletBV_.Reset();
-	CurtainMeshletBV_.Reset();
-	SphereMeshletBV_.Reset();
-	SuzanneMeshletB_.Reset();
-	SponzaMeshletB_.Reset();
-	CurtainMeshletB_.Reset();
-	SphereMeshletB_.Reset();
-	meshletCBs_.clear();
 	for (auto&& t : timestamps_) t.Destroy();
 	tileDrawIndirect_.Reset();
 	gui_.Reset();
@@ -1204,7 +1222,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 			hiZ1Pass.input.push_back(OutContainer.gbufferTargetIDs[3]);
 			hiZ1Pass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 			hiZ1Pass.output.push_back(OutContainer.hiZTargetID);
-			hiZ1Pass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+			hiZ1Pass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 			passes.push_back(hiZ1Pass);
 
 			// visibility pass 2nd.
@@ -1306,7 +1324,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	hiZ2Pass.input.push_back(OutContainer.gbufferTargetIDs[3]);
 	hiZ2Pass.inputStates.push_back(D3D12_RESOURCE_STATE_GENERIC_READ);
 	hiZ2Pass.output.push_back(OutContainer.hiZTargetID);
-	hiZ2Pass.outputStates.push_back(D3D12_RESOURCE_STATE_RENDER_TARGET);
+	hiZ2Pass.outputStates.push_back(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	passes.push_back(hiZ2Pass);
 	histories.push_back(OutContainer.hiZTargetID);
 	returns.push_back(hiZHistory_);
@@ -1410,16 +1428,7 @@ void SampleApplication::SetupRenderGraph(TargetIDContainer& OutContainer)
 	renderGraphDeprecated_->CreateRenderPasses(&device_, passes, histories, returns);
 }
 
-struct TemporalCB
-{
-	sl12::CbvHandle hSceneCB, hFrustumCB;
-	sl12::CbvHandle hLightCB, hShadowCB;
-	sl12::CbvHandle hDetailCB;
-	sl12::CbvHandle hBlurXCB, hBlurYCB;
-	sl12::CbvHandle hAmbOccCB;
-	sl12::CbvHandle hDebugCB;
-};
-void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
+void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 {
 	auto cbvMan = renderSys_->GetCbvManager();
 	{
@@ -1627,6 +1636,304 @@ void SampleApplication::SetupConstantBuffers(struct TemporalCB& OutCBs)
 	}
 }
 
+#if 0
+bool SampleApplication::Execute()
+{
+	const int kSwapchainBufferOffset = 1;
+	auto frameIndex = (device_.GetSwapchain().GetFrameIndex() + sl12::Swapchain::kMaxBuffer - 1) % sl12::Swapchain::kMaxBuffer;
+	auto prevFrameIndex = (device_.GetSwapchain().GetFrameIndex() + sl12::Swapchain::kMaxBuffer - 2) % sl12::Swapchain::kMaxBuffer;
+	auto pFrameStartCmdList = &frameStartCmdlist_->Reset();
+	auto pFrameEndCmdList = &frameEndCmdList_->Reset();
+	auto* pTimestamp = timestamps_ + timestampIndex_;
+	auto pSwapchainTarget = device_.GetSwapchain().GetCurrentTexture(kSwapchainBufferOffset);
+
+	sl12::CpuTimer now = sl12::CpuTimer::CurrentTime();
+	sl12::CpuTimer delta = now - currCpuTime_;
+	currCpuTime_ = now;
+
+	// control camera.
+	ControlCamera(delta.ToSecond());
+
+	// setup imgui.
+	gui_->BeginNewFrame(pFrameStartCmdList, displayWidth_, displayHeight_, inputData_);
+	inputData_.Reset();
+	{
+		bool bPrevMode = bEnableVisibilityBuffer_;
+
+		// rendering settings.
+		if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
+			{}
+
+			if (bEnableVisibilityBuffer_)
+			{
+				if (ImGui::Checkbox("Mesh Shader", &bEnableMeshShader_))
+				{}
+				if (ImGui::Checkbox("Work Graph", &bEnableWorkGraph_))
+				{}
+			}
+		}
+
+		// light settings.
+		if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::ColorEdit3("Ambient Sky Color", skyColor_);
+			ImGui::ColorEdit3("Ambient Ground Color", groundColor_);
+			ImGui::SliderFloat("Ambient Intensity", &ambientIntensity_, 0.0f, 10.0f);
+			ImGui::SliderFloat("Directional Theta", &directionalTheta_, 0.0f, 90.0f);
+			ImGui::SliderFloat("Directional Phi", &directionalPhi_, 0.0f, 360.0f);
+			ImGui::ColorEdit3("Directional Color", directionalColor_);
+			ImGui::SliderFloat("Directional Intensity", &directionalIntensity_, 0.0f, 10.0f);
+		}
+
+		// shadow settings.
+		if (ImGui::CollapsingHeader("Shadow", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Checkbox("Blur", &evsmBlur_);
+			ImGui::SliderFloat("Exponent", &shadowExponent_, 0.1f, 50.0f);
+			ImGui::SliderFloat("Constant Bias", &shadowBias_, 0.001f, 0.02f);
+		}
+
+		// detail normal settings.
+		if (ImGui::CollapsingHeader("Surface Gradient", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kDetailTypes[] = {
+				"None",
+				"UDN",
+				"Surface Gradient",
+				"Surface Gradient Tex",
+			};
+			static const char* kTriplanarTypes[] = {
+				"Blend",
+				"Surface Gradient",
+			};
+			ImGui::Combo("Detail Type", &detailType_, kDetailTypes, ARRAYSIZE(kDetailTypes));
+			ImGui::SliderFloat("Detail Tiling", &detailTile_, 1.0f, 10.0f);
+			ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
+			ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
+			ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
+		}
+
+		// ssao settings.
+		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kTypes[] = {
+				"HBAO",
+				"Visibility Bitmask",
+				"SSGI with VB",
+			};
+			ImGui::Combo("Type", &ssaoType_, kTypes, ARRAYSIZE(kTypes));
+			ImGui::SliderFloat("Intensity", &ssaoIntensity_, 0.0f, 10.0f);
+			ImGui::SliderFloat("GI Intensity", &ssgiIntensity_, 0.0f, 200.0f);
+			ImGui::SliderInt("Slice Count", &ssaoSliceCount_, 1, 16);
+			ImGui::SliderInt("Step Count", &ssaoStepCount_, 1, 16);
+			ImGui::SliderInt("Max Pixel", &ssaoMaxPixel_, 1, 512);
+			ImGui::SliderFloat("World Radius", &ssaoWorldRadius_, 0.0f, 200.0f);
+			ImGui::SliderFloat("Tangent Bias", &ssaoTangentBias_, 0.0f, 1.0f);
+			ImGui::SliderFloat("Thickness", &ssaoConstThickness_, 0.1f, 10.0f);
+			ImGui::SliderFloat("View Bias", &ssaoViewBias_, 0.0f, 10.0f);
+			static const char* kBaseVecs[] = {
+				"Pixel Normal",
+				"View Vector",
+				"Face Normal",
+			};
+			ImGui::Combo("Baes Vec", &ssaoBaseVecType_, kBaseVecs, ARRAYSIZE(kBaseVecs));
+			ImGui::Checkbox("Deinterleave", &bIsDeinterleave_);
+		}
+
+		// denoise settings.
+		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
+			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
+			ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
+		}
+
+		// debug settings.
+		if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			static const char* kDisplayModes[] = {
+				"Lighting",
+				"BaseColor",
+				"Roughness",
+				"Metallic",
+				"World Normal",
+				"AO",
+				"GI",
+			};
+			ImGui::Combo("Display Mode", &displayMode_, kDisplayModes, ARRAYSIZE(kDisplayModes));
+
+			ImGui::Checkbox("Texture Streaming", &bIsTexStreaming_);
+			if (ImGui::Button("Miplevel Print"))
+			{
+				for (auto&& work : scene_->GetWorkMaterials())
+				{
+					if (!work.pResMaterial->baseColorTex.IsValid())
+						continue;
+					
+					auto TexBase = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
+					if (TexBase->IsSameSubType(sl12::ResourceItemStreamingTexture::kSubType))
+					{
+						auto Tex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemStreamingTexture>();
+						sl12::ConsolePrint("TexMiplevel: %s (%d)\n", Tex->GetFilePath().c_str(), Tex->GetCurrMipLevel());
+					}
+				}
+			}
+			static const char* kPoolSizes[] = {
+				"Infinite",
+				"256MB",
+				"512MB",
+				"1024MB"
+			};
+			if (ImGui::Combo("Pool Size", &poolSizeSelect_, kPoolSizes, ARRAYSIZE(kPoolSizes)))
+			{
+				static const sl12::u64 kPoolLimits[] = {
+					0,
+					256 * 1024 * 1024,
+					512 * 1024 * 1024,
+					1024 * 1024 * 1024,
+				}; 
+				device_.GetTextureStreamAllocator()->SetPoolLimitSize(kPoolLimits[poolSizeSelect_]);
+			}
+			ImGui::Text("Heaps : %lld (MB)", device_.GetTextureStreamAllocator()->GetCurrentHeapSize() / 1024 / 1024);
+		}
+	}
+	ImGui::Render();
+
+	bool bNeedDeinterleave = bIsDeinterleave_ && (ssaoType_ == 2);
+
+	// sync interval.
+	device_.WaitPresent();
+	device_.GetTextureStreamAllocator()->GabageCollect(renderSys_->GetTextureStreamer());
+	device_.SyncKillObjects();
+
+	// compile render graph.
+	RenderPassSetupDesc setupDesc{};
+	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
+	
+	auto meshMan = renderSys_->GetMeshManager();
+	auto cbvMan = renderSys_->GetCbvManager();
+	
+	pTimestamp->Reset();
+	pTimestamp->Query(pFrameStartCmdList);
+	device_.LoadRenderCommands(pFrameStartCmdList);
+	meshMan->BeginNewFrame(pFrameStartCmdList);
+	cbvMan->BeginNewFrame();
+
+	// create scene constant buffer.
+	auto&& TempCB = scene_->GetTemporalCBs();
+	SetupConstantBuffers(TempCB);
+
+	// create mesh cbuffers.
+	for (auto&& mesh : scene_->GetSceneMeshes())
+	{
+		// set mesh constant.
+		MeshCB cbMesh;
+		cbMesh.mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
+		cbMesh.mtxLocalToWorld = mesh->GetMtxLocalToWorld();
+		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
+		TempCB.hMeshCBs.push_back(cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh)));
+	}
+
+	frameStartCmdlist_->Close();
+
+	// load render graph command.
+	scene_->LoadRenderGraphCommand();
+	
+	// draw GUI.
+	pTimestamp->Query(pFrameEndCmdList);
+	{
+		// set render targets.
+		auto&& rtv = device_.GetSwapchain().GetCurrentRenderTargetView(kSwapchainBufferOffset)->GetDescInfo().cpuHandle;
+		pFrameEndCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
+		// set viewport.
+		D3D12_VIEWPORT vp;
+		vp.TopLeftX = vp.TopLeftY = 0.0f;
+		vp.Width = (float)displayWidth_;
+		vp.Height = (float)displayHeight_;
+		vp.MinDepth = 0.0f;
+		vp.MaxDepth = 1.0f;
+		pFrameEndCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+		// set scissor rect.
+		D3D12_RECT rect;
+		rect.left = rect.top = 0;
+		rect.right = displayWidth_;
+		rect.bottom = displayHeight_;
+		pFrameEndCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+		gui_->LoadDrawCommands(pFrameEndCmdList);
+	}
+
+	// miplevel readback.
+	if (bIsTexStreaming_)
+	{
+		auto miplevelBuffer = scene_->GetMiplevelBuffer();
+		auto miplevelReadbacks = scene_->GetMiplevelReadbacks();
+		auto&& workMaterials = scene_->GetWorkMaterials();
+
+		// process copied buffer.
+		std::vector<sl12::u32> mipResults;
+		if (miplevelReadbacks[1].IsValid())
+		{
+			mipResults.resize(miplevelReadbacks[0]->GetBufferDesc().size / sizeof(sl12::u32));
+			void* p = miplevelReadbacks[0]->Map();
+			memcpy(mipResults.data(), p, miplevelReadbacks[0]->GetBufferDesc().size);
+			miplevelReadbacks[0]->Unmap();
+			miplevelReadbacks[0] = std::move(miplevelReadbacks[1]);
+		}
+
+		ManageTextureStream(mipResults);
+
+		// readback miplevel.
+		UniqueHandle<sl12::Buffer> readback = sl12::MakeUnique<sl12::Buffer>(&device_);
+		sl12::BufferDesc desc{};
+		desc.heap = sl12::BufferHeap::ReadBack;
+		desc.size = sizeof(sl12::u32) * workMaterials.size();
+		desc.usage = sl12::ResourceUsage::Unknown;
+		readback->Initialize(&device_, desc);
+		pFrameEndCmdList->TransitionBarrier(miplevelBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ);
+		pFrameEndCmdList->GetLatestCommandList()->CopyResource(readback->GetResourceDep(), miplevelBuffer->GetResourceDep());
+		if (!miplevelReadbacks[0].IsValid())
+		{
+			miplevelReadbacks[0] = std::move(readback);
+		}
+		else
+		{
+			miplevelReadbacks[1] = std::move(readback);
+		}
+
+	}
+	
+	// barrier swapchain.
+	pFrameEndCmdList->TransitionBarrier(device_.GetSwapchain().GetCurrentTexture(kSwapchainBufferOffset), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+	// graphics timestamp end.
+	pTimestamp->Query(pFrameEndCmdList);
+	pTimestamp->Resolve(pFrameEndCmdList);
+	frameEndCmdList_->Close();
+	timestampIndex_ = 1 - timestampIndex_;
+
+	// wait prev frame render.
+	device_.WaitDrawDone();
+
+	// present swapchain.
+	device_.Present(1);
+
+	// execute current frame render.
+	frameStartCmdlist_->Execute();
+	scene_->ExecuteRenderGraphCommand();
+	frameEndCmdList_->Execute();
+
+	frameIndex_++;
+
+	TempCB.Clear();
+
+	return true;
+}
+#else
 bool SampleApplication::Execute()
 {
 	const int kSwapchainBufferOffset = 1;
@@ -1922,9 +2229,21 @@ bool SampleApplication::Execute()
 	TargetIDContainer TargetContainer;
 	SetupRenderGraph(TargetContainer);
 
+	auto&& TempCB = scene_->GetTemporalCBs();
+
 	// create scene constant buffer.
-	TemporalCB TempCB;
 	SetupConstantBuffers(TempCB);
+
+	// create mesh cbuffers.
+	for (auto&& mesh : scene_->GetSceneMeshes())
+	{
+		// set mesh constant.
+		MeshCB cbMesh;
+		cbMesh.mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
+		cbMesh.mtxLocalToWorld = mesh->GetMtxLocalToWorld();
+		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
+		TempCB.hMeshCBs.push_back(cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh)));
+	}
 
 	// clear swapchain.
 	auto&& swapchain = device_.GetSwapchain();
@@ -1934,26 +2253,16 @@ bool SampleApplication::Execute()
 		pCmdList->GetLatestCommandList()->ClearRenderTargetView(swapchain.GetCurrentRenderTargetView(kSwapchainBufferOffset)->GetDescInfo().cpuHandle, color, 0, nullptr);
 	}
 
-	// create mesh cbuffers.
-	std::vector<sl12::CbvHandle> MeshCBs;
-	for (auto&& mesh : scene_->GetSceneMeshes())
-	{
-		// set mesh constant.
-		MeshCB cbMesh;
-		cbMesh.mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
-		cbMesh.mtxLocalToWorld = mesh->GetMtxLocalToWorld();
-		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
-		MeshCBs.push_back(cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh)));
-	}
-
 	// create meshlet buffers.
 	D3D12_RESOURCE_STATES indirectArgBufferState = D3D12_RESOURCE_STATE_INDEX_BUFFER;
 	if (!indirectArgBuffer_.IsValid() || !indirectArgUpload_.IsValid())
 	{
+		auto&& meshletCBs = scene_->GetMeshletCBs();
+
 		indirectArgBuffer_.Reset();
 		indirectArgUpload_.Reset();
 		indirectArgUAV_.Reset();
-		meshletCBs_.clear();
+		meshletCBs.clear();
 		indirectArgBufferState = D3D12_RESOURCE_STATE_COMMON;
 
 		sl12::u32 numMeshlets = 0;
@@ -1973,7 +2282,7 @@ bool SampleApplication::Execute()
 
 			auto handle = cbvMan->GetResident(sizeof(cb));
 			cbvMan->RequestResidentCopy(handle, &cb, sizeof(cb));
-			meshletCBs_.push_back(std::move(handle));
+			meshletCBs.push_back(std::move(handle));
 
 			numMeshlets += cnt;
 		}
@@ -2078,7 +2387,7 @@ bool SampleApplication::Execute()
 		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			// set mesh constant.
-			descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 			auto meshRes = mesh->GetParentResource();
 
@@ -2214,33 +2523,33 @@ bool SampleApplication::Execute()
 		descSet.SetCsUav(0, indirectArgUAV_->GetDescInfo().cpuHandle);
 
 		sl12::u32 meshIndex = 0;
+		auto&& meshletCBs = scene_->GetMeshletCBs();
 		for (auto&& mesh : scene_->GetSceneMeshes())
 		{
 			// set mesh constant.
-			descSet.SetCsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-			descSet.SetCsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetCsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 			sl12::u32 meshletCnt = 0;
+			sl12::BufferView* meshletBV = nullptr;
 			if (scene_->GetSuzanneMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
-				descSet.SetCsSrv(0, SuzanneMeshletBV_->GetDescInfo().cpuHandle);
-				meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
+				meshletBV = scene_->GetSuzanneMeshletBV();
 			}
 			else if (scene_->GetSponzaMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
-				descSet.SetCsSrv(0, SponzaMeshletBV_->GetDescInfo().cpuHandle);
-				meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
+				meshletBV = scene_->GetSponzaMeshletBV();
 			}
 			else if (scene_->GetCurtainMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
-				descSet.SetCsSrv(0, CurtainMeshletBV_->GetDescInfo().cpuHandle);
-				meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
+				meshletBV = scene_->GetCurtainMeshletBV();
 			}
 			else if (scene_->GetSphereMeshHandle().IsValid() && mesh->GetParentResource() == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
-				descSet.SetCsSrv(0, SphereMeshletBV_->GetDescInfo().cpuHandle);
-				meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
+				meshletBV = scene_->GetSphereMeshletBV();
 			}
+			descSet.SetCsSrv(0, meshletBV->GetDescInfo().cpuHandle);
+			meshletCnt = (sl12::u32)(meshletBV->GetViewDesc().Buffer.NumElements);
 
 			pCmdList->GetLatestCommandList()->SetPipelineState(psoMeshletCull_->GetPSO());
 			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
@@ -2345,7 +2654,7 @@ bool SampleApplication::Execute()
 				auto meshRes = mesh->GetParentResource();
 				
 				// set mesh constant.
-				descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 				pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
 
 				// set vertex buffer.
@@ -2392,7 +2701,7 @@ bool SampleApplication::Execute()
 
 			// clear depth.
 			D3D12_CPU_DESCRIPTOR_HANDLE dsv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->dsvs[0]->GetDescInfo().cpuHandle;
-			pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
+			//pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
 			// set render targets.
 			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
@@ -2459,7 +2768,7 @@ bool SampleApplication::Execute()
 				}
 				
 				// set mesh constant.
-				descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+				descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 				// set vertex buffer.
 				const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
@@ -2590,7 +2899,7 @@ bool SampleApplication::Execute()
 				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					// set mesh constant.
-					descSet.SetVsCbv(1, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 					auto meshRes = mesh->GetParentResource();
 
@@ -2660,6 +2969,7 @@ bool SampleApplication::Execute()
 				// draw meshes.
 				sl12::u32 meshIndex = 0;
 				sl12::u32 meshletTotal = 0;
+				auto&& meshletCBs = scene_->GetMeshletCBs();
 				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					auto meshRes = mesh->GetParentResource();
@@ -2668,31 +2978,28 @@ bool SampleApplication::Execute()
 					UINT meshletCnt = 0;
 					if (scene_->GetSuzanneMeshHandle().IsValid() && meshRes == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SuzanneMeshletBV_;
-						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSuzanneMeshletBV();
 					}
 					else if (scene_->GetSponzaMeshHandle().IsValid() && meshRes == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SponzaMeshletBV_;
-						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSponzaMeshletBV();
 					}
 					else if (scene_->GetCurtainMeshHandle().IsValid() && meshRes == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &CurtainMeshletBV_;
-						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetCurtainMeshletBV();
 					}
 					else if (scene_->GetSphereMeshHandle().IsValid() && meshRes == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SphereMeshletBV_;
-						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSphereMeshletBV();
 					}
+					meshletCnt = (sl12::u32)(pMeshletBoundSrv->GetViewDesc().Buffer.NumElements);
 					
 					// set mesh constant.
-					descSet.SetAsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-					descSet.SetAsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 					descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
-					descSet.SetMsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-					descSet.SetMsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 					pCmdList->SetMeshRootSignatureAndDescriptorSet(&rsMs_, &descSet);
 
@@ -2718,54 +3025,33 @@ bool SampleApplication::Execute()
 
 				auto srv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
 				auto target = renderGraphDeprecated_->GetTarget(TargetContainer.hiZTargetID);
-				auto width = gHiZDesc.width;
-				auto height = gHiZDesc.height;
-				for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
+				auto width = (sl12::u32)gHiZDesc.width >> 1;
+				auto height = gHiZDesc.height >> 1;
+				for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i+=2)
 				{
-					// set viewport.
-					D3D12_VIEWPORT vp;
-					vp.TopLeftX = vp.TopLeftY = 0.0f;
-					vp.Width = (float)width;
-					vp.Height = (float)height;
-					vp.MinDepth = 0.0f;
-					vp.MaxDepth = 1.0f;
-					pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
-
-					// set scissor rect.
-					D3D12_RECT rect;
-					rect.left = rect.top = 0;
-					rect.right = (LONG)width;
-					rect.bottom = height;
-					pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
-					
-					// set render targets.
-					D3D12_CPU_DESCRIPTOR_HANDLE rtv = target->rtvs[i]->GetDescInfo().cpuHandle;
-					pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
-
 					// set descriptors.
 					sl12::DescriptorSet descSet;
 					descSet.Reset();
-					descSet.SetPsSrv(0, srv);
+					descSet.SetCsSrv(0, srv);
+					descSet.SetCsUav(0, target->uavs[i]->GetDescInfo().cpuHandle);
+					descSet.SetCsUav(1, target->uavs[i + 1]->GetDescInfo().cpuHandle);
 
 					// set pipeline.
-					pCmdList->GetLatestCommandList()->SetPipelineState(psoDepthReduction_->GetPSO());
-					pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-					pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+					pCmdList->GetLatestCommandList()->SetPipelineState(psoHiZ_->GetPSO());
+					pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
 
-					// draw fullscreen.
-					pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+					// dispatch.
+					UINT x = (width + 7) / 8 + 1;
+					UINT y = (height + 7) / 8 + 1;
+					pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-					pCmdList->TransitionBarrier(&target->texture, i, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
-					if (i + 1 < gHiZDesc.mipLevels)
+					if (i + 2 < gHiZDesc.mipLevels)
 					{
-						srv = target->textureSrvs[i + 1]->GetDescInfo().cpuHandle;
-						width >>= 1;
-						height >>= 1;
+						srv = target->textureSrvs[i + 2]->GetDescInfo().cpuHandle;
+						width >>= 2;
+						height >>= 2;
 					}
 				}
-
-				// render graph glitch.
-				pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
 			}
 			renderGraphDeprecated_->EndPass();
 
@@ -2824,6 +3110,7 @@ bool SampleApplication::Execute()
 				// draw meshes.
 				sl12::u32 meshIndex = 0;
 				sl12::u32 meshletTotal = 0;
+				auto&& meshletCBs = scene_->GetMeshletCBs();
 				for (auto&& mesh : scene_->GetSceneMeshes())
 				{
 					auto meshRes = mesh->GetParentResource();
@@ -2832,31 +3119,28 @@ bool SampleApplication::Execute()
 					UINT meshletCnt = 0;
 					if (scene_->GetSuzanneMeshHandle().IsValid() && meshRes == scene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SuzanneMeshletBV_;
-						meshletCnt = (sl12::u32)(SuzanneMeshletB_->GetBufferDesc().size / SuzanneMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSuzanneMeshletBV();
 					}
 					else if (scene_->GetSponzaMeshHandle().IsValid() && meshRes == scene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SponzaMeshletBV_;
-						meshletCnt = (sl12::u32)(SponzaMeshletB_->GetBufferDesc().size / SponzaMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSponzaMeshletBV();
 					}
 					else if (scene_->GetCurtainMeshHandle().IsValid() && meshRes == scene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &CurtainMeshletBV_;
-						meshletCnt = (sl12::u32)(CurtainMeshletB_->GetBufferDesc().size / CurtainMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetCurtainMeshletBV();
 					}
 					else if (scene_->GetSphereMeshHandle().IsValid() && meshRes == scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 					{
-						pMeshletBoundSrv = &SphereMeshletBV_;
-						meshletCnt = (sl12::u32)(SphereMeshletB_->GetBufferDesc().size / SphereMeshletB_->GetBufferDesc().stride);
+						pMeshletBoundSrv = scene_->GetSphereMeshletBV();
 					}
+					meshletCnt = (sl12::u32)(pMeshletBoundSrv->GetViewDesc().Buffer.NumElements);
 				
 					// set mesh constant.
-					descSet.SetAsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-					descSet.SetAsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetAsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 					descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
-					descSet.SetMsCbv(2, MeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-					descSet.SetMsCbv(3, meshletCBs_[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+					descSet.SetMsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 					pCmdList->SetMeshRootSignatureAndDescriptorSet(&rsMs_, &descSet);
 
@@ -3237,54 +3521,33 @@ bool SampleApplication::Execute()
 
 		auto srv = renderGraphDeprecated_->GetTarget(TargetContainer.gbufferTargetIDs[3])->textureSrvs[0]->GetDescInfo().cpuHandle;
 		auto target = renderGraphDeprecated_->GetTarget(TargetContainer.hiZTargetID);
-		auto width = gHiZDesc.width;
-		auto height = gHiZDesc.height;
-		for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i++)
+		auto width = (sl12::u32)gHiZDesc.width >> 1;
+		auto height = gHiZDesc.height >> 1;
+		for (sl12::u32 i = 0; i < gHiZDesc.mipLevels; i+=2)
 		{
-			// set viewport.
-			D3D12_VIEWPORT vp;
-			vp.TopLeftX = vp.TopLeftY = 0.0f;
-			vp.Width = (float)width;
-			vp.Height = (float)height;
-			vp.MinDepth = 0.0f;
-			vp.MaxDepth = 1.0f;
-			pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
-
-			// set scissor rect.
-			D3D12_RECT rect;
-			rect.left = rect.top = 0;
-			rect.right = (LONG)width;
-			rect.bottom = height;
-			pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
-			
-			// set render targets.
-			D3D12_CPU_DESCRIPTOR_HANDLE rtv = target->rtvs[i]->GetDescInfo().cpuHandle;
-			pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
-
 			// set descriptors.
 			sl12::DescriptorSet descSet;
 			descSet.Reset();
-			descSet.SetPsSrv(0, srv);
+			descSet.SetCsSrv(0, srv);
+			descSet.SetCsUav(0, target->uavs[i]->GetDescInfo().cpuHandle);
+			descSet.SetCsUav(1, target->uavs[i + 1]->GetDescInfo().cpuHandle);
 
 			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(psoDepthReduction_->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rsVsPs_, &descSet);
+			pCmdList->GetLatestCommandList()->SetPipelineState(psoHiZ_->GetPSO());
+			pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCs_, &descSet);
 
-			// draw fullscreen.
-			pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+			// dispatch.
+			UINT x = (width + 7) / 8 + 1;
+			UINT y = (height + 7) / 8 + 1;
+			pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-			pCmdList->TransitionBarrier(&target->texture, i, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
-			if (i + 1 < gHiZDesc.mipLevels)
+			if (i + 2 < gHiZDesc.mipLevels)
 			{
-				srv = target->textureSrvs[i + 1]->GetDescInfo().cpuHandle;
-				width >>= 1;
-				height >>= 1;
+				srv = target->textureSrvs[i + 2]->GetDescInfo().cpuHandle;
+				width >>= 2;
+				height >>= 2;
 			}
 		}
-
-		// render graph glitch.
-		pCmdList->TransitionBarrier(&target->texture, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 	renderGraphDeprecated_->EndPass();
 
@@ -3580,145 +3843,11 @@ bool SampleApplication::Execute()
 
 	frameIndex_++;
 
+	TempCB.Clear();
+
 	return true;
 }
-
-// void SampleApplication::CreateMaterialList()
-// {
-// 	if (!workMaterials_.empty())
-// 	{
-// 		return;
-// 	}
-//
-// 	// list material.
-// 	for (auto&& mesh : scene_->GetSceneMeshes())
-// 	{
-// 		auto meshRes = mesh->GetParentResource();
-//
-// 		// select pso type.
-// 		int psoType = 0;
-// 		if (scene_->GetSphereMeshHandle().IsValid() && scene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>() == meshRes)
-// 		{
-// 			psoType = 1;
-// 		}
-// 		
-// 		for (auto&& mat : meshRes->GetMaterials())
-// 		{
-// 			auto it = std::find_if(
-// 				workMaterials_.begin(), workMaterials_.end(),
-// 				[&mat](const WorkMaterial& rhs) { return rhs.pResMaterial == &mat; });
-// 			if (it == workMaterials_.end())
-// 			{
-// 				WorkMaterial work{};
-// 				work.pResMaterial = &mat;
-// 				work.psoType = psoType;
-// 				work.texHandles.push_back(work.pResMaterial->baseColorTex);
-// 				work.texHandles.push_back(work.pResMaterial->normalTex);
-// 				work.texHandles.push_back(work.pResMaterial->ormTex);
-//
-// 				// add to list.
-// 				workMaterials_.push_back(work);
-// 			}
-// 		}
-// 	}
-//
-// 	// work graph resources.
-// 	{
-// 		sl12::BufferDesc desc{};
-// 		desc.heap = sl12::BufferHeap::Default;
-// 		desc.usage = sl12::ResourceUsage::ShaderResource;
-// 		desc.stride = sizeof(MaterialData);
-// 		desc.size = desc.stride * workMaterials_.size();
-// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-//
-// 		materialDataB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-// 		materialDataCopyB_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-// 		materialDataBV_ = sl12::MakeUnique<sl12::BufferView>(&device_);
-// 		materialDataB_->Initialize(&device_, desc);
-// 		materialDataBV_->Initialize(&device_, &materialDataB_, 0, (sl12::u32)workMaterials_.size(), sizeof(MaterialData));
-// 		desc.heap = sl12::BufferHeap::Dynamic;
-// 		materialDataCopyB_->Initialize(&device_, desc);
-//
-// 		MaterialData* data = static_cast<MaterialData*>(materialDataCopyB_->Map());
-// 		auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(scene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
-// 		bindlessTextures_.clear();
-// 		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
-// 		bindlessTextures_.push_back(device_.GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
-// 		bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
-// 		for (auto&& work : workMaterials_)
-// 		{
-// 			if (work.psoType == 0)
-// 			{
-// 				data->shaderIndex = 0;
-// 				// default.
-// 				data->colorTexIndex = data->ormTexIndex = 0;
-// 				data->normalTexIndex = 1;
-// 				// each textures.
-// 				auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
-// 				if (resTex)
-// 				{
-// 					data->colorTexIndex = (UINT)bindlessTextures_.size();
-// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-// 				}
-// 				resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
-// 				if (resTex)
-// 				{
-// 					data->normalTexIndex = (UINT)bindlessTextures_.size();
-// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-// 				}
-// 				resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
-// 				if (resTex)
-// 				{
-// 					data->ormTexIndex = (UINT)bindlessTextures_.size();
-// 					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-// 				}
-// 			}
-// 			else
-// 			{
-// 				data->shaderIndex = 1;
-// 				data->colorTexIndex = data->ormTexIndex = 0;
-// 				data->normalTexIndex = 2;
-// 			}
-// 			data++;
-// 		}
-// 		materialDataCopyB_->Unmap();
-// 	}
-//
-// 	// create miplevel feedback buffer.
-// 	{
-// 		sl12::BufferDesc desc{};
-// 		desc.heap = sl12::BufferHeap::Default;
-// 		desc.size = sizeof(sl12::u32) * workMaterials_.size();
-// 		desc.stride = 0;
-// 		desc.usage = sl12::ResourceUsage::UnorderedAccess;
-// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-//
-// 		miplevelBuffer_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-// 		miplevelBuffer_->Initialize(&device_, desc);
-// 		miplevelUAV_ = sl12::MakeUnique<sl12::UnorderedAccessView>(&device_);
-// 		miplevelUAV_->Initialize(&device_, &miplevelBuffer_, 0, 0, 0, 0);
-//
-// 		desc.heap = sl12::BufferHeap::Dynamic;
-// 		desc.usage = sl12::ResourceUsage::Unknown;
-// 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-// 		miplevelCopySrc_ = sl12::MakeUnique<sl12::Buffer>(&device_);
-// 		miplevelCopySrc_->Initialize(&device_, desc);
-//
-// 		void* p = miplevelCopySrc_->Map();
-// 		memset(p, 0xff, desc.size);
-// 		miplevelCopySrc_->Unmap();
-// 	}
-//
-// 	neededMiplevels_.resize(workMaterials_.size());
-// 	for (auto&& s : neededMiplevels_)
-// 	{
-// 		s.minLevel = 0xff;
-// 		s.latestLevel = 0xff;
-// 		s.time = 0;
-// 	}
-// 	miplevelReadbacks_[0].Reset();
-// 	miplevelReadbacks_[1].Reset();
-// }
+#endif
 
 void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 {
@@ -4008,90 +4137,6 @@ void SampleApplication::CreateBuffers(sl12::CommandList* pCmdList)
 
 	// copy work buffer resource.
 	scene_->CopyMaterialData(pCmdList);
-	// if (materialDataCopyB_.IsValid())
-	// {
-	// 	pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-	// 	pCmdList->AddTransitionBarrier(&materialDataCopyB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	// 	pCmdList->FlushBarriers();
-	//
-	// 	pCmdList->GetLatestCommandList()->CopyBufferRegion(materialDataB_->GetResourceDep(), 0, materialDataCopyB_->GetResourceDep(), 0, materialDataCopyB_->GetBufferDesc().size);
-	//
-	// 	pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-	// 	pCmdList->FlushBarriers();
-	//
-	// 	materialDataCopyB_.Reset();
-	// }
-}
-
-void SampleApplication::CreateMeshletBounds(sl12::CommandList* pCmdList)
-{
-	auto CreateAndCopy = [&](sl12::ResourceHandle hRes, UniqueHandle<sl12::Buffer>& B, UniqueHandle<sl12::BufferView>& BV)
-	{
-		auto resMesh = hRes.GetItem<sl12::ResourceItemMesh>();
-		auto&& submeshes = resMesh->GetSubmeshes();
-
-		// count meshlets.
-		sl12::u32 meshletTotal = 0;
-		for (auto&& submesh : submeshes)
-		{
-			meshletTotal += (sl12::u32)submesh.meshlets.size();
-		}
-
-		// create buffers.
-		B = sl12::MakeUnique<sl12::Buffer>(&device_);
-		BV = sl12::MakeUnique<sl12::BufferView>(&device_);
-		UniqueHandle<sl12::Buffer> UploadB = sl12::MakeUnique<sl12::Buffer>(&device_);
-		
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Default;
-		desc.stride = sizeof(MeshletBound);
-		desc.size = desc.stride * meshletTotal;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-
-		B->Initialize(&device_, desc);
-		BV->Initialize(&device_, &B, 0, 0, (sl12::u32)desc.stride);
-
-		desc.heap = sl12::BufferHeap::Dynamic;
-		UploadB->Initialize(&device_, desc);
-
-		// fill upload buffer.
-		MeshletBound* pBound = static_cast<MeshletBound*>(UploadB->Map());
-		for (auto&& submesh : submeshes)
-		{
-			for (auto&& meshlet : submesh.meshlets)
-			{
-				pBound->aabbMin = meshlet.boundingInfo.box.aabbMin;
-				pBound->aabbMax = meshlet.boundingInfo.box.aabbMax;
-				pBound->coneAxis = meshlet.boundingInfo.cone.axis;
-				pBound->coneApex = meshlet.boundingInfo.cone.apex;
-				pBound->coneCutoff = meshlet.boundingInfo.cone.cutoff;
-				pBound++;
-			}
-		}
-		UploadB->Unmap();
-
-		// copy buffer.
-		pCmdList->GetLatestCommandList()->CopyResource(B->GetResourceDep(), UploadB->GetResourceDep());
-		pCmdList->TransitionBarrier(&B, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-	};
-
-	if (scene_->GetSuzanneMeshHandle().IsValid())
-	{
-		CreateAndCopy(scene_->GetSuzanneMeshHandle(), SuzanneMeshletB_, SuzanneMeshletBV_);
-	}
-	if (scene_->GetSponzaMeshHandle().IsValid())
-	{
-		CreateAndCopy(scene_->GetSponzaMeshHandle(), SponzaMeshletB_, SponzaMeshletBV_);
-	}
-	if (scene_->GetCurtainMeshHandle().IsValid())
-	{
-		CreateAndCopy(scene_->GetCurtainMeshHandle(), CurtainMeshletB_, CurtainMeshletBV_);
-	}
-	if (scene_->GetSphereMeshHandle().IsValid())
-	{
-		CreateAndCopy(scene_->GetSphereMeshHandle(), SphereMeshletB_, SphereMeshletBV_);
-	}
 }
 
 int SampleApplication::Input(UINT message, WPARAM wParam, LPARAM lParam)
