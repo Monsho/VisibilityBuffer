@@ -1810,6 +1810,8 @@ bool SampleApplication::Execute()
 
 	// compile render graph.
 	RenderPassSetupDesc setupDesc{};
+	setupDesc.ssaoType = ssaoType_;
+	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	
 	auto meshMan = renderSys_->GetMeshManager();

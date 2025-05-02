@@ -86,6 +86,7 @@
     <None Include="shaders\depth_reduction.c.hlsl" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\shadowmap_pass.cpp" />
+    <ClCompile Include="src\pass\indirect_light_pass.cpp" />
     <ClCompile Include="src\pass\utility_pass.cpp" />
     <ClCompile Include="src\pass\visibility_pass.cpp" />
     <ClCompile Include="src\scene.cpp" />
@@ -135,6 +136,7 @@
     <ClInclude Include="src\pass\gbuffer_pass.h" />
     <ClInclude Include="src\pass\render_resource_settings.h" />
     <ClInclude Include="src\pass\shadowmap_pass.h" />
+    <ClInclude Include="src\pass\indirect_light_pass.h" />
     <ClInclude Include="src\pass\utility_pass.h" />
     <ClInclude Include="src\pass\visibility_pass.h" />
     <ClInclude Include="src\scene.h" />

@@ -168,6 +168,9 @@ struct TemporalCBs
 
 struct RenderPassSetupDesc
 {
+	int ssaoType = 0;
+	bool bNeedDeinterleave = false;
+	
 	bool operator==(const RenderPassSetupDesc& rhs) const
 	{
 		return true;

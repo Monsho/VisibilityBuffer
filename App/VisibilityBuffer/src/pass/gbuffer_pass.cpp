@@ -42,6 +42,7 @@ std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources() co
 	auto cbvMan = pRenderSystem_->GetCbvManager();
 	auto&& meshletCBs = pScene_->GetMeshletCBs();
 	sl12::u32 numMeshlets = 0;
+	meshletCBs.clear();
 	for (auto&& mesh : pScene_->GetSceneMeshes())
 	{
 		auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
@@ -56,8 +57,7 @@ std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources() co
 		cb.meshletCount = cnt;
 		cb.argStartAddress = numMeshlets * kIndirectArgsBufferStride;
 
-		auto handle = cbvMan->GetResident(sizeof(cb));
-		cbvMan->RequestResidentCopy(handle, &cb, sizeof(cb));
+		auto handle = cbvMan->GetTemporal(&cb, sizeof(cb));
 		meshletCBs.push_back(std::move(handle));
 
 		numMeshlets += cnt;
@@ -370,6 +370,7 @@ std::vector<sl12::TransientResource> DepthPrePass::GetOutputResources() const
 	depth.desc.bIsTexture = true;
 	depth.desc.textureDesc.Initialize2D(kDepthFormat, width, height, 1, 1, 0);
 	depth.desc.textureDesc.clearDepth = 0.0f;
+	depth.desc.historyFrame = 1;
 
 	ret.push_back(depth);
 	return ret;

@@ -5,6 +5,7 @@
 #include "pass/gbuffer_pass.h"
 #include "pass/shadowmap_pass.h"
 #include "pass/utility_pass.h"
+#include "pass/indirect_light_pass.h"
 #include "pass/visibility_pass.h"
 
 #define NOMINMAX
@@ -569,6 +570,10 @@ bool Scene::InitRenderPass()
 	passes_.emplace(AppPassType::Lighting, std::make_unique<LightingPass>(pDevice_, pRenderSystem_, this));
 	passes_.emplace(AppPassType::HiZ, std::make_unique<HiZPass>(pDevice_, pRenderSystem_, this));
 	passes_.emplace(AppPassType::Tonemap, std::make_unique<TonemapPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::Deinterleave, std::make_unique<DeinterleavePass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::SSAO, std::make_unique<ScreenSpaceAOPass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::Denoise, std::make_unique<DenoisePass>(pDevice_, pRenderSystem_, this));
+	passes_.emplace(AppPassType::IndirectLight, std::make_unique<IndirectLightPass>(pDevice_, pRenderSystem_, this));
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -579,6 +584,14 @@ bool Scene::InitRenderPass()
 //----
 void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 {
+	bool bNeedDeinterleave = desc.ssaoType == 2 && desc.bNeedDeinterleave;
+
+	// setting.
+	for (auto&& pass : passes_)
+	{
+		pass.second->SetPassSettings(desc);
+	}
+	
 	renderGraph_->ClearPasses();
 	renderGraph_->AddPass(passes_[AppPassType::ShadowMap].get(), nullptr);
 	renderGraph_->AddPass(passes_[AppPassType::MeshletArgCopy].get(), passes_[AppPassType::ShadowMap].get());
@@ -589,7 +602,18 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	renderGraph_->AddPass(passes_[AppPassType::FeedbackMiplevel].get(), passes_[AppPassType::GBuffer].get());
 	renderGraph_->AddPass(passes_[AppPassType::Lighting].get(), passes_[AppPassType::FeedbackMiplevel].get());
 	renderGraph_->AddPass(passes_[AppPassType::HiZ].get(), passes_[AppPassType::Lighting].get());
-	renderGraph_->AddPass(passes_[AppPassType::Tonemap].get(), passes_[AppPassType::HiZ].get());
+	if (bNeedDeinterleave)
+	{
+		renderGraph_->AddPass(passes_[AppPassType::Deinterleave].get(), passes_[AppPassType::HiZ].get());
+		renderGraph_->AddPass(passes_[AppPassType::SSAO].get(), passes_[AppPassType::Deinterleave].get());
+	}
+	else
+	{
+		renderGraph_->AddPass(passes_[AppPassType::SSAO].get(), passes_[AppPassType::HiZ].get());
+	}
+	renderGraph_->AddPass(passes_[AppPassType::Denoise].get(), passes_[AppPassType::SSAO].get());
+	renderGraph_->AddPass(passes_[AppPassType::IndirectLight].get(), passes_[AppPassType::Denoise].get());
+	renderGraph_->AddPass(passes_[AppPassType::Tonemap].get(), passes_[AppPassType::IndirectLight].get());
 
 	lastRenderPassDesc_ = desc;
 }

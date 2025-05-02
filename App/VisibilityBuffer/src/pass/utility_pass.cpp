@@ -211,7 +211,7 @@ std::vector<sl12::TransientResource> LightingPass::GetOutputResources() const
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
 	accum.desc.bIsTexture = true;
-	accum.desc.textureDesc.Initialize2D(DXGI_FORMAT_R11G11B10_FLOAT, width, height, 1, 1, 0);
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 
 	ret.push_back(accum);
 

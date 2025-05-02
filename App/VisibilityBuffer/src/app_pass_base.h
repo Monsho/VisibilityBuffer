@@ -2,6 +2,8 @@
 
 #include "sl12/render_graph.h"
 
+struct RenderPassSetupDesc;
+
 enum class AppPassType
 {
 	MeshletArgCopy,
@@ -17,6 +19,10 @@ enum class AppPassType
 	Lighting,
 	HiZ,
 	Tonemap,
+	Deinterleave,
+	SSAO,
+	Denoise,
+	IndirectLight,
 	Invalid
 };
 
@@ -32,6 +38,9 @@ public:
 	{
 		return AppPassType::Invalid;
 	}
+
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{}
 
 protected:
 	sl12::Device* pDevice_;
