@@ -16,13 +16,13 @@ public:
 		return AppPassType::ClearMiplevel;
 	}
 
-	virtual std::vector<sl12::TransientResource> GetInputResources() const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources() const override;
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
 		return sl12::HardwareQueue::Graphics;
 	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager) override;
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
@@ -41,13 +41,13 @@ public:
 		return AppPassType::FeedbackMiplevel;
 	}
 
-	virtual std::vector<sl12::TransientResource> GetInputResources() const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources() const override;
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
 		return sl12::HardwareQueue::Graphics;
 	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager) override;
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
@@ -71,13 +71,13 @@ public:
 		return AppPassType::Lighting;
 	}
 
-	virtual std::vector<sl12::TransientResource> GetInputResources() const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources() const override;
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
 		return sl12::HardwareQueue::Graphics;
 	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager) override;
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
@@ -97,13 +97,13 @@ public:
 		return AppPassType::HiZ;
 	}
 
-	virtual std::vector<sl12::TransientResource> GetInputResources() const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources() const override;
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
 		return sl12::HardwareQueue::Graphics;
 	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager) override;
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
@@ -122,13 +122,13 @@ public:
 		return AppPassType::Tonemap;
 	}
 
-	virtual std::vector<sl12::TransientResource> GetInputResources() const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources() const override;
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
 		return sl12::HardwareQueue::Graphics;
 	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager) override;
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;

@@ -34,13 +34,13 @@ ClearMiplevelPass::~ClearMiplevelPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> ClearMiplevelPass::GetInputResources() const
+std::vector<sl12::TransientResource> ClearMiplevelPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	return ret;
 }
 
-std::vector<sl12::TransientResource> ClearMiplevelPass::GetOutputResources() const
+std::vector<sl12::TransientResource> ClearMiplevelPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -55,7 +55,7 @@ std::vector<sl12::TransientResource> ClearMiplevelPass::GetOutputResources() con
 	return ret;
 }
 
-void ClearMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void ClearMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "ClearMiplevelPass");
 
@@ -115,20 +115,20 @@ FeedbackMiplevelPass::~FeedbackMiplevelPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> FeedbackMiplevelPass::GetInputResources() const
+std::vector<sl12::TransientResource> FeedbackMiplevelPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kMiplevelFeedbackID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
-std::vector<sl12::TransientResource> FeedbackMiplevelPass::GetOutputResources() const
+std::vector<sl12::TransientResource> FeedbackMiplevelPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	return ret;
 }
 
-void FeedbackMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void FeedbackMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "FeedbackMiplevelPass");
 
@@ -186,7 +186,7 @@ LightingPass::~LightingPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> LightingPass::GetInputResources() const
+std::vector<sl12::TransientResource> LightingPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kGBufferAID, sl12::TransientState::ShaderResource));
@@ -203,7 +203,7 @@ std::vector<sl12::TransientResource> LightingPass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> LightingPass::GetOutputResources() const
+std::vector<sl12::TransientResource> LightingPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
@@ -218,7 +218,7 @@ std::vector<sl12::TransientResource> LightingPass::GetOutputResources() const
 	return ret;
 }
 
-void LightingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void LightingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "LightingPass");
 
@@ -290,14 +290,14 @@ HiZPass::~HiZPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> HiZPass::GetInputResources() const
+std::vector<sl12::TransientResource> HiZPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
-std::vector<sl12::TransientResource> HiZPass::GetOutputResources() const
+std::vector<sl12::TransientResource> HiZPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource hiz(kHiZID, sl12::TransientState::UnorderedAccess);
@@ -313,7 +313,7 @@ std::vector<sl12::TransientResource> HiZPass::GetOutputResources() const
 	return ret;
 }
 
-void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "HiZPass");
 
@@ -406,21 +406,21 @@ TonemapPass::~TonemapPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> TonemapPass::GetInputResources() const
+std::vector<sl12::TransientResource> TonemapPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
-std::vector<sl12::TransientResource> TonemapPass::GetOutputResources() const
+std::vector<sl12::TransientResource> TonemapPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kSwapchainID, sl12::TransientState::RenderTarget));
 	return ret;
 }
 
-void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "TonemapPass");
 

@@ -31,13 +31,13 @@ MeshletArgCopyPass::~MeshletArgCopyPass()
 {
 }
 
-std::vector<sl12::TransientResource> MeshletArgCopyPass::GetInputResources() const
+std::vector<sl12::TransientResource> MeshletArgCopyPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	return ret;
 }
 
-std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources() const
+std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	auto cbvMan = pRenderSystem_->GetCbvManager();
 	auto&& meshletCBs = pScene_->GetMeshletCBs();
@@ -77,7 +77,7 @@ std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources() co
 	return ret;
 }
 
-void MeshletArgCopyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void MeshletArgCopyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "MeshletArgCopyPass");
 
@@ -191,13 +191,13 @@ MeshletCullingPass::~MeshletCullingPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> MeshletCullingPass::GetInputResources() const
+std::vector<sl12::TransientResource> MeshletCullingPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	return ret;
 }
 
-std::vector<sl12::TransientResource> MeshletCullingPass::GetOutputResources() const
+std::vector<sl12::TransientResource> MeshletCullingPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	auto cbvMan = pRenderSystem_->GetCbvManager();
 	auto&& meshletCBs = pScene_->GetMeshletCBs();
@@ -237,7 +237,7 @@ std::vector<sl12::TransientResource> MeshletCullingPass::GetOutputResources() co
 	return ret;
 }
 
-void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "MeshletCullingPass");
 
@@ -350,7 +350,7 @@ DepthPrePass::~DepthPrePass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> DepthPrePass::GetInputResources() const
+std::vector<sl12::TransientResource> DepthPrePass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -359,7 +359,7 @@ std::vector<sl12::TransientResource> DepthPrePass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> DepthPrePass::GetOutputResources() const
+std::vector<sl12::TransientResource> DepthPrePass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -376,7 +376,7 @@ std::vector<sl12::TransientResource> DepthPrePass::GetOutputResources() const
 	return ret;
 }
 
-void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "DepthPrePass");
 
@@ -569,7 +569,7 @@ GBufferPass::~GBufferPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> GBufferPass::GetInputResources() const
+std::vector<sl12::TransientResource> GBufferPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -578,7 +578,7 @@ std::vector<sl12::TransientResource> GBufferPass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> GBufferPass::GetOutputResources() const
+std::vector<sl12::TransientResource> GBufferPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -613,7 +613,7 @@ std::vector<sl12::TransientResource> GBufferPass::GetOutputResources() const
 	return ret;
 }
 
-void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "GBufferPass");
 

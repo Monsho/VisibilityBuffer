@@ -59,13 +59,13 @@ ShadowMapPass::~ShadowMapPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> ShadowMapPass::GetInputResources() const
+std::vector<sl12::TransientResource> ShadowMapPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	return ret;
 }
 
-std::vector<sl12::TransientResource> ShadowMapPass::GetOutputResources() const
+std::vector<sl12::TransientResource> ShadowMapPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource depth(kShadowMapID, sl12::TransientState::DepthStencil);
@@ -78,7 +78,7 @@ std::vector<sl12::TransientResource> ShadowMapPass::GetOutputResources() const
 	return ret;
 }
 
-void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "ShadowDepthPass");
 
@@ -204,7 +204,7 @@ ShadowExpPass::~ShadowExpPass()
 	rs_.Reset();
 }
 	
-std::vector<sl12::TransientResource> ShadowExpPass::GetInputResources() const
+std::vector<sl12::TransientResource> ShadowExpPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 
@@ -213,7 +213,7 @@ std::vector<sl12::TransientResource> ShadowExpPass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> ShadowExpPass::GetOutputResources() const
+std::vector<sl12::TransientResource> ShadowExpPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource depth(kShadowExpID, sl12::TransientState::RenderTarget);
@@ -225,7 +225,7 @@ std::vector<sl12::TransientResource> ShadowExpPass::GetOutputResources() const
 	return ret;
 }
 
-void ShadowExpPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void ShadowExpPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "ShadowExp");
 
@@ -255,9 +255,8 @@ void ShadowExpPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 
 
 //----------------
-ShadowExpBlurPass::ShadowExpBlurPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene, bool bXBlur)
+ShadowExpBlurPass::ShadowExpBlurPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
-	, bXBlur_(bXBlur)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
@@ -303,11 +302,12 @@ ShadowExpBlurPass::~ShadowExpBlurPass()
 	rs_.Reset();
 }
 	
-std::vector<sl12::TransientResource> ShadowExpBlurPass::GetInputResources() const
+std::vector<sl12::TransientResource> ShadowExpBlurPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
+	bool bXBlur = ID == "ShadowBlurXPass";
 
-	if (bXBlur_)
+	if (bXBlur)
 	{
 		ret.push_back(sl12::TransientResource(kShadowExpID, sl12::TransientState::ShaderResource));
 	}
@@ -320,10 +320,12 @@ std::vector<sl12::TransientResource> ShadowExpBlurPass::GetInputResources() cons
 	
 }
 
-std::vector<sl12::TransientResource> ShadowExpBlurPass::GetOutputResources() const
+std::vector<sl12::TransientResource> ShadowExpBlurPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
+	bool bXBlur = ID == "ShadowBlurXPass";
+
 	std::vector<sl12::TransientResource> ret;
-	sl12::TransientResource depth(bXBlur_ ? kShadowBlurID : kShadowExpID, sl12::TransientState::RenderTarget);
+	sl12::TransientResource depth(bXBlur ? kShadowBlurID : kShadowExpID, sl12::TransientState::RenderTarget);
 
 	depth.desc.bIsTexture = true;
 	depth.desc.textureDesc.Initialize2D(kShadowExpFormat, kShadowMapSize, kShadowMapSize, 1, 1, 0);
@@ -332,12 +334,13 @@ std::vector<sl12::TransientResource> ShadowExpBlurPass::GetOutputResources() con
 	return ret;
 }
 
-void ShadowExpBlurPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void ShadowExpBlurPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
-	GPU_MARKER(pCmdList, 0, bXBlur_ ? "GaussianBlurX" : "GaussianBlurY");
+	bool bXBlur = ID == "ShadowBlurXPass";
+	GPU_MARKER(pCmdList, 0, bXBlur ? "GaussianBlurX" : "GaussianBlurY");
 
-	auto pBlurSrc = pResManager->GetRenderGraphResource(bXBlur_ ? kShadowExpID : kShadowBlurID);
-	auto pBlurDst = pResManager->GetRenderGraphResource(bXBlur_ ? kShadowBlurID : kShadowExpID);
+	auto pBlurSrc = pResManager->GetRenderGraphResource(bXBlur ? kShadowExpID : kShadowBlurID);
+	auto pBlurDst = pResManager->GetRenderGraphResource(bXBlur ? kShadowBlurID : kShadowExpID);
 	auto pBlurSrcSRV = pResManager->CreateOrGetTextureView(pBlurSrc);
 	auto pBlurDstRTV = pResManager->CreateOrGetRenderTargetView(pBlurDst);
 

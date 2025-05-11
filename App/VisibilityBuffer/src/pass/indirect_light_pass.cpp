@@ -34,7 +34,7 @@ DeinterleavePass::~DeinterleavePass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> DeinterleavePass::GetInputResources() const
+std::vector<sl12::TransientResource> DeinterleavePass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
@@ -43,7 +43,7 @@ std::vector<sl12::TransientResource> DeinterleavePass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> DeinterleavePass::GetOutputResources() const
+std::vector<sl12::TransientResource> DeinterleavePass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource diDepth(kDeinterleaveDepthID, sl12::TransientState::UnorderedAccess);
@@ -69,7 +69,7 @@ std::vector<sl12::TransientResource> DeinterleavePass::GetOutputResources() cons
 	return ret;
 }
 
-void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "DeinterleavePass");
 
@@ -173,7 +173,7 @@ ScreenSpaceAOPass::~ScreenSpaceAOPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetInputResources() const
+std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	if (type_ == 2)
@@ -199,7 +199,7 @@ std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetInputResources() cons
 	return ret;
 }
 
-std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetOutputResources() const
+std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource ssao(kSsaoID, sl12::TransientState::UnorderedAccess);
@@ -220,7 +220,7 @@ std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetOutputResources() con
 	return ret;
 }
 
-void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "SSAO Pass");
 
@@ -318,7 +318,7 @@ DenoisePass::~DenoisePass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> DenoisePass::GetInputResources() const
+std::vector<sl12::TransientResource> DenoisePass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
@@ -330,7 +330,7 @@ std::vector<sl12::TransientResource> DenoisePass::GetInputResources() const
 	return ret;
 }
 
-std::vector<sl12::TransientResource> DenoisePass::GetOutputResources() const
+std::vector<sl12::TransientResource> DenoisePass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource ao(kDenoiseAOID, sl12::TransientState::UnorderedAccess);
@@ -353,7 +353,7 @@ std::vector<sl12::TransientResource> DenoisePass::GetOutputResources() const
 	return ret;
 }
 
-void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "DenoisePass");
 
@@ -440,7 +440,7 @@ IndirectLightPass::~IndirectLightPass()
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> IndirectLightPass::GetInputResources() const
+std::vector<sl12::TransientResource> IndirectLightPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kGBufferAID, sl12::TransientState::ShaderResource));
@@ -452,7 +452,7 @@ std::vector<sl12::TransientResource> IndirectLightPass::GetInputResources() cons
 	return ret;
 }
 
-std::vector<sl12::TransientResource> IndirectLightPass::GetOutputResources() const
+std::vector<sl12::TransientResource> IndirectLightPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
@@ -468,7 +468,7 @@ std::vector<sl12::TransientResource> IndirectLightPass::GetOutputResources() con
 	return ret;
 }
 
-void IndirectLightPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager)
+void IndirectLightPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "IndirectLightPass");
 
