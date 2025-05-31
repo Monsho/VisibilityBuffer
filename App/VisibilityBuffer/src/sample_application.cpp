@@ -1628,6 +1628,18 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
 	}
 	{
+		TileCB cbTile;
+
+		UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+		UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+		cbTile.numX = x;
+		cbTile.numY = y;
+		cbTile.tileMax = x * y;
+		cbTile.materialMax = (sl12::u32)scene_->GetWorkMaterials().size();
+
+		OutCBs.hTileCB = cbvMan->GetTemporal(&cbTile, sizeof(cbTile));
+	}
+	{
 		DebugCB cbDebug;
 
 		cbDebug.displayMode = displayMode_;
@@ -1810,6 +1822,7 @@ bool SampleApplication::Execute()
 
 	// compile render graph.
 	RenderPassSetupDesc setupDesc{};
+	setupDesc.bUseVisibilityBuffer = bEnableVisibilityBuffer_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);

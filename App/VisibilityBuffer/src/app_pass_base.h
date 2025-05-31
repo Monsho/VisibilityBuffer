@@ -12,6 +12,7 @@ enum class AppPassType
 	FeedbackMiplevel,
 	DepthPre,
 	GBuffer,
+	VisibilityVs,
 	ShadowMap,
 	ShadowExp,
 	ShadowBlurX,
@@ -23,6 +24,10 @@ enum class AppPassType
 	SSAO,
 	Denoise,
 	IndirectLight,
+	BufferReady,
+	MaterialDepth,
+	Classify,
+	MaterialTile,
 	Invalid
 };
 

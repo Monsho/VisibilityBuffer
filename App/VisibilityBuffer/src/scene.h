@@ -148,6 +148,7 @@ struct TemporalCBs
 	sl12::CbvHandle hDetailCB;
 	sl12::CbvHandle hBlurXCB, hBlurYCB;
 	sl12::CbvHandle hAmbOccCB;
+	sl12::CbvHandle hTileCB;
 	sl12::CbvHandle hDebugCB;
 	std::vector<sl12::CbvHandle> hMeshCBs;
 
@@ -161,6 +162,7 @@ struct TemporalCBs
 		hBlurXCB.Reset();
 		hBlurYCB.Reset();
 		hAmbOccCB.Reset();
+		hTileCB.Reset();
 		hDebugCB.Reset();
 		hMeshCBs.clear();
 	}
@@ -168,16 +170,19 @@ struct TemporalCBs
 
 struct RenderPassSetupDesc
 {
+	bool bUseVisibilityBuffer = false;
 	int ssaoType = 0;
 	bool bNeedDeinterleave = false;
 	
 	bool operator==(const RenderPassSetupDesc& rhs) const
 	{
-		return true;
+		return (bUseVisibilityBuffer == rhs.bUseVisibilityBuffer)
+			&& (ssaoType == rhs.ssaoType)
+			&& (bNeedDeinterleave == rhs.bNeedDeinterleave);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
 	{
-		return operator==(rhs);
+		return !operator==(rhs);
 	}
 };
 
