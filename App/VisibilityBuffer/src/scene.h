@@ -171,12 +171,14 @@ struct TemporalCBs
 struct RenderPassSetupDesc
 {
 	bool bUseVisibilityBuffer = false;
+	bool bUseMeshShader = false;
 	int ssaoType = 0;
 	bool bNeedDeinterleave = false;
 	
 	bool operator==(const RenderPassSetupDesc& rhs) const
 	{
 		return (bUseVisibilityBuffer == rhs.bUseVisibilityBuffer)
+			&& (bUseMeshShader == rhs.bUseMeshShader)
 			&& (ssaoType == rhs.ssaoType)
 			&& (bNeedDeinterleave == rhs.bNeedDeinterleave);
 	}

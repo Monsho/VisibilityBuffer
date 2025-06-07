@@ -391,6 +391,259 @@ void VisibilityVsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 
 //----------------
+VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso1st_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	pso2nd_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityMesh1stA), pRenderSys->GetShader(ShaderName::VisibilityMeshM), pRenderSys->GetShader(ShaderName::VisibilityMeshP), 0);
+
+	// init pipeline state.
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
+		desc.pMS = pRenderSys->GetShader(ShaderName::VisibilityMeshM);
+		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMeshP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = kVisibilityFormat;
+		desc.dsvFormat = kDepthFormat;
+		desc.multisampleCount = 1;
+
+		if (!pso1st_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh2ndA);
+		if (!pso2nd_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+	}
+}
+
+VisibilityMsPass::~VisibilityMsPass()
+{
+	pso1st_.Reset();
+	pso2nd_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> VisibilityMsPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	bool b1st = ID == kVisibilityMs1stPass;
+
+	std::vector<sl12::TransientResource> ret;
+	
+	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kHiZID, b1st ? 1 : 0), sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
+	if (b1st)
+	{}
+	else
+	{
+		ret.push_back(sl12::TransientResource(kDrawFlagID, sl12::TransientState::ShaderResource));
+	}
+	
+	return ret;
+}
+
+std::vector<sl12::TransientResource> VisibilityMsPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	bool b1st = ID == kVisibilityMs1stPass;
+
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource vis(kVisBufferID, sl12::TransientState::RenderTarget);
+	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	
+	vis.desc.bIsTexture = true;
+	vis.desc.textureDesc.Initialize2D(kVisibilityFormat, width, height, 1, 1, 0);
+
+	depth.desc.bIsTexture = true;
+	depth.desc.textureDesc.Initialize2D(kDepthFormat, width, height, 1, 1, 0);
+	depth.desc.textureDesc.clearDepth = 0.0f;
+	depth.desc.historyFrame = 1;
+
+	ret.push_back(vis);
+	ret.push_back(depth);
+
+	if (b1st)
+	{
+		sl12::TransientResource flag(kDrawFlagID, sl12::TransientState::UnorderedAccess);
+		size_t totalMeshlets = 0;
+		for (auto&& mesh : pScene_->GetSceneMeshes())
+		{
+			auto res = mesh->GetParentResource();
+			for (auto&& submesh : res->GetSubmeshes())
+			{
+				totalMeshlets += submesh.meshlets.size();
+			}
+		}
+		flag.desc.bIsTexture = false;
+		flag.desc.bufferDesc.InitializeByteAddress(totalMeshlets * 4, 0);
+		ret.push_back(flag);
+	}
+	
+	return ret;
+}
+
+void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	bool b1st = ID == kVisibilityMs1stPass;
+	
+	GPU_MARKER(pCmdList, 0, b1st ? "VisibilityMs1stPass" : "VisibilityMs2ndPass");
+
+	auto pHiZRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kHiZID, b1st ? 1 : 0));
+	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
+	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
+	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pDrawFlagRes = pResManager->GetRenderGraphResource(kDrawFlagID);
+
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pVisRTV = pResManager->CreateOrGetRenderTargetView(pVisRes);
+	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
+	
+	// set render targets.
+	D3D12_CPU_DESCRIPTOR_HANDLE rtv = pVisRTV->GetDescInfo().cpuHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE dsv = pDepthDSV->GetDescInfo().cpuHandle;
+	if (b1st)
+	{
+		pCmdList->GetLatestCommandList()->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
+	}
+	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, &dsv);
+
+	// set viewport.
+	D3D12_VIEWPORT vp;
+	vp.TopLeftX = vp.TopLeftY = 0.0f;
+	vp.Width = (float)pScene_->GetScreenWidth();
+	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.MinDepth = 0.0f;
+	vp.MaxDepth = 1.0f;
+	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+	// set scissor rect.
+	D3D12_RECT rect;
+	rect.left = rect.top = 0;
+	rect.right = pScene_->GetScreenWidth();
+	rect.bottom = pScene_->GetScreenHeight();
+	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+	auto pMeshMan = pRenderSystem_->GetMeshManager();
+	auto&& TempCB = pScene_->GetTemporalCBs();
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	// as
+	descSet.SetAsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetAsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+	if (pHiZRes)
+	{
+		auto pHiZSRV = pResManager->CreateOrGetTextureView(pHiZRes);
+		descSet.SetAsSrv(1, pHiZSRV->GetDescInfo().cpuHandle);
+	}
+	else
+	{
+		auto black = pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
+		descSet.SetAsSrv(1, black->GetDescInfo().cpuHandle);
+	}
+	if (b1st)
+	{
+		auto pDrawFlagUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pDrawFlagRes, 0, 0, 0, 0);
+		descSet.SetAsUav(0, pDrawFlagUAV->GetDescInfo().cpuHandle);
+	}
+	else
+	{
+		auto pDrawFlagSRV = pResManager->CreateOrGetBufferView(pDrawFlagRes, 0, 0, 0);
+		descSet.SetAsSrv(2, pDrawFlagSRV->GetDescInfo().cpuHandle);
+	}
+	// ms
+	descSet.SetMsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetMsCbv(1, TempCB.hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetMsSrv(0, pMeshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetMsSrv(1, pMeshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetMsSrv(2, pSubmeshSRV->GetDescInfo().cpuHandle);
+	descSet.SetMsSrv(3, pMeshletSRV->GetDescInfo().cpuHandle);
+	descSet.SetMsSrv(4, pDrawCallSRV->GetDescInfo().cpuHandle);
+	// ps
+	descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState((b1st ? pso1st_ : pso2nd_)->GetPSO());
+
+	// draw meshes.
+	sl12::u32 meshIndex = 0;
+	auto&& meshletCBs = pScene_->GetMeshletCBs();
+	for (auto&& mesh : pScene_->GetSceneMeshes())
+	{
+		auto meshRes = mesh->GetParentResource();
+
+		sl12::BufferView* pMeshletBoundSrv = nullptr;
+		if (pScene_->GetSuzanneMeshHandle().IsValid() && meshRes == pScene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
+		{
+			pMeshletBoundSrv = pScene_->GetSuzanneMeshletBV();
+		}
+		else if (pScene_->GetSponzaMeshHandle().IsValid() && meshRes == pScene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
+		{
+			pMeshletBoundSrv = pScene_->GetSponzaMeshletBV();
+		}
+		else if (pScene_->GetCurtainMeshHandle().IsValid() && meshRes == pScene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
+		{
+			pMeshletBoundSrv = pScene_->GetCurtainMeshletBV();
+		}
+		else if (pScene_->GetSphereMeshHandle().IsValid() && meshRes == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
+		{
+			pMeshletBoundSrv = pScene_->GetSphereMeshletBV();
+		}
+		UINT meshletCnt = pMeshletBoundSrv->GetViewDesc().Buffer.NumElements;
+		
+		// set mesh constant.
+		descSet.SetAsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetAsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
+		descSet.SetMsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetMsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+
+		pCmdList->SetMeshRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+		const UINT kLaneCount = 32;
+		UINT dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
+		pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
+
+		meshIndex++;
+	}
+}
+
+
+//----------------
 MaterialDepthPass::MaterialDepthPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {

@@ -1823,6 +1823,7 @@ bool SampleApplication::Execute()
 	// compile render graph.
 	RenderPassSetupDesc setupDesc{};
 	setupDesc.bUseVisibilityBuffer = bEnableVisibilityBuffer_;
+	setupDesc.bUseMeshShader = bEnableMeshShader_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);

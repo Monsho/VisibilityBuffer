@@ -559,108 +559,115 @@ bool Scene::InitRenderPass()
 
 	{
 		auto pass = std::make_unique<MeshletArgCopyPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::MeshletArgCopy] = renderGraph_->AddPass("MeshletArgCopyPass", pass.get());
+		passIDs_[AppPassType::MeshletArgCopy] = renderGraph_->AddPass(kMeshletArgCopyPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<MeshletCullingPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::MeshletCulling] = renderGraph_->AddPass("MeshletCullingPass", pass.get());
+		passIDs_[AppPassType::MeshletCulling] = renderGraph_->AddPass(kMeshletCullingPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ClearMiplevelPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::ClearMiplevel] = renderGraph_->AddPass("ClearMiplevelPass", pass.get());
+		passIDs_[AppPassType::ClearMiplevel] = renderGraph_->AddPass(kClearMiplevelPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<FeedbackMiplevelPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::FeedbackMiplevel] = renderGraph_->AddPass("FeedbackMiplevelPass", pass.get());
+		passIDs_[AppPassType::FeedbackMiplevel] = renderGraph_->AddPass(kFeedbackMiplevelPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<DepthPrePass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::DepthPre] = renderGraph_->AddPass("DepthPrePass", pass.get());
+		passIDs_[AppPassType::DepthPre] = renderGraph_->AddPass(kDepthPrePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<GBufferPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::GBuffer] = renderGraph_->AddPass("GBufferPass", pass.get());
+		passIDs_[AppPassType::GBuffer] = renderGraph_->AddPass(kGBufferPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ShadowMapPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::ShadowMap] = renderGraph_->AddPass("ShadowMapPass", pass.get());
+		passIDs_[AppPassType::ShadowMap] = renderGraph_->AddPass(kShadowMapPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ShadowExpPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::ShadowExp] = renderGraph_->AddPass("ShadowExpPass", pass.get());
+		passIDs_[AppPassType::ShadowExp] = renderGraph_->AddPass(kShadowExpPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ShadowExpBlurPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::ShadowBlurX] = renderGraph_->AddPass("ShadowBlurXPass", pass.get());
-		passIDs_[AppPassType::ShadowBlurY] = renderGraph_->AddPass("ShadowBlurYPass", pass.get());
+		passIDs_[AppPassType::ShadowBlurX] = renderGraph_->AddPass(kShadowBlurXPass, pass.get());
+		passIDs_[AppPassType::ShadowBlurY] = renderGraph_->AddPass(kShadowBlurYPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<LightingPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::Lighting] = renderGraph_->AddPass("LightingPass", pass.get());
+		passIDs_[AppPassType::Lighting] = renderGraph_->AddPass(kLightingPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<HiZPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::HiZ] = renderGraph_->AddPass("HiZPass", pass.get());
+		passIDs_[AppPassType::HiZ] = renderGraph_->AddPass(kHiZPass, pass.get());
+		passIDs_[AppPassType::HiZafterFirstCull] = renderGraph_->AddPass(kHiZafterFirstCullPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<TonemapPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::Tonemap] = renderGraph_->AddPass("TonemapPass", pass.get());
+		passIDs_[AppPassType::Tonemap] = renderGraph_->AddPass(kTonemapPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<DeinterleavePass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::Deinterleave] = renderGraph_->AddPass("DeinterleavePass", pass.get());
+		passIDs_[AppPassType::Deinterleave] = renderGraph_->AddPass(kDeinterleavePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ScreenSpaceAOPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::SSAO] = renderGraph_->AddPass("ScreenSpaceAOPass", pass.get());
+		passIDs_[AppPassType::SSAO] = renderGraph_->AddPass(kScreenSpaceAOPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<DenoisePass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::Denoise] = renderGraph_->AddPass("DenoisePass", pass.get());
+		passIDs_[AppPassType::Denoise] = renderGraph_->AddPass(kDenoisePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<IndirectLightPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::IndirectLight] = renderGraph_->AddPass("IndirectLightPass", pass.get());
+		passIDs_[AppPassType::IndirectLight] = renderGraph_->AddPass(kIndirectLightPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<BufferReadyPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::BufferReady] = renderGraph_->AddPass("BufferReady", pass.get());
+		passIDs_[AppPassType::BufferReady] = renderGraph_->AddPass(kBufferReadyPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<VisibilityVsPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::VisibilityVs] = renderGraph_->AddPass("VisibilityVs", pass.get());
+		passIDs_[AppPassType::VisibilityVs] = renderGraph_->AddPass(kVisibilityVsPass, pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<VisibilityMsPass>(pDevice_, pRenderSystem_, this);
+		passIDs_[AppPassType::VisibilityMs1st] = renderGraph_->AddPass(kVisibilityMs1stPass, pass.get());
+		passIDs_[AppPassType::VisibilityMs2nd] = renderGraph_->AddPass(kVisibilityMs2ndPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<MaterialDepthPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::MaterialDepth] = renderGraph_->AddPass("MaterialDepth", pass.get());
+		passIDs_[AppPassType::MaterialDepth] = renderGraph_->AddPass(kMaterialDepthPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<ClassifyPass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::Classify] = renderGraph_->AddPass("Classify", pass.get());
+		passIDs_[AppPassType::Classify] = renderGraph_->AddPass(kClassifyPass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
 		auto pass = std::make_unique<MaterialTilePass>(pDevice_, pRenderSystem_, this);
-		passIDs_[AppPassType::MaterialTile] = renderGraph_->AddPass("MaterialTile", pass.get());
+		passIDs_[AppPassType::MaterialTile] = renderGraph_->AddPass(kMaterialTilePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
 
@@ -681,7 +688,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		pass->SetPassSettings(desc);
 	}
 
-	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || true; // TODO
+	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || !desc.bUseMeshShader;
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
 	
 	renderGraph_->ClearAllGraphEdges();
@@ -700,10 +707,22 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	}
 	else
 	{
-		// visibility rendering. (vertex-pixel pass)
+		// visibility rendering.
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::ClearMiplevel], passIDs_[AppPassType::BufferReady]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityVs]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityVs], passIDs_[AppPassType::MaterialDepth]);
+		if (!desc.bUseMeshShader)
+		{
+			// vertex-pixel pass.
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityVs]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityVs], passIDs_[AppPassType::MaterialDepth]);
+		}
+		else
+		{
+			// mesh-pixel pass. (2-phase occlusion culling)
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityMs1st]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityMs1st], passIDs_[AppPassType::HiZafterFirstCull]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::HiZafterFirstCull], passIDs_[AppPassType::VisibilityMs2nd]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityMs2nd], passIDs_[AppPassType::MaterialDepth]);
+		}
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialDepth], passIDs_[AppPassType::Classify]);
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::Classify], passIDs_[AppPassType::MaterialTile]);
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialTile], passIDs_[AppPassType::FeedbackMiplevel]);

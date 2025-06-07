@@ -66,6 +66,31 @@ private:
 };
 
 //----
+class VisibilityMsPass : public AppPassBase
+{
+public:
+	VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~VisibilityMsPass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::VisibilityMs1st;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Graphics;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+	
+private:
+	sl12::UniqueHandle<sl12::RootSignature> rs_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso1st_, pso2nd_;
+};
+
+//----
 class MaterialDepthPass : public AppPassBase
 {
 public:
