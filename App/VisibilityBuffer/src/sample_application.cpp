@@ -1824,6 +1824,7 @@ bool SampleApplication::Execute()
 	RenderPassSetupDesc setupDesc{};
 	setupDesc.bUseVisibilityBuffer = bEnableVisibilityBuffer_;
 	setupDesc.bUseMeshShader = bEnableMeshShader_;
+	setupDesc.bUseWorkGraph = bEnableWorkGraph_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
@@ -3398,6 +3399,7 @@ bool SampleApplication::Execute()
 		else
 		{
 			// material resolve pass.
+			scene_->UpdateBindlessTextures();
 			pTimestamp->Query(pCmdList);
 			renderGraphDeprecated_->NextPass(pCmdList);
 			{

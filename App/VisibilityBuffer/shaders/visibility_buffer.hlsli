@@ -304,43 +304,6 @@ VertexAttr GetVertexAttrPerspectiveCorrect(
 	float4 pt1 = mul(mtxWorldToProj, float4(p1, 1));
 	float4 pt2 = mul(mtxWorldToProj, float4(p2, 1));
 
-#if 0
-	// calc barycentric.
-	float2 screenPos = (pixelPos + 0.5) / screenSize;
-	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
-	PerspBaryDeriv C = CalcPerspectiveBarycentric(pt0, pt1, pt2, clipSpacePos);
-
-	// get uv.
-	float2 uv0 = GetVertexTexcoord(rVertexBuffer, submesh, vertexIndices.x);
-	float2 uv1 = GetVertexTexcoord(rVertexBuffer, submesh, vertexIndices.y);
-	float2 uv2 = GetVertexTexcoord(rVertexBuffer, submesh, vertexIndices.z);
-	attr.texcoord = uv0 * C.Lambda.x + uv1 * C.Lambda.y + uv2 * C.Lambda.z;
-
-	float2 sx = (pixelPos + float2(1.5, 0.5)) / screenSize;
-	float2 px = sx * float2(2, -2) + float2(-1, 1);
-	float3 Cx = CalcDerivativeBarycentric(C, pt0, px);
-	float2 sy = (pixelPos + float2(0.5, 1.5)) / screenSize;
-	float2 py = sy * float2(2, -2) + float2(-1, 1);
-	float3 Cy = CalcDerivativeBarycentric(C, pt0, py);
-	attr.texcoordDDX = uv0 * Cx.x + uv1 * Cx.y + uv2 * Cx.z;
-	attr.texcoordDDY = uv0 * Cy.x + uv1 * Cy.y + uv2 * Cy.z;
-	attr.texcoord *= C.invPersp;
-	attr.texcoordDDX *= C.invPersp;
-	attr.texcoordDDY *= C.invPersp;
-	attr.texcoordDDX -= attr.texcoord;
-	attr.texcoordDDY -= attr.texcoord;
-
-	// get other attributes.
-	attr.position = (p0 * C.Lambda.x + p1 * C.Lambda.y + p2 * C.Lambda.z) * C.invPersp;
-	float3 n0 = GetVertexNormal(rVertexBuffer, submesh, vertexIndices.x);
-	float3 n1 = GetVertexNormal(rVertexBuffer, submesh, vertexIndices.y);
-	float3 n2 = GetVertexNormal(rVertexBuffer, submesh, vertexIndices.z);
-	attr.normal = (n0 * C.Lambda.x + n1 * C.Lambda.y + n2 * C.Lambda.z) * C.invPersp;
-	float4 t0 = GetVertexTangent(rVertexBuffer, submesh, vertexIndices.x);
-	float4 t1 = GetVertexTangent(rVertexBuffer, submesh, vertexIndices.y);
-	float4 t2 = GetVertexTangent(rVertexBuffer, submesh, vertexIndices.z);
-	attr.tangent = (t0 * C.Lambda.x + t1 * C.Lambda.y + t2 * C.Lambda.z) * C.invPersp;
-#else
 	// calc barycentric.
 	float2 screenPos = (pixelPos + 0.5) / screenSize;
 	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
@@ -366,7 +329,6 @@ VertexAttr GetVertexAttrPerspectiveCorrect(
 	float4 t1 = GetVertexTangent(rVertexBuffer, submesh, vertexIndices.y);
 	float4 t2 = GetVertexTangent(rVertexBuffer, submesh, vertexIndices.z);
 	CalcDerivativeFloat4(C, t0, t1, t2, attr.tangent, dx4, dy4);
-#endif
 
 	return attr;
 }

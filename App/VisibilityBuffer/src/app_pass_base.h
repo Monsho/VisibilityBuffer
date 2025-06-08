@@ -31,6 +31,7 @@ enum class AppPassType
 	MaterialDepth,
 	Classify,
 	MaterialTile,
+	MaterialResolve,
 	Invalid
 };
 

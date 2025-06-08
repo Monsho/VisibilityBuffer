@@ -60,6 +60,7 @@ static const sl12::RenderPassID kVisibilityMs2ndPass("VisibilityMs2ndPass");
 static const sl12::RenderPassID kMaterialDepthPass("MaterialDepthPass");
 static const sl12::RenderPassID kClassifyPass("ClassifyPass");
 static const sl12::RenderPassID kMaterialTilePass("MaterialTilePass");
+static const sl12::RenderPassID kMaterialResolvePass("MaterialResolvePass");
 
 static const DXGI_FORMAT	kGBufferAFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 static const DXGI_FORMAT	kGBufferBFormat = DXGI_FORMAT_R8G8B8A8_UNORM;

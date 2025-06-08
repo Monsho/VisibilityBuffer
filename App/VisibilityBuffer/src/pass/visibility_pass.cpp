@@ -209,6 +209,9 @@ void BufferReadyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pSB->pBuffer->GetResourceDep(), 0, submeshSrc->GetResourceDep(), 0, submeshSrc->GetBufferDesc().size);
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pMB->pBuffer->GetResourceDep(), 0, meshletSrc->GetResourceDep(), 0, meshletSrc->GetBufferDesc().size);
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pDB->pBuffer->GetResourceDep(), 0, drawCallSrc->GetResourceDep(), 0, drawCallSrc->GetBufferDesc().size);
+
+	// copy material. (one time)
+	pScene_->CopyMaterialData(pCmdList);
 }
 
 
@@ -1159,6 +1162,183 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	
 		matIndex++;
 	}
+}
+
+
+//----------------
+MaterialResolvePass::MaterialResolvePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	wgState_ = sl12::MakeUnique<sl12::WorkGraphState>(pDev);
+	wgContext_ = sl12::MakeUnique<sl12::WorkGraphContext>(pDev);
+
+	// init root signature.
+	{
+		sl12::RootBindlessInfo info;
+		info.index_ = 0;
+		info.space_ = 32;
+		info.maxResources_ = 0;
+		for (auto mesh : pScene->GetSceneMeshes())
+		{
+			info.maxResources_ += (sl12::u32)(mesh->GetParentResource()->GetMaterials().size() * 3);
+		}
+		info.maxResources_ += 32;	// add buffer.
+		rs_->InitializeWithBindless(pDev, pRenderSys->GetShader(MaterialResolveLib), &info, 1);
+	}
+
+	// init work graph.
+	{
+		static LPCWSTR kProgramName = L"MaterialResolveWG";
+		static LPCWSTR kEntryPoint = L"DistributeMaterialNode";
+
+		D3D12_NODE_ID entryPoint{};
+		entryPoint.Name = kEntryPoint;
+		entryPoint.ArrayIndex = 0;
+
+		sl12::WorkGraphStateDesc desc;
+		desc.AddDxilLibrary(pRenderSys->GetShader(MaterialResolveLib)->GetData(), pRenderSys->GetShader(MaterialResolveLib)->GetSize(), nullptr, 0);
+		desc.AddWorkGraph(kProgramName, D3D12_WORK_GRAPH_FLAG_INCLUDE_ALL_AVAILABLE_NODES, 1, &entryPoint);
+		desc.AddGlobalRootSignature(*&rs_);
+
+		if (!wgState_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init work graph state.");
+		}
+		
+		if (!wgContext_->Initialize(pDev, &wgState_, kProgramName))
+		{
+			sl12::ConsolePrint("Error: failed to init work graph context.");
+		}
+	}
+}
+
+MaterialResolvePass::~MaterialResolvePass()
+{
+	wgContext_.Reset();
+	wgState_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> MaterialResolvePass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	ret.push_back(sl12::TransientResource(kVisBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kInstanceBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
+	
+	return ret;
+}
+
+std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource mip(kMiplevelFeedbackID, sl12::TransientState::UnorderedAccess);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	ga.desc.bIsTexture = true;
+	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
+	gb.desc.bIsTexture = true;
+	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
+	gc.desc.bIsTexture = true;
+	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+
+	width = (width + 3) / 4;
+	height = (height + 3) / 4;
+	mip.desc.bIsTexture = true;
+	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
+
+	ret.push_back(ga);
+	ret.push_back(gb);
+	ret.push_back(gc);
+	ret.push_back(mip);
+	
+	return ret;
+}
+
+void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	pScene_->UpdateBindlessTextures();
+	
+	GPU_MARKER(pCmdList, 0, "MaterialResolvePass");
+
+	// input.
+	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pInstanceRes = pResManager->GetRenderGraphResource(kInstanceBufferID);
+	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
+	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
+	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+
+	// output.
+	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
+	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
+	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pMipRes = pResManager->GetRenderGraphResource(kMiplevelFeedbackID);
+
+	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pInstanceSRV = pResManager->CreateOrGetBufferView(pInstanceRes, 0, 0, (sl12::u32)pInstanceRes->pBuffer->GetBufferDesc().stride);
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pGbAUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbARes);
+	auto pGbBUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbBRes);
+	auto pGbCUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbCRes);
+	auto pMipUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMipRes);
+	
+	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	auto&& meshMan = pRenderSystem_->GetMeshManager();
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pVisSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pInstanceSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pSubmeshSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pMeshletSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(6, pDrawCallSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(7, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(8, pScene_->GetMaterialDataBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(9, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pGbAUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, pGbBUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(3, pGbCUAV->GetDescInfo().cpuHandle);
+
+	// set program.
+	wgContext_->SetProgram(pCmdList, D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE);
+
+	std::vector<std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>> bindlessArrays;
+	bindlessArrays.push_back(pScene_->GetBindlessTextures());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet, &bindlessArrays);
+
+	// dispatch graph.
+	struct DistributeNodeRecord
+	{
+		UINT GridSize[3];
+	};
+	DistributeNodeRecord record;
+	static const int kTileSize = 8;
+	record.GridSize[0] = (pScene_->GetScreenWidth() + kTileSize - 1) / kTileSize;
+	record.GridSize[1] = (pScene_->GetScreenHeight() + kTileSize - 1) / kTileSize;
+	record.GridSize[2] = 1;
+	wgContext_->DispatchGraphCPU(pCmdList, 0, 1, sizeof(DistributeNodeRecord), &record);
 }
 
 

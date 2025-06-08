@@ -450,6 +450,38 @@ void Scene::CreateMaterialList()
 }
 
 //----
+void Scene::UpdateBindlessTextures()
+{
+	auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
+	bindlessTextures_.clear();
+	bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
+	bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
+	bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
+	for (auto&& work : workMaterials_)
+	{
+		if (work.psoType == 0)
+		{
+			// each textures.
+			auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
+			if (resTex)
+			{
+				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+			}
+			resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
+			if (resTex)
+			{
+				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+			}
+			resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
+			if (resTex)
+			{
+				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+			}
+		}
+	}
+}
+
+//----
 int Scene::GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat)
 {
 	auto it = std::find_if(
@@ -670,6 +702,11 @@ bool Scene::InitRenderPass()
 		passIDs_[AppPassType::MaterialTile] = renderGraph_->AddPass(kMaterialTilePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
+	{
+		auto pass = std::make_unique<MaterialResolvePass>(pDevice_, pRenderSystem_, this);
+		passIDs_[AppPassType::MaterialResolve] = renderGraph_->AddPass(kMaterialResolvePass, pass.get());
+		passes_.push_back(std::move(pass));
+	}
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -709,11 +746,12 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		// visibility rendering.
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::ClearMiplevel], passIDs_[AppPassType::BufferReady]);
+		AppPassType lastPass;
 		if (!desc.bUseMeshShader)
 		{
 			// vertex-pixel pass.
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityVs]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityVs], passIDs_[AppPassType::MaterialDepth]);
+			lastPass = AppPassType::VisibilityVs;
 		}
 		else
 		{
@@ -721,11 +759,22 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityMs1st]);
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityMs1st], passIDs_[AppPassType::HiZafterFirstCull]);
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::HiZafterFirstCull], passIDs_[AppPassType::VisibilityMs2nd]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityMs2nd], passIDs_[AppPassType::MaterialDepth]);
+			lastPass = AppPassType::VisibilityMs2nd;
 		}
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialDepth], passIDs_[AppPassType::Classify]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::Classify], passIDs_[AppPassType::MaterialTile]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialTile], passIDs_[AppPassType::FeedbackMiplevel]);
+		if (!desc.bUseWorkGraph)
+		{
+			// material tile.
+			renderGraph_->AddGraphEdge(passIDs_[lastPass], passIDs_[AppPassType::MaterialDepth]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialDepth], passIDs_[AppPassType::Classify]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::Classify], passIDs_[AppPassType::MaterialTile]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialTile], passIDs_[AppPassType::FeedbackMiplevel]);
+		}
+		else
+		{
+			// work graph.
+			renderGraph_->AddGraphEdge(passIDs_[lastPass], passIDs_[AppPassType::MaterialResolve]);
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialResolve], passIDs_[AppPassType::FeedbackMiplevel]);
+		}
 	}
 	renderGraph_->AddGraphEdge(passIDs_[AppPassType::FeedbackMiplevel], passIDs_[AppPassType::Lighting]);
 	renderGraph_->AddGraphEdge(passIDs_[AppPassType::Lighting], passIDs_[AppPassType::HiZ]);

@@ -102,7 +102,7 @@ VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
 	else if(kBaryCalcType == 1)
 	{
 		attr = GetVertexAttrPerspectiveCorrect(
-			rVertexBuffer, inData, smData, vertexIndices, (float2)pos,
+			rVertexBuffer, inData, smData, vertexIndices, (float2)pos + 0.5,
 			cbScene.mtxWorldToProj, cbScene.screenSize);
 	}
 

@@ -172,6 +172,7 @@ struct RenderPassSetupDesc
 {
 	bool bUseVisibilityBuffer = false;
 	bool bUseMeshShader = false;
+	bool bUseWorkGraph = false;
 	int ssaoType = 0;
 	bool bNeedDeinterleave = false;
 	
@@ -179,6 +180,7 @@ struct RenderPassSetupDesc
 	{
 		return (bUseVisibilityBuffer == rhs.bUseVisibilityBuffer)
 			&& (bUseMeshShader == rhs.bUseMeshShader)
+			&& (bUseWorkGraph == rhs.bUseWorkGraph)
 			&& (ssaoType == rhs.ssaoType)
 			&& (bNeedDeinterleave == rhs.bNeedDeinterleave);
 	}
@@ -201,6 +203,7 @@ public:
 	void SetViewportResolution(sl12::u32 width, sl12::u32 height);
 	bool CreateSceneMeshes(int meshType);
 	void CreateMaterialList();
+	void UpdateBindlessTextures();
 	void CopyMaterialData(sl12::CommandList* pCmdList);
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 
