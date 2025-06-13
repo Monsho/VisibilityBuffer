@@ -1648,7 +1648,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 	}
 }
 
-#if 0
+#if 1
 bool SampleApplication::Execute()
 {
 	const int kSwapchainBufferOffset = 1;
@@ -1809,6 +1809,27 @@ bool SampleApplication::Execute()
 				device_.GetTextureStreamAllocator()->SetPoolLimitSize(kPoolLimits[poolSizeSelect_]);
 			}
 			ImGui::Text("Heaps : %lld (MB)", device_.GetTextureStreamAllocator()->GetCurrentHeapSize() / 1024 / 1024);
+		}
+
+		// gpu performance.
+		if (ImGui::CollapsingHeader("GPU Time", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			auto pPerfResult = scene_->GetRenderGraph()->GetPerformanceResult();
+			size_t c = pPerfResult[sl12::HardwareQueue::Graphics].passNames.size();
+			for (size_t i = 0; i < c; i++)
+			{
+				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Graphics].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Graphics].passMicroSecTimes[i] / 1000.0f);
+			}
+			c = pPerfResult[sl12::HardwareQueue::Compute].passNames.size();
+			for (size_t i = 0; i < c; i++)
+			{
+				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Compute].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Compute].passMicroSecTimes[i] / 1000.0f);
+			}
+			c = pPerfResult[sl12::HardwareQueue::Copy].passNames.size();
+			for (size_t i = 0; i < c; i++)
+			{
+				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Copy].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Copy].passMicroSecTimes[i] / 1000.0f);
+			}
 		}
 	}
 	ImGui::Render();

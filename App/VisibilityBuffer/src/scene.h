@@ -320,6 +320,10 @@ public:
 	{
 		return meshletCBs_;
 	}
+	sl12::RenderGraph* GetRenderGraph() const
+	{
+		return &renderGraph_;
+	}
 
 private:
 	void ComputeSceneAABB();
