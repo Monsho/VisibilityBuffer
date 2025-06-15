@@ -209,9 +209,6 @@ void BufferReadyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pSB->pBuffer->GetResourceDep(), 0, submeshSrc->GetResourceDep(), 0, submeshSrc->GetBufferDesc().size);
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pMB->pBuffer->GetResourceDep(), 0, meshletSrc->GetResourceDep(), 0, meshletSrc->GetBufferDesc().size);
 	pCmdList->GetLatestCommandList()->CopyBufferRegion(pDB->pBuffer->GetResourceDep(), 0, drawCallSrc->GetResourceDep(), 0, drawCallSrc->GetBufferDesc().size);
-
-	// copy material. (one time)
-	pScene_->CopyMaterialData(pCmdList);
 }
 
 

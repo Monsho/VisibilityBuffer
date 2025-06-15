@@ -727,69 +727,94 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 
 	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || !desc.bUseMeshShader;
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
+
+	auto prevPass = AppPassType::Invalid;
+	auto AddPass = [this, &prevPass](AppPassType nextPass)
+	{
+		if (prevPass != AppPassType::Invalid)
+		{
+			renderGraph_->AddGraphEdge(passIDs_[prevPass], passIDs_[nextPass]);
+		}
+		prevPass = nextPass;
+	};
 	
 	renderGraph_->ClearAllGraphEdges();
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::ShadowMap], passIDs_[AppPassType::MeshletArgCopy]);
+	// graphics queue.
+	if (bEnableMeshletCulling)
+	{
+		AddPass(AppPassType::MeshletArgCopy);
+	}
+	AddPass(AppPassType::ShadowMap);
+	AddPass(AppPassType::ClearMiplevel);
+	if (bDirectGBufferRender)
+	{
+	 	// direct gbuffer redering.
+		AddPass(AppPassType::DepthPre);
+		AddPass(AppPassType::GBuffer);
+	}
+	else
+	{
+	 	// visibility rendering.
+	 	if (!desc.bUseMeshShader)
+	 	{
+			AddPass(AppPassType::VisibilityVs);
+	 	}
+	    else
+	    {
+			AddPass(AppPassType::VisibilityMs1st);
+			AddPass(AppPassType::HiZafterFirstCull);
+			AddPass(AppPassType::VisibilityMs2nd);
+	    }
+		// visibility to material.
+		if (!desc.bUseWorkGraph)
+		{
+			AddPass(AppPassType::MaterialDepth);
+			AddPass(AppPassType::Classify);
+			AddPass(AppPassType::MaterialTile);
+		}
+		else
+		{
+			AddPass(AppPassType::MaterialResolve);
+		}
+	}
+	AddPass(AppPassType::FeedbackMiplevel);
+	AddPass(AppPassType::Lighting);
+	AddPass(AppPassType::HiZ);
+	if (bNeedDeinterleave)
+	{
+		AddPass(AppPassType::Deinterleave);
+	}
+	AddPass(AppPassType::SSAO);
+	AddPass(AppPassType::Denoise);
+	AddPass(AppPassType::IndirectLight);
+	AddPass(AppPassType::Tonemap);
+
+	// compute queue.
 	if (bEnableMeshletCulling)
 	{
 		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MeshletArgCopy], passIDs_[AppPassType::MeshletCulling]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::MeshletCulling], passIDs_[AppPassType::ClearMiplevel]);
-	}
-	if (bDirectGBufferRender)
-	{
-		// direct gbuffer redering.
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::ClearMiplevel], passIDs_[AppPassType::DepthPre]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::DepthPre], passIDs_[AppPassType::GBuffer]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::GBuffer], passIDs_[AppPassType::FeedbackMiplevel]);
-	}
-	else
-	{
-		// visibility rendering.
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::ClearMiplevel], passIDs_[AppPassType::BufferReady]);
-		AppPassType lastPass;
-		if (!desc.bUseMeshShader)
+		if (bDirectGBufferRender)
 		{
-			// vertex-pixel pass.
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MeshletCulling], passIDs_[AppPassType::DepthPre]);
+		}
+		else
+		{
+			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MeshletCulling], passIDs_[AppPassType::VisibilityVs]);
+		}
+	}
+
+	// copy queue.
+	if (!bDirectGBufferRender)
+	{
+	 	if (!desc.bUseMeshShader)
+	 	{
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityVs]);
-			lastPass = AppPassType::VisibilityVs;
-		}
-		else
-		{
-			// mesh-pixel pass. (2-phase occlusion culling)
+	 	}
+	    else
+	    {
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::BufferReady], passIDs_[AppPassType::VisibilityMs1st]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::VisibilityMs1st], passIDs_[AppPassType::HiZafterFirstCull]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::HiZafterFirstCull], passIDs_[AppPassType::VisibilityMs2nd]);
-			lastPass = AppPassType::VisibilityMs2nd;
-		}
-		if (!desc.bUseWorkGraph)
-		{
-			// material tile.
-			renderGraph_->AddGraphEdge(passIDs_[lastPass], passIDs_[AppPassType::MaterialDepth]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialDepth], passIDs_[AppPassType::Classify]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::Classify], passIDs_[AppPassType::MaterialTile]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialTile], passIDs_[AppPassType::FeedbackMiplevel]);
-		}
-		else
-		{
-			// work graph.
-			renderGraph_->AddGraphEdge(passIDs_[lastPass], passIDs_[AppPassType::MaterialResolve]);
-			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MaterialResolve], passIDs_[AppPassType::FeedbackMiplevel]);
-		}
+	    }
 	}
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::FeedbackMiplevel], passIDs_[AppPassType::Lighting]);
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::Lighting], passIDs_[AppPassType::HiZ]);
-	if (bNeedDeinterleave)
-	{
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::HiZ], passIDs_[AppPassType::Deinterleave]);
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::Deinterleave], passIDs_[AppPassType::SSAO]);
-	}
-	else
-	{
-		renderGraph_->AddGraphEdge(passIDs_[AppPassType::HiZ], passIDs_[AppPassType::SSAO]);
-	}
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::SSAO], passIDs_[AppPassType::Denoise]);
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::Denoise], passIDs_[AppPassType::IndirectLight]);
-	renderGraph_->AddGraphEdge(passIDs_[AppPassType::IndirectLight], passIDs_[AppPassType::Tonemap]);
 
 	lastRenderPassDesc_ = desc;
 }

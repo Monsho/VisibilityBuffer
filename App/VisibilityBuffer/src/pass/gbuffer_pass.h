@@ -42,7 +42,7 @@ public:
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
-		return sl12::HardwareQueue::Graphics;
+		return sl12::HardwareQueue::Compute;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	

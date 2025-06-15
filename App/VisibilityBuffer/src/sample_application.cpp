@@ -299,14 +299,15 @@ bool SampleApplication::Initialize()
 	// create meshlet bounds buffers.
 	scene_->CreateMeshletBounds(&utilCmdList);
 	
+	// create scene meshes.
+	scene_->CreateSceneMeshes(meshType_);
+	scene_->CopyMaterialData(&utilCmdList);
+	
 	// execute utility commands.
 	utilCmdList->Close();
 	utilCmdList->Execute();
 	device_.WaitDrawDone();
 
-	// create scene meshes.
-	scene_->CreateSceneMeshes(meshType_);
-	
 	// init root signature and pipeline state.
 	rsVsPs_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
 	rsVsPsC1_ = sl12::MakeUnique<sl12::RootSignature>(&device_);
@@ -1815,20 +1816,21 @@ bool SampleApplication::Execute()
 		if (ImGui::CollapsingHeader("GPU Time", ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			auto pPerfResult = scene_->GetRenderGraph()->GetPerformanceResult();
-			size_t c = pPerfResult[sl12::HardwareQueue::Graphics].passNames.size();
-			for (size_t i = 0; i < c; i++)
+			if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Graphics].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Graphics].passMicroSecTimes[i] / 1000.0f);
+				size_t c = pPerfResult[sl12::HardwareQueue::Graphics].passNames.size();
+				for (size_t i = 0; i < c; i++)
+				{
+					ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Graphics].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Graphics].passMicroSecTimes[i] / 1000.0f);
+				}
 			}
-			c = pPerfResult[sl12::HardwareQueue::Compute].passNames.size();
-			for (size_t i = 0; i < c; i++)
+			if (ImGui::CollapsingHeader("Compute", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Compute].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Compute].passMicroSecTimes[i] / 1000.0f);
-			}
-			c = pPerfResult[sl12::HardwareQueue::Copy].passNames.size();
-			for (size_t i = 0; i < c; i++)
-			{
-				ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Copy].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Copy].passMicroSecTimes[i] / 1000.0f);
+				size_t c = pPerfResult[sl12::HardwareQueue::Compute].passNames.size();
+				for (size_t i = 0; i < c; i++)
+				{
+					ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Compute].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Compute].passMicroSecTimes[i] / 1000.0f);
+				}
 			}
 		}
 	}
