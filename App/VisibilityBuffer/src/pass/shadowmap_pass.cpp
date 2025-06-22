@@ -250,7 +250,7 @@ void ShadowExpPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// draw fullscreen.
-	pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
 }
 
 
@@ -361,7 +361,7 @@ void ShadowExpBlurPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// draw fullscreen.
-	pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
 }
 
 //	EOF

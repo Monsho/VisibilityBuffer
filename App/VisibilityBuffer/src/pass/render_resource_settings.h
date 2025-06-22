@@ -13,6 +13,7 @@ static const sl12::TransientResourceID	kShadowBlurID("ShadowBlur");
 static const sl12::TransientResourceID	kMeshletIndirectArgID("MeshletIndirectArg");
 static const sl12::TransientResourceID	kMiplevelFeedbackID("MiplevelFeedback");
 static const sl12::TransientResourceID	kLightAccumID("LightAccum");
+static const sl12::TransientResourceID	kLightAccumHistoryID(kLightAccumID, 1);
 static const sl12::TransientResourceID	kHiZID("HiZ");
 static const sl12::TransientResourceID	kSwapchainID("Swapchain");
 static const sl12::TransientResourceID	kDeinterleaveDepthID("DeinterleaveDepth");

@@ -212,6 +212,7 @@ std::vector<sl12::TransientResource> LightingPass::GetOutputResources(const sl12
 	sl12::u32 height = pScene_->GetScreenHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
+	accum.desc.historyFrame = 1;
 
 	ret.push_back(accum);
 
@@ -350,10 +351,13 @@ void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 		if (i >= kHiZMiplevels)
 			break;
 
-		auto pSRV = pResManager->CreateOrGetTextureView(pHiZRes, i);
+		auto pSRV = pResManager->CreateOrGetTextureView(pHiZRes, i - 1);
 		srv = pSRV->GetDescInfo().cpuHandle;
 		width >>= 2;
 		height >>= 2;
+
+		pCmdList->AddUAVBarrier(pHiZRes->pTexture);
+		pCmdList->FlushBarriers();
 	}
 }
 
@@ -463,7 +467,7 @@ void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// draw fullscreen.
-	pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
 }
 
 

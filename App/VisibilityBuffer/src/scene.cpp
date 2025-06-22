@@ -729,6 +729,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
 
 	auto prevPass = AppPassType::Invalid;
+	auto ResetPass = [&prevPass]()
+	{
+		prevPass = AppPassType::Invalid;
+	};
 	auto AddPass = [this, &prevPass](AppPassType nextPass)
 	{
 		if (prevPass != AppPassType::Invalid)
@@ -744,7 +748,6 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		AddPass(AppPassType::MeshletArgCopy);
 	}
-	AddPass(AppPassType::ShadowMap);
 	AddPass(AppPassType::ClearMiplevel);
 	if (bDirectGBufferRender)
 	{
@@ -778,14 +781,9 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		}
 	}
 	AddPass(AppPassType::FeedbackMiplevel);
+	AddPass(AppPassType::ShadowMap);
 	AddPass(AppPassType::Lighting);
 	AddPass(AppPassType::HiZ);
-	if (bNeedDeinterleave)
-	{
-		AddPass(AppPassType::Deinterleave);
-	}
-	AddPass(AppPassType::SSAO);
-	AddPass(AppPassType::Denoise);
 	AddPass(AppPassType::IndirectLight);
 	AddPass(AppPassType::Tonemap);
 
@@ -801,6 +799,18 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		{
 			renderGraph_->AddGraphEdge(passIDs_[AppPassType::MeshletCulling], passIDs_[AppPassType::VisibilityVs]);
 		}
+	}
+	{
+		// ssao.
+		ResetPass();
+		AddPass(AppPassType::FeedbackMiplevel);	// from Graphics Queue.
+		if (bNeedDeinterleave)
+		{
+			AddPass(AppPassType::Deinterleave);
+		}
+		AddPass(AppPassType::SSAO);
+		AddPass(AppPassType::Denoise);
+		AddPass(AppPassType::IndirectLight);	// to Graphics Queue.
 	}
 
 	// copy queue.

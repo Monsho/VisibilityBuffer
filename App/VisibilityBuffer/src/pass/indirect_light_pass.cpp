@@ -39,7 +39,7 @@ std::vector<sl12::TransientResource> DeinterleavePass::GetInputResources(const s
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kLightAccumHistoryID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -75,7 +75,7 @@ void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
-	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumHistoryID);
 	auto pDiDepthRes = pResManager->GetRenderGraphResource(kDeinterleaveDepthID);
 	auto pDiNormalRes = pResManager->GetRenderGraphResource(kDeinterleaveNormalID);
 	auto pDiAccumRes = pResManager->GetRenderGraphResource(kDeinterleaveAccumID);
@@ -188,7 +188,7 @@ std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetInputResources(const 
 		{
 			ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 			ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
-			ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+			ret.push_back(sl12::TransientResource(kLightAccumHistoryID, sl12::TransientState::ShaderResource));
 		}
 	}
 	else
@@ -244,7 +244,7 @@ void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.SetCsSrv(1, pNormalSRV->GetDescInfo().cpuHandle);
 	if (type_ == 2)
 	{
-		auto pAccumRes = pResManager->GetRenderGraphResource(bDeinterleave ? kDeinterleaveAccumID : kLightAccumID);
+		auto pAccumRes = pResManager->GetRenderGraphResource(bDeinterleave ? kDeinterleaveAccumID : kLightAccumHistoryID);
 		auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
 		descSet.SetCsSrv(2, pAccumSRV->GetDescInfo().cpuHandle);
 	}
@@ -462,6 +462,7 @@ std::vector<sl12::TransientResource> IndirectLightPass::GetOutputResources(const
 
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
+	accum.desc.historyFrame = 1;
 
 	ret.push_back(accum);
 

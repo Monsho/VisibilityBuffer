@@ -772,7 +772,7 @@ void MaterialDepthPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// draw fullscreen.
-	pCmdList->GetLatestCommandList()->DrawIndexedInstanced(3, 1, 0, 0, 0);
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
 }
 
 
