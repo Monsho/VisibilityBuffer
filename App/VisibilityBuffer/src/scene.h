@@ -382,7 +382,7 @@ private:
 	// render pass.
 	UniqueHandle<sl12::RenderGraph>						renderGraph_;
 	std::vector<std::unique_ptr<AppPassBase>>			passes_;
-	std::map<AppPassType, sl12::RenderPassID>			passIDs_;
+	std::map<AppPassType, sl12::RenderGraph::Node>		passNodes_;
 	RenderPassSetupDesc									lastRenderPassDesc_;
 };	// class Scene
 
