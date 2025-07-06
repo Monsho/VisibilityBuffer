@@ -32,6 +32,9 @@ enum class AppPassType
 	Classify,
 	MaterialTile,
 	MaterialResolve,
+	MaterialComputeBinning,
+	MaterialComputeGBuffer,
+	PrefixSum,
 	Invalid
 };
 

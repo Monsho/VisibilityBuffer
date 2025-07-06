@@ -35,6 +35,10 @@ static const sl12::TransientResourceID	kMeshletBufferID("MeshletBuffer");
 static const sl12::TransientResourceID	kDrawCallBufferID("DrawCallBuffer");
 static const sl12::TransientResourceID	kTileArgBufferID("TileArgBuffer");
 static const sl12::TransientResourceID	kTileIndexBufferID("TileIndexBuffer");
+static const sl12::TransientResourceID	kBinningArgBufferID("BinningArgBuffer");
+static const sl12::TransientResourceID	kBinningCountBufferID("BinningCountBuffer");
+static const sl12::TransientResourceID	kBinningOffsetBufferID("BinningOffsetBuffer");
+static const sl12::TransientResourceID	kBinningPixBufferID("BinningPixBuffer");
 
 static const sl12::RenderPassID kMeshletArgCopyPass("MeshletArgCopyPass");
 static const sl12::RenderPassID kMeshletCullingPass("MeshletCullingPass");

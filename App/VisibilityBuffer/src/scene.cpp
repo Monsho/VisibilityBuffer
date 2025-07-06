@@ -81,13 +81,15 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 	}
 	
 	// compile shaders.
+	std::vector<std::string> Args;
+	Args.push_back("-O3");
 	for (int i = 0; i < ShaderName::MAX; i++)
 	{
 		const char* file = kShaderFileAndEntry[i * 2 + 0];
 		const char* entry = kShaderFileAndEntry[i * 2 + 1];
 		auto handle = shaderMan_->CompileFromFile(
 			sl12::JoinPath(shaderDesc.baseDir, file),
-			entry, sl12::GetShaderTypeFromFileName(file), 6, 8, nullptr, nullptr);
+			entry, sl12::GetShaderTypeFromFileName(file), 6, 8, &Args, nullptr);
 		hShaders_.push_back(handle);
 	}
 }
@@ -707,6 +709,16 @@ bool Scene::InitRenderPass()
 		passNodes_[AppPassType::MaterialResolve] = renderGraph_->AddPass(kMaterialResolvePass, pass.get());
 		passes_.push_back(std::move(pass));
 	}
+	{
+		auto pass = std::make_unique<MaterialComputeBinningPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MaterialComputeBinning] = renderGraph_->AddPass(sl12::RenderPassID("MaterialComputeBinningPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<MaterialComputeGBufferPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MaterialComputeGBuffer] = renderGraph_->AddPass(sl12::RenderPassID("MaterialComputeGBufferPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -736,7 +748,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
 	}
-	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel]);
+	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel])
+		;//.AddChild(passNodes_[AppPassType::PrefixSum]);
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
@@ -755,12 +768,17 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	    		.AddChild(passNodes_[AppPassType::HiZafterFirstCull])
 	    		.AddChild(passNodes_[AppPassType::VisibilityMs2nd]);
 	    }
-		// visibility to material.
-		if (!desc.bUseWorkGraph)
+		// visibility to gbuffer.
+		if (desc.visToGBufferType == 0)
 		{
 			node = node.AddChild(passNodes_[AppPassType::MaterialDepth])
 				.AddChild(passNodes_[AppPassType::Classify])
 				.AddChild(passNodes_[AppPassType::MaterialTile]);
+		}
+		else if (desc.visToGBufferType == 1)
+		{
+			node = node.AddChild(passNodes_[AppPassType::MaterialComputeBinning])
+				.AddChild(passNodes_[AppPassType::MaterialComputeGBuffer]);
 		}
 		else
 		{

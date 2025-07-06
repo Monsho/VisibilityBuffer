@@ -1681,10 +1681,15 @@ bool SampleApplication::Execute()
 
 			if (bEnableVisibilityBuffer_)
 			{
-				if (ImGui::Checkbox("Mesh Shader", &bEnableMeshShader_))
+				if (ImGui::Checkbox("Mesh Shader for VisRender", &bEnableMeshShader_))
 				{}
-				if (ImGui::Checkbox("Work Graph", &bEnableWorkGraph_))
-				{}
+				
+				static const char* kVisToGBTypes[] = {
+					"Depth & Tile",
+					"Compute Shader",
+					"Work Graph",
+				};
+				ImGui::Combo("Vis to GBuffer", &VisToGBufferType_, kVisToGBTypes, ARRAYSIZE(kVisToGBTypes));
 			}
 		}
 
@@ -1847,7 +1852,7 @@ bool SampleApplication::Execute()
 	RenderPassSetupDesc setupDesc{};
 	setupDesc.bUseVisibilityBuffer = bEnableVisibilityBuffer_;
 	setupDesc.bUseMeshShader = bEnableMeshShader_;
-	setupDesc.bUseWorkGraph = bEnableWorkGraph_;
+	setupDesc.visToGBufferType = VisToGBufferType_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);

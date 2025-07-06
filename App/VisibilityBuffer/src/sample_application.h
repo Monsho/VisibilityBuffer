@@ -223,6 +223,7 @@ private:
 	// rendering parameters.
 	bool					bEnableVisibilityBuffer_ = false;
 	bool					bEnableMeshShader_ = false;
+	int						VisToGBufferType_ = 0;
 	bool					bEnableWorkGraph_ = false;
 	
 	// light parameters.

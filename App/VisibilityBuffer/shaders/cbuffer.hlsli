@@ -65,6 +65,11 @@ struct MaterialTileCB
 	uint		materialIndex;
 };
 
+struct MaterialIndexCB
+{
+	uint		materialIndex;
+};
+
 struct TileCB
 {
 	uint	numX;

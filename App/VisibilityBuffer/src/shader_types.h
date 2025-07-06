@@ -40,6 +40,15 @@ enum ShaderName
 	DepthReductionP,
 	DepthReductionC,
 	MaterialResolveLib,
+	PrefixSumInitCS,
+	PrefixSumC,
+	InitCountC,
+	CountC,
+	CountSumC,
+	BinningC,
+	FinalizeC,
+	MatGBStandardC,
+	MatGBTriplanarC,
 
 	MAX
 };
@@ -83,6 +92,15 @@ static const char* kShaderFileAndEntry[] = {
 	"depth_reduction.p.hlsl",			"main",
 	"depth_reduction.c.hlsl",			"main",
 	"material_resolve.lib.hlsl",		"main",
+	"prefix_sum.c.hlsl",				"InitBufferCS",
+	"prefix_sum.c.hlsl",				"PrefixScanCS",
+	"material_binning.c.hlsl",			"InitCountCS",
+	"material_binning.c.hlsl",			"CountCS",
+	"material_binning.c.hlsl",			"CountSumCS",
+	"material_binning.c.hlsl",			"BinningCS",
+	"material_binning.c.hlsl",			"FinalizeCS",
+	"material_gbuffer.c.hlsl",			"StandardCS",
+	"material_gbuffer.c.hlsl",			"TriplanarCS",
 };
 
 //	EOF

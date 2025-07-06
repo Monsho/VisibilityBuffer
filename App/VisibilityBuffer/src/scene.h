@@ -172,7 +172,7 @@ struct RenderPassSetupDesc
 {
 	bool bUseVisibilityBuffer = false;
 	bool bUseMeshShader = false;
-	bool bUseWorkGraph = false;
+	int visToGBufferType = 0;
 	int ssaoType = 0;
 	bool bNeedDeinterleave = false;
 	
@@ -180,7 +180,7 @@ struct RenderPassSetupDesc
 	{
 		return (bUseVisibilityBuffer == rhs.bUseVisibilityBuffer)
 			&& (bUseMeshShader == rhs.bUseMeshShader)
-			&& (bUseWorkGraph == rhs.bUseWorkGraph)
+			&& (visToGBufferType == rhs.visToGBufferType)
 			&& (ssaoType == rhs.ssaoType)
 			&& (bNeedDeinterleave == rhs.bNeedDeinterleave);
 	}
