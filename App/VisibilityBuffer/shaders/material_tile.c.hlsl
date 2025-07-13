@@ -1,10 +1,20 @@
+#include "constant_defs.h"
 #include "cbuffer.hlsli"
 #include "surface_gradient.hlsli"
 #include "visibility_buffer.hlsli"
 #include "math.hlsli"
 
+struct TileBinningCB
+{
+	uint2 screenSize;
+	uint2 tileCount;
+	uint tileMax;
+	uint numMaterials;
+};
+
 ConstantBuffer<SceneCB>			cbScene			: register(b0);
 ConstantBuffer<DetailCB>		cbDetail		: register(b1);
+ConstantBuffer<TileBinningCB>   cbTileBinning   : register(b2);
 ConstantBuffer<MaterialIndexCB>	cbMaterialIndex	: register(b0, space1);
 
 Texture2D<uint>					texVis			: register(t0);
@@ -15,13 +25,14 @@ StructuredBuffer<SubmeshData>	rSubmeshData	: register(t4);
 StructuredBuffer<MeshletData>	rMeshletData	: register(t5);
 StructuredBuffer<DrawCallData>	rDrawCallData	: register(t6);
 Texture2D<float>				texDepth		: register(t7);
-StructuredBuffer<uint>			rCount			: register(t8);
-StructuredBuffer<uint>			rOffset			: register(t9);
-StructuredBuffer<uint>			rPixelPos		: register(t10);
-Texture2D						texColor		: register(t11);
-Texture2D						texNormal		: register(t12);
-Texture2D						texORM			: register(t13);
-Texture2D						texDetail		: register(t14);
+StructuredBuffer<uint>			rMaterialIndex	: register(t8);
+StructuredBuffer<uint>			rPixelInfo		: register(t9);
+StructuredBuffer<uint>			rPixelInTiles	: register(t10);
+StructuredBuffer<uint>			rTileIndex		: register(t11);
+Texture2D						texColor		: register(t12);
+Texture2D						texNormal		: register(t13);
+Texture2D						texORM			: register(t14);
+Texture2D						texDetail		: register(t15);
 
 SamplerState		samLinearWrap	: register(s0);
 
@@ -85,17 +96,21 @@ void FeedbackMiplevel(in uint2 pos, in VertexAttr attr, in uint matIndex)
 	}
 }
 
-[numthreads(32, 1, 1)]
-void StandardCS(uint dtid : SV_DispatchThreadID)
+[numthreads(TILE_PIXEL_WIDTH * TILE_PIXEL_WIDTH, 1, 1)]
+void StandardCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 {
+	const uint kMaxPixelsInTile = TILE_PIXEL_WIDTH * TILE_PIXEL_WIDTH;
 	uint matIndex = cbMaterialIndex.materialIndex;
-	if (dtid >= rCount[matIndex])
+	uint tileIndex = rTileIndex[matIndex * cbTileBinning.tileMax + gid];
+	if (gtid >= rPixelInTiles[tileIndex])
+		return;
+	if (matIndex != rMaterialIndex[tileIndex * kMaxPixelsInTile + gtid])
 		return;
 	
-	uint pixIndex = rOffset[matIndex] + dtid;
+	uint pixInfo = rPixelInfo[tileIndex * kMaxPixelsInTile + gtid];
 	uint2 pixelPos;
 	uint vrsType;
-	DecodePixelPos(rPixelPos[pixIndex], pixelPos, vrsType);
+	DecodePixelPos(pixInfo, pixelPos, vrsType);
 
 	// compute vertex attributes.
 	InstanceData inData;
@@ -143,23 +158,27 @@ void StandardCS(uint dtid : SV_DispatchThreadID)
 		}
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
-
+	
 	rwColor[pixelPos] = float4(bc, 1);
 	rwORM[pixelPos] = float4(orm, 1);
 	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);
 }
 
-[numthreads(32, 1, 1)]
-void TriplanarCS(uint dtid : SV_DispatchThreadID)
+[numthreads(TILE_PIXEL_WIDTH * TILE_PIXEL_WIDTH, 1, 1)]
+void TriplanarCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 {
+	const uint kMaxPixelsInTile = TILE_PIXEL_WIDTH * TILE_PIXEL_WIDTH;
 	uint matIndex = cbMaterialIndex.materialIndex;
-	if (dtid >= rCount[matIndex])
+	uint tileIndex = rTileIndex[matIndex * cbTileBinning.tileMax + gid];
+	if (gtid >= rPixelInTiles[tileIndex])
+		return;
+	if (matIndex != rMaterialIndex[tileIndex * kMaxPixelsInTile + gtid])
 		return;
 	
-	uint pixIndex = rOffset[matIndex] + dtid;
+	uint pixInfo = rPixelInfo[tileIndex * kMaxPixelsInTile + gtid];
 	uint2 pixelPos;
 	uint vrsType;
-	DecodePixelPos(rPixelPos[pixIndex], pixelPos, vrsType);
+	DecodePixelPos(pixInfo, pixelPos, vrsType);
 
 	// compute vertex attributes.
 	InstanceData inData;

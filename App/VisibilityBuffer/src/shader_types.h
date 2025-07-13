@@ -49,6 +49,10 @@ enum ShaderName
 	FinalizeC,
 	MatGBStandardC,
 	MatGBTriplanarC,
+	InitBinningTileC,
+	BinningTileC,
+	TileStandardC,
+	TileTriplanarC,
 
 	MAX
 };
@@ -101,6 +105,10 @@ static const char* kShaderFileAndEntry[] = {
 	"material_binning.c.hlsl",			"FinalizeCS",
 	"material_gbuffer.c.hlsl",			"StandardCS",
 	"material_gbuffer.c.hlsl",			"TriplanarCS",
+	"material_binning.c.hlsl",			"InitBinningTileCS",
+	"material_binning.c.hlsl",			"BinningTileCS",
+	"material_tile.c.hlsl",				"StandardCS",
+	"material_tile.c.hlsl",				"TriplanarCS",
 };
 
 //	EOF

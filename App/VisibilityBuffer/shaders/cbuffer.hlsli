@@ -171,11 +171,6 @@ struct MaterialData
 	uint	shaderIndex;
 };
 
-#define CLASSIFY_TILE_WIDTH (64)
-#define CLASSIFY_THREAD_WIDTH (16)
-#define CLASSIFY_MATERIAL_MAX (256)
-#define CLASSIFY_DEPTH_RANGE (CLASSIFY_MATERIAL_MAX * 32)
-
 #define SHADOW_TYPE 0
 
 #endif // CBUFFER_HLSLI

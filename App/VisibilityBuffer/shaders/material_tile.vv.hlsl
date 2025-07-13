@@ -1,3 +1,4 @@
+#include "constant_defs.h"
 #include "cbuffer.hlsli"
 
 struct VSOutput

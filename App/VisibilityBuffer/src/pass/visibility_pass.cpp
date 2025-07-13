@@ -4,6 +4,7 @@
 
 #include "sl12/descriptor_set.h"
 
+#include "../../shaders/constant_defs.h"
 #define USE_IN_CPP
 #include "../../shaders/cbuffer.hlsli"
 
@@ -1353,7 +1354,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 	psoFinalize_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ClassifyC));
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::InitCountC));
 
 	// init pipeline state.
 	{
@@ -1474,7 +1475,7 @@ std::vector<sl12::TransientResource> MaterialComputeBinningPass::GetOutputResour
 	off.desc.bIsTexture = false;
 	off.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), numMaterials, 0);
 	pix.desc.bIsTexture = false;
-	pix.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32) * 2, screenWidth * screenHeight, 0);
+	pix.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), screenWidth * screenHeight, 0);
 
 	ret.push_back(arg);
 	ret.push_back(cnt);
@@ -1508,9 +1509,9 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	auto pBinPixRes = pResManager->GetRenderGraphResource(kBinningPixBufferID);
 	
 	auto pBinArgUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinArgRes, 0, 0, 0, 0);
-	auto pBinCountUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinCountRes, 0, 0, sizeof(sl12::u32), 0);
-	auto pBinOffsetUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinOffsetRes, 0, 0, sizeof(sl12::u32), 0);
-	auto pBinPixUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinPixRes, 0, 0, sizeof(sl12::u32) * 2, 0);
+	auto pBinCountUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinCountRes, 0, 0, (sl12::u32)pBinCountRes->pBuffer->GetBufferDesc().stride, 0);
+	auto pBinOffsetUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinOffsetRes, 0, 0, (sl12::u32)pBinOffsetRes->pBuffer->GetBufferDesc().stride, 0);
+	auto pBinPixUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinPixRes, 0, 0, (sl12::u32)pBinPixRes->pBuffer->GetBufferDesc().stride, 0);
 
 	// pass only resources.
 	auto&& workMaterials = pScene_->GetWorkMaterials();
@@ -1554,6 +1555,9 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	prefixDS.SetCsUav(1, pBinOffsetUAV->GetDescInfo().cpuHandle);
 	prefixDS.SetCsUav(2, pStatusUAV->GetDescInfo().cpuHandle);
 
+	static const UINT kTileX = 8;
+	static const UINT kTileY = 4;
+
 	// count materials.
 	{
 		// set pipeline.
@@ -1572,8 +1576,6 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &binDS);
 
 		// dispatch.
-		static const UINT kTileX = 256;
-		static const UINT kTileY = 1;
 		UINT x = (screenWidth + kTileX - 1) / kTileX;
 		UINT y = (screenHeight + kTileY - 1) / kTileY;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
@@ -1611,8 +1613,6 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &binDS);
 
 		// dispatch.
-		static const UINT kTileX = 256;
-		static const UINT kTileY = 1;
 		UINT x = (screenWidth + kTileX - 1) / kTileX;
 		UINT y = (screenHeight + kTileY - 1) / kTileY;
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
@@ -1625,7 +1625,8 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &binDS);
 
 		// dispatch.
-		pCmdList->GetLatestCommandList()->Dispatch((UINT)numBlocks, 1, 1);
+		UINT t = ((UINT)numMaterials + 32 - 1) / 32;
+		pCmdList->GetLatestCommandList()->Dispatch(t, 1, 1);
 	}
 }
 
@@ -1821,6 +1822,420 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 		{
 			auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 			descSet.SetCsSrv(12, dot_res->GetTextureView().GetDescInfo().cpuHandle);
+		}
+
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);
+
+		pCmdList->GetLatestCommandList()->ExecuteIndirect(
+			indirectExec_->GetCommandSignature(),		// command signature
+			1,											// max command count
+			pBinArgRes->pBuffer->GetResourceDep(),		// argument buffer
+			indirectExec_->GetStride() * matIndex,		// argument buffer offset
+			nullptr,									// count buffer
+			0);							// count buffer offset
+	
+		matIndex++;
+	}
+}
+
+
+//----------------
+MaterialTileBinningPass::MaterialTileBinningPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoInit_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	psoBinning_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::InitBinningTileC));
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::InitBinningTileC);
+
+		if (!psoInit_->Initialize(pDevice_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init binning tile pso.");
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::BinningTileC);
+
+		if (!psoBinning_->Initialize(pDevice_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to binning tile pso.");
+		}
+	}
+}
+
+MaterialTileBinningPass::~MaterialTileBinningPass()
+{
+	psoInit_.Reset();
+	psoBinning_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> MaterialTileBinningPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	ret.push_back(sl12::TransientResource(kVisBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
+	
+	return ret;
+}
+
+std::vector<sl12::TransientResource> MaterialTileBinningPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource mat(kTileBinMaterialIndexID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource info(kTileBinPixelInfoID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource pit(kTileBinPixelsInTileID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource tile(kTileBinTileIndexID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource arg(kTileBinArgBufferID, sl12::TransientState::UnorderedAccess);
+
+	auto&& workMaterials = pScene_->GetWorkMaterials();
+	size_t numMaterials = workMaterials.size();
+	sl12::u32 screenWidth = pScene_->GetScreenWidth();
+	sl12::u32 screenHeight = pScene_->GetScreenHeight();
+	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 tileY = (screenHeight + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 tileMax = tileX * tileY;
+
+	mat.desc.bIsTexture = false;
+	mat.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), screenWidth * screenHeight, 0);
+	info.desc.bIsTexture = false;
+	info.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), screenWidth * screenHeight, 0);
+	pit.desc.bIsTexture = false;
+	pit.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), tileMax, 0);
+	tile.desc.bIsTexture = false;
+	tile.desc.bufferDesc.InitializeStructured(sizeof(sl12::u32), tileMax * numMaterials, 0);
+	arg.desc.bIsTexture = false;
+	arg.desc.bufferDesc.InitializeByteAddress(sizeof(D3D12_DISPATCH_ARGUMENTS) * numMaterials, 0);
+
+	ret.push_back(mat);
+	ret.push_back(info);
+	ret.push_back(pit);
+	ret.push_back(tile);
+	ret.push_back(arg);
+	
+	return ret;
+}
+
+void MaterialTileBinningPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "MaterialTileBinning");
+
+	// inputs.
+	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
+	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
+	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+
+	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+
+	// outputs.
+	auto pMatIndexRes = pResManager->GetRenderGraphResource(kTileBinMaterialIndexID);
+	auto pPixelInfoRes = pResManager->GetRenderGraphResource(kTileBinPixelInfoID);
+	auto pPixlesInTileRes = pResManager->GetRenderGraphResource(kTileBinPixelsInTileID);
+	auto pTileIndexRes = pResManager->GetRenderGraphResource(kTileBinTileIndexID);
+	auto pBinArgRes = pResManager->GetRenderGraphResource(kTileBinArgBufferID);
+	
+	auto pMatIndexUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pMatIndexRes, 0, 0, sizeof(sl12::u32), 0);
+	auto pPixelInfoUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pPixelInfoRes, 0, 0, sizeof(sl12::u32), 0);
+	auto pPixlesInTileUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pPixlesInTileRes, 0, 0, sizeof(sl12::u32), 0);
+	auto pTileIndexUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pTileIndexRes, 0, 0, sizeof(sl12::u32), 0);
+	auto pBinArgUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinArgRes, 0, 0, 0, 0);
+
+	auto&& workMaterials = pScene_->GetWorkMaterials();
+	sl12::u32 screenWidth = pScene_->GetScreenWidth();
+	sl12::u32 screenHeight = pScene_->GetScreenHeight();
+	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 tileY = (screenHeight + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 numMaterials = (sl12::u32)workMaterials.size();
+
+	// constant buffers.
+	struct TileBinningCB
+	{
+		uint screenSize[2];
+		uint tileCount[2];
+		uint tileMax;
+		uint numMaterials;
+	};
+	TileBinningCB cb = {{screenWidth, screenHeight}, {tileX, tileY}, tileX * tileY, numMaterials};
+	auto cbvMan = pRenderSystem_->GetCbvManager();
+	auto cbh = cbvMan->GetTemporal(&cb, sizeof(cb));
+
+	// set descriptors.
+	sl12::DescriptorSet desc;
+	desc.Reset();
+	desc.SetCsCbv(0, cbh.GetCBV()->GetDescInfo().cpuHandle);
+	desc.SetCsSrv(0, pVisSRV->GetDescInfo().cpuHandle);
+	desc.SetCsSrv(1, pSubmeshSRV->GetDescInfo().cpuHandle);
+	desc.SetCsSrv(2, pMeshletSRV->GetDescInfo().cpuHandle);
+	desc.SetCsSrv(3, pDrawCallSRV->GetDescInfo().cpuHandle);
+	desc.SetCsSrv(4, pDepthSRV->GetDescInfo().cpuHandle);
+	desc.SetCsUav(0, pMatIndexUAV->GetDescInfo().cpuHandle);
+	desc.SetCsUav(1, pPixelInfoUAV->GetDescInfo().cpuHandle);
+	desc.SetCsUav(2, pPixlesInTileUAV->GetDescInfo().cpuHandle);
+	desc.SetCsUav(3, pTileIndexUAV->GetDescInfo().cpuHandle);
+	desc.SetCsUav(4, pBinArgUAV->GetDescInfo().cpuHandle);
+
+	// initialize.
+	{
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoInit_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &desc);
+
+		// dispatch.
+		UINT t = ((UINT)numMaterials + 32 - 1) / 32;
+		pCmdList->GetLatestCommandList()->Dispatch(t, 1, 1);
+
+		pCmdList->AddUAVBarrier(pBinArgRes->pBuffer);
+		pCmdList->FlushBarriers();
+	}
+
+	// binnning.
+	{
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoBinning_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &desc);
+
+		// dispatch.
+		pCmdList->GetLatestCommandList()->Dispatch(tileX, tileY, 1);
+	}
+}
+
+
+//----------------
+MaterialTileGBufferPass::MaterialTileGBufferPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoStandard_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	psoTriplanar_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	indirectExec_ = sl12::MakeUnique<sl12::IndirectExecuter>(pDev);
+
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::TileStandardC), 1);
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::TileStandardC);
+
+		if (!psoStandard_->Initialize(pDevice_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to tile standard pso.");
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::TileTriplanarC);
+
+		if (!psoTriplanar_->Initialize(pDevice_, desc))
+		{
+			sl12::ConsolePrint("Error: failed to tile triplanar pso.");
+		}
+	}
+
+	// init indirect executer.
+	indirectExec_->Initialize(pDev, sl12::IndirectType::Dispatch, 0);
+}
+
+MaterialTileGBufferPass::~MaterialTileGBufferPass()
+{
+	psoStandard_.Reset();
+	psoTriplanar_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	ret.push_back(sl12::TransientResource(kVisBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kInstanceBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kTileBinMaterialIndexID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kTileBinPixelInfoID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kTileBinPixelsInTileID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kTileBinTileIndexID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kTileBinArgBufferID, sl12::TransientState::IndirectArgument));
+	
+	return ret;
+}
+
+std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource mip(kMiplevelFeedbackID, sl12::TransientState::UnorderedAccess);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	ga.desc.bIsTexture = true;
+	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
+	gb.desc.bIsTexture = true;
+	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
+	gc.desc.bIsTexture = true;
+	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+
+	width = (width + 3) / 4;
+	height = (height + 3) / 4;
+	mip.desc.bIsTexture = true;
+	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
+
+	ret.push_back(ga);
+	ret.push_back(gb);
+	ret.push_back(gc);
+	ret.push_back(mip);
+	
+	return ret;
+}
+
+void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "MaterialGBuffer");
+
+	// inputs.
+	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pInstanceRes = pResManager->GetRenderGraphResource(kInstanceBufferID);
+	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
+	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
+	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+	auto pMatIndexRes = pResManager->GetRenderGraphResource(kTileBinMaterialIndexID);
+	auto pPixelInfoRes = pResManager->GetRenderGraphResource(kTileBinPixelInfoID);
+	auto pPixlesInTileRes = pResManager->GetRenderGraphResource(kTileBinPixelsInTileID);
+	auto pTileIndexRes = pResManager->GetRenderGraphResource(kTileBinTileIndexID);
+	auto pBinArgRes = pResManager->GetRenderGraphResource(kTileBinArgBufferID);
+
+	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pInstanceSRV = pResManager->CreateOrGetBufferView(pInstanceRes, 0, 0, (sl12::u32)pInstanceRes->pBuffer->GetBufferDesc().stride);
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pMatIndexSRV = pResManager->CreateOrGetBufferView(pMatIndexRes, 0, 0, (sl12::u32)pMatIndexRes->pBuffer->GetBufferDesc().stride);
+	auto pPixelInfoSRV = pResManager->CreateOrGetBufferView(pPixelInfoRes, 0, 0, (sl12::u32)pPixelInfoRes->pBuffer->GetBufferDesc().stride);
+	auto pPixlesInTileSRV = pResManager->CreateOrGetBufferView(pPixlesInTileRes, 0, 0, (sl12::u32)pPixlesInTileRes->pBuffer->GetBufferDesc().stride);
+	auto pTileIndexUAV = pResManager->CreateOrGetBufferView(pTileIndexRes, 0, 0, (sl12::u32)pTileIndexRes->pBuffer->GetBufferDesc().stride);
+
+	// outputs.
+	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
+	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
+	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pMipRes = pResManager->GetRenderGraphResource(kMiplevelFeedbackID);
+
+	auto pGbAUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbARes);
+	auto pGbBUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbBRes);
+	auto pGbCUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbCRes);
+	auto pMipUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMipRes);
+	
+	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	auto&& meshMan = pRenderSystem_->GetMeshManager();
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+
+	auto&& workMaterials = pScene_->GetWorkMaterials();
+	sl12::u32 screenWidth = pScene_->GetScreenWidth();
+	sl12::u32 screenHeight = pScene_->GetScreenHeight();
+	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 tileY = (screenHeight + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
+	sl12::u32 numMaterials = (sl12::u32)workMaterials.size();
+
+	// constant buffers.
+	struct TileBinningCB
+	{
+		uint screenSize[2];
+		uint tileCount[2];
+		uint tileMax;
+		uint numMaterials;
+	};
+	TileBinningCB cb = {{screenWidth, screenHeight}, {tileX, tileY}, tileX * tileY, numMaterials};
+	auto TileBinCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, TempCB.hDetailCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(2, TileBinCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pVisSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, meshMan->GetVertexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, meshMan->GetIndexBufferSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pInstanceSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pSubmeshSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pMeshletSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(6, pDrawCallSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(7, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(8, pMatIndexSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(9, pPixelInfoSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(10, pPixlesInTileSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(11, pTileIndexUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(15, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pGbAUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, pGbBUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(3, pGbCUAV->GetDescInfo().cpuHandle);
+
+	sl12::ComputePipelineState* NowPSO = nullptr;
+
+	sl12::u32 matIndex = 0;
+	for (auto&& work : pScene_->GetWorkMaterials())
+	{
+		sl12::ComputePipelineState* pso = &psoStandard_;
+		if (work.psoType == 1)
+		{
+			pso = &psoTriplanar_;
+		}
+
+		if (NowPSO != pso)
+		{
+			// set pipeline.
+			pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+			NowPSO = pso;
+		}
+
+		if (work.psoType == 0)
+		{
+			auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+			auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+			auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+
+			descSet.SetCsSrv(12, bc_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(13, nm_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetCsSrv(14, orm_tex_view->GetDescInfo().cpuHandle);
+		}
+		else
+		{
+			auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
+			descSet.SetCsSrv(13, dot_res->GetTextureView().GetDescInfo().cpuHandle);
 		}
 
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);

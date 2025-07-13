@@ -1,3 +1,4 @@
+#include "constant_defs.h"
 #include "cbuffer.hlsli"
 #include "visibility_buffer.hlsli"
 
@@ -13,7 +14,7 @@ Texture2D<float>				texDepth			: register(t4);
 RWByteAddressBuffer				rwDrawArg			: register(u0);
 RWByteAddressBuffer				rwTileIndex			: register(u1);
 
-groupshared uint shMaterialFlag[CLASSIFY_MATERIAL_MAX];
+groupshared uint shMaterialFlag[CLASSIFY_MATERIAL_CHUNK_MAX];
 
 void ClassifyPixel(uint2 pos)
 {

@@ -35,6 +35,8 @@ enum class AppPassType
 	MaterialComputeBinning,
 	MaterialComputeGBuffer,
 	PrefixSum,
+	MaterialTileBinning,
+	MaterialTileGBuffer,
 	Invalid
 };
 

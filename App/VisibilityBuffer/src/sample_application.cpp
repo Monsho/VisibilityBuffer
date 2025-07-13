@@ -14,6 +14,7 @@
 #include <memory>
 #include <random>
 
+#include "../shaders/constant_defs.h"
 #define USE_IN_CPP
 #include "../shaders/cbuffer.hlsli"
 

@@ -1,3 +1,4 @@
+#include "constant_defs.h"
 #include "cbuffer.hlsli"
 #include "math.hlsli"
 #include "visibility_buffer.hlsli"

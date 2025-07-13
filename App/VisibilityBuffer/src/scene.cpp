@@ -719,6 +719,16 @@ bool Scene::InitRenderPass()
 		passNodes_[AppPassType::MaterialComputeGBuffer] = renderGraph_->AddPass(sl12::RenderPassID("MaterialComputeGBufferPass"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
+	{
+		auto pass = std::make_unique<MaterialTileBinningPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MaterialTileBinning] = renderGraph_->AddPass(sl12::RenderPassID("MaterialTileBinningPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<MaterialTileGBufferPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MaterialTileGBuffer] = renderGraph_->AddPass(sl12::RenderPassID("MaterialTileGBufferPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -777,8 +787,13 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		}
 		else if (desc.visToGBufferType == 1)
 		{
+#if 1 // tile binning
+			node = node.AddChild(passNodes_[AppPassType::MaterialTileBinning])
+				.AddChild(passNodes_[AppPassType::MaterialTileGBuffer]);
+#else // pixel binning
 			node = node.AddChild(passNodes_[AppPassType::MaterialComputeBinning])
 				.AddChild(passNodes_[AppPassType::MaterialComputeGBuffer]);
+#endif
 		}
 		else
 		{
