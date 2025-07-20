@@ -1687,7 +1687,8 @@ bool SampleApplication::Execute()
 				
 				static const char* kVisToGBTypes[] = {
 					"Depth & Tile",
-					"Compute Shader",
+					"Compute Pixel",
+					"Compute Tile",
 					"Work Graph",
 				};
 				ImGui::Combo("Vis to GBuffer", &VisToGBufferType_, kVisToGBTypes, ARRAYSIZE(kVisToGBTypes));
@@ -1821,6 +1822,16 @@ bool SampleApplication::Execute()
 		// gpu performance.
 		if (ImGui::CollapsingHeader("GPU Time", ImGuiTreeNodeFlags_DefaultOpen))
 		{
+			totalTimeSum_ += scene_->GetRenderGraph()->GetAllPassMicroSec();
+			totalTimeSumCount_++;
+			if (totalTimeSumCount_ >= 60)
+			{
+				totalTime_ = totalTimeSum_ / (float)totalTimeSumCount_;
+				totalTimeSum_ = 0.0f;
+				totalTimeSumCount_ = 0;
+			}
+			ImGui::Text("total   : %f (ms)", totalTime_ / 1000.0f);
+
 			auto pPerfResult = scene_->GetRenderGraph()->GetPerformanceResult();
 			if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen))
 			{

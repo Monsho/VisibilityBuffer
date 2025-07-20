@@ -781,22 +781,26 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		// visibility to gbuffer.
 		if (desc.visToGBufferType == 0)
 		{
+			// Depth & Tile
 			node = node.AddChild(passNodes_[AppPassType::MaterialDepth])
 				.AddChild(passNodes_[AppPassType::Classify])
 				.AddChild(passNodes_[AppPassType::MaterialTile]);
 		}
 		else if (desc.visToGBufferType == 1)
 		{
-#if 1 // tile binning
-			node = node.AddChild(passNodes_[AppPassType::MaterialTileBinning])
-				.AddChild(passNodes_[AppPassType::MaterialTileGBuffer]);
-#else // pixel binning
+			// Compute Pixel
 			node = node.AddChild(passNodes_[AppPassType::MaterialComputeBinning])
 				.AddChild(passNodes_[AppPassType::MaterialComputeGBuffer]);
-#endif
+		}
+		else if (desc.visToGBufferType == 2)
+		{
+			// Compute Tile
+			node = node.AddChild(passNodes_[AppPassType::MaterialTileBinning])
+				.AddChild(passNodes_[AppPassType::MaterialTileGBuffer]);
 		}
 		else
 		{
+			// Work Graph
 			node = node.AddChild(passNodes_[AppPassType::MaterialResolve]);
 		}
 	}

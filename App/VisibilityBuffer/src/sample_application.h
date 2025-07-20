@@ -268,6 +268,9 @@ private:
 	int						displayMode_ = 0;
 	bool					bIsTexStreaming_ = true;
 	int						poolSizeSelect_ = 0;
+	float					totalTime_ = 0;
+	float					totalTimeSum_ = 0;
+	int						totalTimeSumCount_ = 0;
 	
 	int	displayWidth_, displayHeight_;
 	int meshType_;
