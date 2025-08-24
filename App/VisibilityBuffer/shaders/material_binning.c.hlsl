@@ -185,7 +185,6 @@ void BinningCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
             if (WaveGetLaneIndex() == firstThreadNo)
             {
                 rwIndirectArg.InterlockedAdd(materialNo * ARG_STRIDE, matCount, storeIndex);
-                //sMaterialCount[materialNo] = storeIndex;
             }
         }
     }
@@ -197,7 +196,6 @@ void BinningCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
         uint baseLane = firstbitlow(match.x);
         uint laneBit = 0x1 << WaveGetLaneIndex();
         uint index = WaveReadLaneAt(storeIndex, baseLane) + countbits(match.x & (laneBit - 1));
-        // uint index = sMaterialCount[materialNo] + countbits(match.x & (laneBit - 1));
         index += rwOffset[materialNo];
         rwPixBuffer[index] = EncodePixelPos(pixelPos, 0);
     }

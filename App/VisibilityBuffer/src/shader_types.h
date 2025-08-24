@@ -53,6 +53,9 @@ enum ShaderName
 	BinningTileC,
 	TileStandardC,
 	TileTriplanarC,
+	GenVrsC,
+	ClearVrsC,
+	ReprojectVrsC,
 
 	MAX
 };
@@ -109,6 +112,9 @@ static const char* kShaderFileAndEntry[] = {
 	"material_binning.c.hlsl",			"BinningTileCS",
 	"material_tile.c.hlsl",				"StandardCS",
 	"material_tile.c.hlsl",				"TriplanarCS",
+	"vrs.c.hlsl",						"GenFromIntensityCS",
+	"vrs.c.hlsl",						"ClearCS",
+	"vrs.c.hlsl",						"ReprojectionCS",
 };
 
 //	EOF

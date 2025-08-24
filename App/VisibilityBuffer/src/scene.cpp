@@ -729,6 +729,16 @@ bool Scene::InitRenderPass()
 		passNodes_[AppPassType::MaterialTileGBuffer] = renderGraph_->AddPass(sl12::RenderPassID("MaterialTileGBufferPass"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
+	{
+		auto pass = std::make_unique<GenerateVrsPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::GenerateVRS] = renderGraph_->AddPass(sl12::RenderPassID("GenerateVrsPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<PrefixSumTestPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::PrefixSumTest] = renderGraph_->AddPass(sl12::RenderPassID("PrefixSumTest"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -754,12 +764,12 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	
 	renderGraph_->ClearAllGraphEdges();
 	// graphics queue.
+	// node = node.AddChild(passNodes_[AppPassType::PrefixSumTest]); // TEST: Prefux Sum Test Pass.
 	if (bEnableMeshletCulling)
 	{
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
 	}
-	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel])
-		;//.AddChild(passNodes_[AppPassType::PrefixSum]);
+	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel]);
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
@@ -809,6 +819,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		.AddChild(passNodes_[AppPassType::Lighting])
 		.AddChild(passNodes_[AppPassType::HiZ])
 		.AddChild(passNodes_[AppPassType::IndirectLight])
+		.AddChild(passNodes_[AppPassType::GenerateVRS])
 		.AddChild(passNodes_[AppPassType::Tonemap]);
 
 	// compute queue.

@@ -1770,6 +1770,16 @@ bool SampleApplication::Execute()
 			ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
 		}
 
+		// vrs settings.
+		if (ImGui::CollapsingHeader("VRS", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Checkbox("Use VRS", &bUseVRS_);
+			if (bUseVRS_)
+			{
+				ImGui::SliderFloat("Threshold", &vrsThreshold_, 0.0f, 1.0f);
+			}
+		}
+
 		// debug settings.
 		if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
 		{
@@ -1867,6 +1877,7 @@ bool SampleApplication::Execute()
 	setupDesc.visToGBufferType = VisToGBufferType_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
+	setupDesc.vrsIntensityThreshold = vrsThreshold_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	
 	auto meshMan = renderSys_->GetMeshManager();

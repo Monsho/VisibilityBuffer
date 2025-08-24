@@ -152,7 +152,7 @@ void FeedbackMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientR
 	UINT w = (pScene_->GetScreenWidth() + 3) / 4;
 	UINT h = (pScene_->GetScreenHeight() + 3) / 4;
 	UINT x = (w + 7) / 8;
-	UINT y = (w + 7) / 8;
+	UINT y = (h + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -468,6 +468,278 @@ void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 
 	// draw fullscreen.
 	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
+}
+
+
+//----------------
+GenerateVrsPass::GenerateVrsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::GenVrsC));
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::GenVrsC);
+
+		if (!pso_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to gen vrs pso.");
+		}
+	}
+}
+
+GenerateVrsPass::~GenerateVrsPass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> GenerateVrsPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> GenerateVrsPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	sl12::TransientResource vrs(kPrevVrsID, sl12::TransientState::UnorderedAccess);
+
+	sl12::u32 width = pScene_->GetScreenWidth() / 2;
+	sl12::u32 height = pScene_->GetScreenHeight() / 2;
+	vrs.desc.bIsTexture = true;
+	vrs.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8_UINT, width, height, 1, 1, 0);
+	vrs.desc.historyFrame = 1;
+
+	ret.push_back(vrs);
+
+	return ret;
+}
+
+void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 1, "GenerateVRS");
+
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pVRSRes = pResManager->GetRenderGraphResource(kPrevVrsID);
+	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
+	auto pVRSUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pVRSRes);
+	
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 halfWidth = (width + 1) / 2;
+	sl12::u32 halfHeight = (height + 1) / 2;
+
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+
+	struct GenCB
+	{
+		sl12::u32 screenSize[2];
+		float threshold;
+	};
+	GenCB cb = {{width, height}, threshold_};
+	auto hGenCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, hGenCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pAccumSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pVRSUAV->GetDescInfo().cpuHandle);
+
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	// dispatch.
+	UINT x = (halfWidth + 7) / 8;
+	UINT y = (halfHeight + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
+
+//----------------
+PrefixSumTestPass::PrefixSumTestPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoInit_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	psoMain_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::PrefixSumInitCS));
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::PrefixSumInitCS);
+
+		if (!psoInit_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to prefix sum init pso.");
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::PrefixSumC);
+
+		if (!psoMain_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to prefix sum pso.");
+		}
+	}
+}
+
+PrefixSumTestPass::~PrefixSumTestPass()
+{
+	psoInit_.Reset();
+	psoMain_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> PrefixSumTestPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	return ret;
+}
+
+std::vector<sl12::TransientResource> PrefixSumTestPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	return ret;
+}
+
+void PrefixSumTestPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 1, "PrefixSumTest");
+
+	const int kElemCount = 1024;
+	const int kBlockCount = (kElemCount + 255) / 256;
+
+	UniqueHandle<sl12::Buffer> pInput, pOutput, pStatus, pBlock, pTemp;
+	pInput = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+	pOutput = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+	pStatus = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+	pBlock = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+	pTemp = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+
+	{
+		sl12::BufferDesc desc{};
+		desc.heap = sl12::BufferHeap::Default;
+		desc.size = sizeof(int) * kElemCount;
+		desc.stride = sizeof(int);
+		desc.usage = sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess;
+		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
+		pInput->Initialize(pDevice_, desc);
+
+		desc.usage = sl12::ResourceUsage::UnorderedAccess;
+		pOutput->Initialize(pDevice_, desc);
+
+		desc.size = sizeof(int) * 2 * kBlockCount;
+		desc.stride = sizeof(int) * 2;
+		pStatus->Initialize(pDevice_, desc);
+
+		desc.size = sizeof(int);
+		desc.stride = sizeof(int);
+		pBlock->Initialize(pDevice_, desc);
+		
+		desc.heap = sl12::BufferHeap::Dynamic;
+		desc.size = sizeof(int) * kElemCount;
+		desc.stride = sizeof(int);
+		desc.usage = sl12::ResourceUsage::Unknown;
+		pTemp->Initialize(pDevice_, desc);
+	}
+
+	{
+		std::vector<int> src;
+		std::vector<int> dst;
+		for (int i = 0; i < kElemCount; ++i)
+		{
+			src.push_back(i + 1);
+		}
+		int total = 0;
+		for (int i = 0; i < kElemCount; ++i)
+		{
+			dst.push_back(total);
+			total += src[i];
+		}
+		sl12::ConsolePrint("final result : %d\n", dst[kElemCount - 1]);
+	}
+
+	// コピー
+	{
+		int* p = (int*)pTemp->Map();
+		for (int i = 0; i < kElemCount; ++i)
+			p[i] = i + 1;
+		pTemp->Unmap();
+
+		pCmdList->GetLatestCommandList()->CopyResource(pInput->GetResourceDep(), pTemp->GetResourceDep());
+		pCmdList->AddTransitionBarrier(&pInput, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		pCmdList->FlushBarriers();
+	}
+
+	UniqueHandle<sl12::UnorderedAccessView> pInputView, pOutputView, pStatusView, pBlockView;
+	pInputView = sl12::MakeUnique<sl12::UnorderedAccessView>(pDevice_);
+	pOutputView = sl12::MakeUnique<sl12::UnorderedAccessView>(pDevice_);
+	pStatusView = sl12::MakeUnique<sl12::UnorderedAccessView>(pDevice_);
+	pBlockView = sl12::MakeUnique<sl12::UnorderedAccessView>(pDevice_);
+	pInputView->Initialize(pDevice_, &pInput, 0, kElemCount, sizeof(int), 0);
+	pOutputView->Initialize(pDevice_, &pOutput, 0, kElemCount, sizeof(int), 0);
+	pStatusView->Initialize(pDevice_, &pStatus, 0, kBlockCount, sizeof(int) * 2, 0);
+	pBlockView->Initialize(pDevice_, &pBlock, 0, 1, sizeof(int), 0);
+
+	sl12::u32 cb[] = {kElemCount, kBlockCount};
+	sl12::CbvHandle hCB = pRenderSystem_->GetCbvManager()->GetTemporal(cb, sizeof(cb));
+	
+	// 初期化
+	{
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetCsCbv(0, hCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(2, pStatusView->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(3, pBlockView->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoInit_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+		// dispatch.
+		pCmdList->GetLatestCommandList()->Dispatch(kBlockCount, 1, 1);
+
+		pCmdList->AddUAVBarrier(&pStatus);
+		pCmdList->FlushBarriers();
+	}
+
+	// 実行
+	{
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetCsCbv(0, hCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(0, pInputView->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(1, pOutputView->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(2, pStatusView->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(3, pBlockView->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoMain_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+		// dispatch.
+		pCmdList->GetLatestCommandList()->Dispatch(kBlockCount, 1, 1);
+	}
 }
 
 

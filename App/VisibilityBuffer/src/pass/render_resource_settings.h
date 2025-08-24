@@ -28,6 +28,8 @@ static const sl12::TransientResourceID	kGIHistoryID(kDenoiseGIID, 1);
 static const sl12::TransientResourceID	kVisBufferID("VisBuffer");
 static const sl12::TransientResourceID	kMaterialDepthID("MaterialDepth");
 static const sl12::TransientResourceID	kDrawFlagID("DrawFlag");
+static const sl12::TransientResourceID	kPrevVrsID("PrevVRSBuffer");
+static const sl12::TransientResourceID	kCurrVrsID("CurrVRSBuffer");
 
 static const sl12::TransientResourceID	kInstanceBufferID("InstanceBuffer");
 static const sl12::TransientResourceID	kSubmeshBufferID("SubmeshBuffer");

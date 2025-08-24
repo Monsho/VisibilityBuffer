@@ -1517,13 +1517,17 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	auto&& workMaterials = pScene_->GetWorkMaterials();
 	size_t numMaterials = workMaterials.size();
 	size_t numBlocks = (numMaterials + 255) / 256;
-	sl12::TransientResourceDesc StatusDesc;
+	sl12::TransientResourceDesc StatusDesc, BlockDesc;
 	StatusDesc.bIsTexture = false;
 	StatusDesc.bufferDesc.InitializeStructured(sizeof(sl12::u32) * 2, numBlocks, sl12::ResourceUsage::UnorderedAccess);
+	BlockDesc.bIsTexture = false;
+	BlockDesc.bufferDesc.InitializeStructured(sizeof(sl12::u32), 1, sl12::ResourceUsage::UnorderedAccess);
 	
 	auto pStatusB = pResManager->CreatePassOnlyResource(StatusDesc);
+	auto pBlockB = pResManager->CreatePassOnlyResource(BlockDesc);
 
 	auto pStatusUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pStatusB, 0, 0, sizeof(sl12::u32) * 2, 0);
+	auto pBlockUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBlockB, 0, 0, sizeof(sl12::u32), 0);
 
 	sl12::u32 screenWidth = pScene_->GetScreenWidth();
 	sl12::u32 screenHeight = pScene_->GetScreenHeight();
@@ -1554,6 +1558,7 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	prefixDS.SetCsUav(0, pBinCountUAV->GetDescInfo().cpuHandle);
 	prefixDS.SetCsUav(1, pBinOffsetUAV->GetDescInfo().cpuHandle);
 	prefixDS.SetCsUav(2, pStatusUAV->GetDescInfo().cpuHandle);
+	prefixDS.SetCsUav(3, pBlockUAV->GetDescInfo().cpuHandle);
 
 	static const UINT kTileX = 8;
 	static const UINT kTileY = 4;

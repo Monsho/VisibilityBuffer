@@ -13,10 +13,13 @@ ConstantBuffer<PrefixScanCB>	cbPrefixScan		: register(b0);
 RWStructuredBuffer<uint>		rwInput	    		: register(u0);
 RWStructuredBuffer<uint>		rwOutput			: register(u1);
 globallycoherent RWStructuredBuffer<uint2>       rwStatus            : register(u2);
+RWStructuredBuffer<uint>		rwBlock		    	: register(u3);
 
 [numthreads(32, 1, 1)]
 void InitBufferCS(uint dtid : SV_DispatchThreadID)
 {
+    if (dtid == 0)
+        rwBlock[0] = 0;
     if (dtid < cbPrefixScan.numBlocks)
     {
         rwStatus[dtid] = uint2(0, 0);
@@ -26,12 +29,13 @@ void InitBufferCS(uint dtid : SV_DispatchThreadID)
 groupshared uint sBlockSums[BLOCK_SIZE];
 groupshared uint sWaveSums[BLOCK_SIZE / 32];
 groupshared uint sPrefix;
+groupshared uint sBlockIndex;
 
 // Prefix sum per blocks.
-void BlockScan(uint3 Gid, uint3 GTid)
+void BlockScan(uint BlockIndex, uint GroupThreadID)
 {
-    uint local_id = GTid.x;
-    uint global_id = Gid.x * BLOCK_SIZE + GTid.x;
+    uint local_id = GroupThreadID;
+    uint global_id = BlockIndex * BLOCK_SIZE + GroupThreadID;
     uint wave_count = WaveGetLaneCount();
 
     // load input value.
@@ -72,22 +76,36 @@ void BlockScan(uint3 Gid, uint3 GTid)
 }
 
 [numthreads(BLOCK_SIZE, 1, 1)]
-void PrefixScanCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID)
+void PrefixScanCS(uint Gid : SV_GroupID, uint DTid : SV_DispatchThreadID, uint GTid : SV_GroupThreadID)
 {
+    if (GTid == 0)
+    {
+        uint oldValue;
+        InterlockedAdd(rwBlock[0], 1, oldValue);
+        sBlockIndex = oldValue;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint blockNo = sBlockIndex;
+    uint GlobalIndex = blockNo * BLOCK_SIZE + GTid;
+    
     // compute prefix scan in every block. 
-    BlockScan(Gid, GTid);
+    BlockScan(blockNo, GTid);
 
     // get block sum.
     uint block_sum;
     {
-        block_sum = rwInput[Gid.x * BLOCK_SIZE + BLOCK_SIZE - 1] + sBlockSums[BLOCK_SIZE - 1];
+        block_sum = rwInput[blockNo * BLOCK_SIZE + BLOCK_SIZE - 1] + sBlockSums[BLOCK_SIZE - 1];
+    }
+    if (GTid == 0)
+    {
+        rwStatus[blockNo] = uint2(block_sum, 1);
     }
     GroupMemoryBarrierWithGroupSync();
 
     // decoupled look-back.
-    if (GTid.x == 0)
+    if (GTid == 0)
     {
-        uint blockNo = Gid.x;
         sPrefix = 0;
         if (blockNo > 0)
         {
@@ -109,6 +127,6 @@ void PrefixScanCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint
     GroupMemoryBarrierWithGroupSync();
 
     // output.
-    if (DTid.x < cbPrefixScan.numItems)
-        rwOutput[DTid.x] = sBlockSums[GTid.x] + sPrefix;
+    if (GlobalIndex < cbPrefixScan.numItems)
+        rwOutput[GlobalIndex] = sBlockSums[GTid] + sPrefix;
 }

@@ -37,6 +37,9 @@ enum class AppPassType
 	PrefixSum,
 	MaterialTileBinning,
 	MaterialTileGBuffer,
+	GenerateVRS,
+	ReprojectVRS,
+	PrefixSumTest,
 	Invalid
 };
 

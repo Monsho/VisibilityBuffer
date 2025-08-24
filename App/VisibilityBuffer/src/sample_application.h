@@ -264,6 +264,10 @@ private:
 	float					denoiseBaseWeight_ = 0.85f;
 	float					denoiseDepthSigma_ = 1.0f;
 
+	// vrs parameters.
+	bool					bUseVRS_ = false;
+	float					vrsThreshold_ = 0.01f;
+
 	// debug parameters.
 	int						displayMode_ = 0;
 	bool					bIsTexStreaming_ = true;

@@ -22,6 +22,7 @@ struct SceneCB
 	float4x4	mtxProjToView;
 	float4x4	mtxProjToPrevProj;
 	float4x4	mtxPrevViewToProj;
+	float4x4	mtxPrevProjToProj;
 	float4		eyePosition;
 	float2		screenSize;
 	float2		invScreenSize;
