@@ -42,13 +42,6 @@ RWTexture2D<float4>	rwORM			: register(u2);
 RWTexture2D<float4>	rwNormal		: register(u3);
 
 
-void DecodePixelPos(uint Value, out uint2 PixelPos, out uint VRSType)
-{
-	PixelPos.x = (Value >> 15) & 0x7FFF;
-	PixelPos.y = Value & 0x7FFF;
-	VRSType = (Value >> 30) & 0x3;
-}
-
 VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
 {
 	// get visibility.

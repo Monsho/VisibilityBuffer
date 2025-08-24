@@ -1,6 +1,7 @@
 #include "constant_defs.h"
 #include "cbuffer.hlsli"
 #include "visibility_buffer.hlsli"
+#include "vrs.hlsli"
 
 struct BinningCB
 {
@@ -15,6 +16,7 @@ StructuredBuffer<SubmeshData>	rSubmeshData		: register(t1);
 StructuredBuffer<MeshletData>	rMeshletData		: register(t2);
 StructuredBuffer<DrawCallData>	rDrawCallData		: register(t3);
 Texture2D<float>				texDepth			: register(t4);
+Texture2D<uint>					texVRS      		: register(t5);
 
 RWStructuredBuffer<uint>  		rwCount 			: register(u0);
 RWStructuredBuffer<uint>		rwOffset 			: register(u1);
@@ -24,15 +26,14 @@ RWStructuredBuffer<uint>        rwPixBuffer         : register(u3);
 #define ARG_STRIDE (3 * 4)
 
 
-uint EncodePixelPos(uint2 PixelPos, uint VRSType)
+bool IsValidPixelByVRS(uint2 pixelPos, out uint vrsType)
 {
-    return (VRSType << 30) | (PixelPos.x << 15) | (PixelPos.y << 0);
-}
-void DecodePixelPos(uint Value, out uint2 PixelPos, out uint VRSType)
-{
-    PixelPos.x = (Value >> 15) & 0x7FFF;
-    PixelPos.y = Value & 0x7FFF;
-    VRSType = (Value >> 30) & 0x3;
+    vrsType = GetVRSTypeFromImage(texVRS, pixelPos);
+    uint2 bitValue = pixelPos & 0x01;
+    if (vrsType == VRS_2x2) return all(bitValue == 0);
+    if (vrsType == VRS_2x1) return bitValue.x == 0;
+    if (vrsType == VRS_1x2) return bitValue.y == 0;
+    return true;
 }
 
 [numthreads(32, 1, 1)]
@@ -105,8 +106,9 @@ void CountCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
     if (all(pixelPos < cbBinning.screenSize))
     {
     	float depth = texDepth[pixelPos];
+        uint vrsType;
         [branch]
-        if (depth > 0.0)
+        if (depth > 0.0 && IsValidPixelByVRS(pixelPos, vrsType))
         {
             uint drawCallIndex, primID;
             DecodeVisibility(texVis[pixelPos], drawCallIndex, primID);
@@ -162,6 +164,7 @@ void BinningCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
     // count materials in group.
     uint2 pixelPos = dtid;
     bool bIsValid = false;
+    uint vrsType;
     uint materialNo = 0;
     uint storeIndex = 0;
     [branch]
@@ -169,7 +172,7 @@ void BinningCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
     {
         float depth = texDepth[pixelPos];
         [branch]
-        if (depth > 0.0)
+        if (depth > 0.0 && IsValidPixelByVRS(pixelPos, vrsType))
         {
             bIsValid = true;
             
@@ -197,7 +200,7 @@ void BinningCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID)
         uint laneBit = 0x1 << WaveGetLaneIndex();
         uint index = WaveReadLaneAt(storeIndex, baseLane) + countbits(match.x & (laneBit - 1));
         index += rwOffset[materialNo];
-        rwPixBuffer[index] = EncodePixelPos(pixelPos, 0);
+        rwPixBuffer[index] = EncodePixelPos(pixelPos, vrsType);
     }
 #endif
 }

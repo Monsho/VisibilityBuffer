@@ -333,4 +333,16 @@ VertexAttr GetVertexAttrPerspectiveCorrect(
 	return attr;
 }
 
+// PixelPos & VRS encode/decode.
+uint EncodePixelPos(uint2 PixelPos, uint VRSType)
+{
+	return (VRSType << 28) | (PixelPos.x << 14) | (PixelPos.y << 0);
+}
+void DecodePixelPos(uint Value, out uint2 PixelPos, out uint VRSType)
+{
+	PixelPos.x = (Value >> 14) & 0x3FFF;
+	PixelPos.y = Value & 0x3FFF;
+	VRSType = (Value >> 28) & 0x7;
+}
+
 #endif // VISIBILITY_BUFFER_HLSLI

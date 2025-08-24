@@ -1,6 +1,7 @@
 #include "cbuffer.hlsli"
 #include "surface_gradient.hlsli"
 #include "visibility_buffer.hlsli"
+#include "vrs.hlsli"
 #include "math.hlsli"
 
 ConstantBuffer<SceneCB>			cbScene			: register(b0);
@@ -30,13 +31,6 @@ RWTexture2D<float4>	rwColor			: register(u1);
 RWTexture2D<float4>	rwORM			: register(u2);
 RWTexture2D<float4>	rwNormal		: register(u3);
 
-
-void DecodePixelPos(uint Value, out uint2 PixelPos, out uint VRSType)
-{
-	PixelPos.x = (Value >> 15) & 0x7FFF;
-	PixelPos.y = Value & 0x7FFF;
-	VRSType = (Value >> 30) & 0x3;
-}
 
 VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
 {
@@ -82,6 +76,33 @@ void FeedbackMiplevel(in uint2 pos, in VertexAttr attr, in uint matIndex)
 	if (all(TilePos == cbScene.feedbackIndex))
 	{
 		rwFeedback[TileIndex] = uint2(matIndex, neededMiplevel);
+	}
+}
+
+void WriteGBuffer(uint2 pixelPos, uint vrsType, float3 bc, float3 orm, float3 normalInWS)
+{
+	// write gbuffer.
+	float4 normal = float4(normalInWS * 0.5 + 0.5, 1);
+	rwColor[pixelPos] = float4(bc, 1);
+	rwORM[pixelPos] = float4(orm, 1);
+	rwNormal[pixelPos] = normal;
+	if (vrsType & VRS_2x1)
+	{
+		rwColor[pixelPos + uint2(1, 0)] = float4(bc, 1);
+		rwORM[pixelPos + uint2(1, 0)] = float4(orm, 1);
+		rwNormal[pixelPos + uint2(1, 0)] = normal;
+	}
+	if (vrsType & VRS_1x2)
+	{
+		rwColor[pixelPos + uint2(0, 1)] = float4(bc, 1);
+		rwORM[pixelPos + uint2(0, 1)] = float4(orm, 1);
+		rwNormal[pixelPos + uint2(0, 1)] = normal;
+	}
+	if (vrsType == VRS_2x2)
+	{
+		rwColor[pixelPos + uint2(1, 1)] = float4(bc, 1);
+		rwORM[pixelPos + uint2(1, 1)] = float4(orm, 1);
+		rwNormal[pixelPos + uint2(1, 1)] = normal;
 	}
 }
 
@@ -144,9 +165,7 @@ void StandardCS(uint dtid : SV_DispatchThreadID)
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
 
-	rwColor[pixelPos] = float4(bc, 1);
-	rwORM[pixelPos] = float4(orm, 1);
-	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);
+	WriteGBuffer(pixelPos, vrsType, bc, orm, normalInWS);
 }
 
 [numthreads(32, 1, 1)]
@@ -165,7 +184,7 @@ void TriplanarCS(uint dtid : SV_DispatchThreadID)
 	InstanceData inData;
 	VertexAttr attr = ComputeVertexAttribute(pixelPos, inData);
 
-	float4 bc = float4(0.5, 0.5, 0.5, 1.0);
+	float3 bc = float3(0.5, 0.5, 0.5);
 	float3 orm = float3(1.0, 0.5, 0.0);
 	float3 N = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
 
@@ -204,7 +223,5 @@ void TriplanarCS(uint dtid : SV_DispatchThreadID)
 		normalInWS = normalize(normalX.zyx * weights.x + normalY.xzy * weights.y + normalZ.xyz * weights.z);
 	}
 
-	rwColor[pixelPos] = bc;
-	rwORM[pixelPos] = float4(orm, 1);
-	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);
+	WriteGBuffer(pixelPos, vrsType, bc, orm, normalInWS);
 }

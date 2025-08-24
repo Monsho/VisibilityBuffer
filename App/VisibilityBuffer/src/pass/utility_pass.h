@@ -144,7 +144,38 @@ public:
 	
 	virtual AppPassType GetPassType() const override
 	{
-		return AppPassType::Tonemap;
+		return AppPassType::GenerateVRS;
+	}
+
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{
+		threshold_ = desc.vrsIntensityThreshold;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Graphics;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+	
+private:
+	sl12::UniqueHandle<sl12::RootSignature> rs_;
+	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
+	float threshold_ = 1.0f;
+};
+
+//----
+class ReprojectVrsPass : public AppPassBase
+{
+public:
+	ReprojectVrsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~ReprojectVrsPass();
+	
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::ReprojectVRS;
 	}
 
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc)

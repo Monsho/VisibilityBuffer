@@ -1776,7 +1776,7 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Use VRS", &bUseVRS_);
 			if (bUseVRS_)
 			{
-				ImGui::SliderFloat("Threshold", &vrsThreshold_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Threshold", &vrsThreshold_, 0.0001f, 0.1f);
 			}
 		}
 
@@ -1877,6 +1877,7 @@ bool SampleApplication::Execute()
 	setupDesc.visToGBufferType = VisToGBufferType_;
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
+	setupDesc.bUseVRS = bUseVRS_;
 	setupDesc.vrsIntensityThreshold = vrsThreshold_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	

@@ -1,12 +1,7 @@
 #include "constant_defs.h"
 #include "cbuffer.hlsli"
 #include "visibility_buffer.hlsli"
-
-struct GenCB
-{
-    uint2 screenSize;
-    float threshold;
-};
+#include "vrs.hlsli"
 
 ConstantBuffer<SceneCB>         cbScene             : register(b0);
 ConstantBuffer<GenCB>           cbGen               : register(b1);
@@ -15,20 +10,12 @@ Texture2D<uint>                 texPrevOutput       : register(t0);
 Texture2D<float>                texDepth            : register(t1);
 RWTexture2D<uint>               texOutput           : register(u0);
 
-#define VRS_1x1 0x00
-#define VRS_1x2 0x01
-#define VRS_2x1 0x04
-#define VRS_2x2 0x05
-
-#define TILE_X 8
-#define TILE_Y 8
-
 float GetIntensity(float4 color)
 {
     return color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
 }
 
-[numthreads(TILE_X, TILE_Y, 1)]
+[numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
 void GenFromIntensityCS(uint2 dtid : SV_DispatchThreadID)
 {
     uint2 pixelPos = dtid * 2;
@@ -55,7 +42,7 @@ void GenFromIntensityCS(uint2 dtid : SV_DispatchThreadID)
     texOutput[dtid] = vrs;
 }
 
-[numthreads(TILE_X, TILE_Y, 1)]
+[numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
 void ClearCS(uint2 dtid : SV_DispatchThreadID)
 {
     uint2 pixelPos = dtid;
@@ -65,7 +52,7 @@ void ClearCS(uint2 dtid : SV_DispatchThreadID)
     texOutput[dtid] = VRS_1x1;
 }
 
-[numthreads(TILE_X, TILE_Y, 1)]
+[numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
 void ReprojectionCS(uint2 dtid : SV_DispatchThreadID)
 {
     uint2 pixelPos = dtid;

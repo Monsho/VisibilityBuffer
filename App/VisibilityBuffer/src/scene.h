@@ -175,6 +175,7 @@ struct RenderPassSetupDesc
 	int visToGBufferType = 0;
 	int ssaoType = 0;
 	bool bNeedDeinterleave = false;
+	bool bUseVRS = false;
 	float vrsIntensityThreshold = 1.0f;
 	
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -184,6 +185,7 @@ struct RenderPassSetupDesc
 			&& (visToGBufferType == rhs.visToGBufferType)
 			&& (ssaoType == rhs.ssaoType)
 			&& (bNeedDeinterleave == rhs.bNeedDeinterleave)
+			&& (bUseVRS == rhs.bUseVRS)
 			&& (vrsIntensityThreshold == rhs.vrsIntensityThreshold);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const

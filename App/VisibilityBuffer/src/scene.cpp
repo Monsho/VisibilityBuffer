@@ -735,6 +735,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<ReprojectVrsPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::ReprojectVRS] = renderGraph_->AddPass(sl12::RenderPassID("ReprojectVrsPass"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<PrefixSumTestPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::PrefixSumTest] = renderGraph_->AddPass(sl12::RenderPassID("PrefixSumTest"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -759,6 +764,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 
 	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || !desc.bUseMeshShader;
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
+	bool bEnableVRS = desc.bUseVRS;
 
 	sl12::RenderGraph::Node node;
 	
@@ -770,6 +776,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel]);
+	if (bEnableVRS)
+	{
+		node = node.AddChild(passNodes_[AppPassType::ReprojectVRS]);
+	}
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
@@ -818,9 +828,12 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		.AddChild(passNodes_[AppPassType::ShadowMap])
 		.AddChild(passNodes_[AppPassType::Lighting])
 		.AddChild(passNodes_[AppPassType::HiZ])
-		.AddChild(passNodes_[AppPassType::IndirectLight])
-		.AddChild(passNodes_[AppPassType::GenerateVRS])
-		.AddChild(passNodes_[AppPassType::Tonemap]);
+		.AddChild(passNodes_[AppPassType::IndirectLight]);
+	if (bEnableVRS)
+	{
+		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);
+	}
+	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
 
 	// compute queue.
 	if (bEnableMeshletCulling)

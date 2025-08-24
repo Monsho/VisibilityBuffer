@@ -138,6 +138,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="shaders\constant_defs.h" />
+    <ClInclude Include="shaders\vrs.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />
     <ClInclude Include="src\pass\render_resource_settings.h" />

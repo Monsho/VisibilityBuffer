@@ -1450,6 +1450,10 @@ std::vector<sl12::TransientResource> MaterialComputeBinningPass::GetInputResourc
 	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
+	if (isVRSEnable_)
+	{
+		ret.push_back(sl12::TransientResource(kCurrVrsID, sl12::TransientState::ShaderResource));
+	}
 	
 	return ret;
 }
@@ -1495,12 +1499,14 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
 	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
 	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+	auto pCurrVrsRes = pResManager->GetRenderGraphResource(kCurrVrsID);
 
 	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
 	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pCurrVrsSRV = isVRSEnable_ && pCurrVrsRes ? pResManager->CreateOrGetTextureView(pCurrVrsRes) : pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
 
 	// outputs.
 	auto pBinArgRes = pResManager->GetRenderGraphResource(kBinningArgBufferID);
@@ -1548,6 +1554,7 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	binDS.SetCsSrv(2, pMeshletSRV->GetDescInfo().cpuHandle);
 	binDS.SetCsSrv(3, pDrawCallSRV->GetDescInfo().cpuHandle);
 	binDS.SetCsSrv(4, pDepthSRV->GetDescInfo().cpuHandle);
+	binDS.SetCsSrv(5, pCurrVrsSRV->GetDescInfo().cpuHandle);
 	binDS.SetCsUav(0, pBinCountUAV->GetDescInfo().cpuHandle);
 	binDS.SetCsUav(1, pBinOffsetUAV->GetDescInfo().cpuHandle);
 	binDS.SetCsUav(2, pBinArgUAV->GetDescInfo().cpuHandle);

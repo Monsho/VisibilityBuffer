@@ -204,6 +204,11 @@ public:
 		return AppPassType::MaterialComputeBinning;
 	}
 
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{
+		isVRSEnable_ = desc.bUseVRS;
+	}
+
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -215,6 +220,7 @@ public:
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoInit_, psoCount_, psoCountSum_, psoPrefixSumInit_, psoPrefixSum_, psoBinning_, psoFinalize_;
+	bool isVRSEnable_ = false;
 };
 
 //----

@@ -568,6 +568,113 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 
 
 //----------------
+ReprojectVrsPass::ReprojectVrsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ReprojectVrsC));
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::ReprojectVrsC);
+
+		if (!pso_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to reproject vrs pso.");
+		}
+	}
+}
+
+ReprojectVrsPass::~ReprojectVrsPass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> ReprojectVrsPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kPrevVrsID, 1), sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kDepthBufferID, 1), sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> ReprojectVrsPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	sl12::TransientResource vrs(kCurrVrsID, sl12::TransientState::UnorderedAccess);
+
+	sl12::u32 width = pScene_->GetScreenWidth() / 2;
+	sl12::u32 height = pScene_->GetScreenHeight() / 2;
+	vrs.desc.bIsTexture = true;
+	vrs.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8_UINT, width, height, 1, 1, 0);
+
+	ret.push_back(vrs);
+
+	return ret;
+}
+
+void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 1, "ReprojectVRS");
+
+	// input
+	auto pPrevVrsRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kPrevVrsID, 1));
+	auto pDepthRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kDepthBufferID, 1));
+
+	// output
+	auto pCurrVrsRes = pResManager->GetRenderGraphResource(kCurrVrsID);
+
+	// dummy
+	auto pBlackView = pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
+	
+	// views
+	auto pPrevVrsSRV = pPrevVrsRes ? pResManager->CreateOrGetTextureView(pPrevVrsRes) : pBlackView;
+	auto pDepthSRV = pDepthRes ? pResManager->CreateOrGetTextureView(pDepthRes) : pBlackView;
+	auto pCurrVrsUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pCurrVrsRes);
+	
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 halfWidth = (width + 1) / 2;
+	sl12::u32 halfHeight = (height + 1) / 2;
+
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+
+	struct GenCB
+	{
+		sl12::u32 screenSize[2];
+		float threshold;
+	};
+	GenCB cb = {{halfWidth, halfHeight}, 0.0f};
+	auto hGenCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, hGenCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pPrevVrsSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pCurrVrsUAV->GetDescInfo().cpuHandle);
+
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	// dispatch.
+	UINT x = (halfWidth + 7) / 8;
+	UINT y = (halfHeight + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
+
+//----------------
 PrefixSumTestPass::PrefixSumTestPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {

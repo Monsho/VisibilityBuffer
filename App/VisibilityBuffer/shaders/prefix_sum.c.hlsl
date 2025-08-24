@@ -117,11 +117,17 @@ void PrefixScanCS(uint Gid : SV_GroupID, uint DTid : SV_DispatchThreadID, uint G
             {
             }
             sPrefix = status.x;
-            rwStatus[blockNo] = uint2(block_sum + sPrefix, 2);
+            rwStatus[blockNo].x = block_sum + sPrefix;
+            DeviceMemoryBarrier();
+            rwStatus[blockNo].y = 2;
+            // rwStatus[blockNo] = uint2(block_sum + sPrefix, 2);
         }
         else
         {
-            rwStatus[blockNo] = uint2(block_sum, 2);
+            rwStatus[blockNo].x = block_sum;
+            DeviceMemoryBarrier();
+            rwStatus[blockNo].y = 2;
+            // rwStatus[blockNo] = uint2(block_sum, 2);
         }
     }
     GroupMemoryBarrierWithGroupSync();
