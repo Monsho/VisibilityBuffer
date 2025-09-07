@@ -607,23 +607,7 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	{
 		auto meshRes = mesh->GetParentResource();
 
-		sl12::BufferView* pMeshletBoundSrv = nullptr;
-		if (pScene_->GetSuzanneMeshHandle().IsValid() && meshRes == pScene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			pMeshletBoundSrv = pScene_->GetSuzanneMeshletBV();
-		}
-		else if (pScene_->GetSponzaMeshHandle().IsValid() && meshRes == pScene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			pMeshletBoundSrv = pScene_->GetSponzaMeshletBV();
-		}
-		else if (pScene_->GetCurtainMeshHandle().IsValid() && meshRes == pScene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			pMeshletBoundSrv = pScene_->GetCurtainMeshletBV();
-		}
-		else if (pScene_->GetSphereMeshHandle().IsValid() && meshRes == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			pMeshletBoundSrv = pScene_->GetSphereMeshletBV();
-		}
+		sl12::BufferView* pMeshletBoundSrv = pScene_->GetMeshletBoundsSRV(mesh->GetParentResource()->GetHandle());
 		UINT meshletCnt = pMeshletBoundSrv->GetViewDesc().Buffer.NumElements;
 		
 		// set mesh constant.

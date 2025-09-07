@@ -27,3 +27,8 @@
 1. Download IntelMesh.zip and unzip in resources/mesh directory.
    + https://www.dropbox.com/s/mhso4568i88iouf/IntelMesh.zip?dl=0
 2. "-mesh 2" in startup argument.
+
+## How to use Lumberyard Bistro
+1. Execute App/resources/mesh/MergeBistro.py
+2. Extract Bistro.zip in App/resources/mesh/Bistro
+3. "-mesh 3" in startup argument.

@@ -56,6 +56,7 @@ enum ShaderName
 	GenVrsC,
 	ClearVrsC,
 	ReprojectVrsC,
+	MakeIrradianceC,
 
 	MAX
 };
@@ -115,6 +116,7 @@ static const char* kShaderFileAndEntry[] = {
 	"vrs.c.hlsl",						"GenFromIntensityCS",
 	"vrs.c.hlsl",						"ClearCS",
 	"vrs.c.hlsl",						"ReprojectionCS",
+	"make_irradiance.c.hlsl",			"main",
 };
 
 //	EOF

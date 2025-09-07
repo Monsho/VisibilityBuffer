@@ -32,12 +32,8 @@ struct SceneCB
 
 struct LightCB
 {
-	float3		ambientSky;
-	int			pad0;
-	float3		ambientGround;
-	float		ambientIntensity;
 	float3		directionalVec;
-	int			pad1;
+	float		ambientIntensity;
 	float3		directionalColor;
 	int			pad2;
 };

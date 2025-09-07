@@ -500,7 +500,9 @@ void IndirectLightPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.SetCsSrv(3, pDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(4, pAoSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(5, pGiSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(6, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pAccumUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetEnvSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());

@@ -12,10 +12,13 @@ Texture2D							texGBufferC			: register(t2);
 Texture2D<float>					texDepth			: register(t3);
 Texture2D<float>					texAO				: register(t4);
 Texture2D<float3>					texGI				: register(t5);
+Texture2D							texIrradiance		: register(t6);
 
 RWTexture2D<float4>					rwOutput			: register(u0);
 
-float3 IndirectLighting(uint2 pixelPos)
+SamplerState						samLinear			: register(s0);
+
+float3 IndirectLightingOnly(uint2 pixelPos)
 {
 	// get gbuffer.
 	float4 color = texGBufferA[pixelPos];
@@ -27,10 +30,17 @@ float3 IndirectLighting(uint2 pixelPos)
 	float3 gi = texGI[pixelPos];
 
 	// apply light.
-	float ambientT = normal.y * 0.5 + 0.5;
-	float3 ambient = lerp(cbLight.ambientGround, cbLight.ambientSky, ambientT) * cbLight.ambientIntensity;
+	float3 ambient = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(normal), 0).rgb * cbLight.ambientIntensity;
 
-	return (ambient * ao + gi) * color.rgb;
+	return (ambient * ao + gi);
+}
+
+float3 IndirectLighting(uint2 pixelPos)
+{
+	// get gbuffer.
+	float4 color = texGBufferA[pixelPos];
+
+	return IndirectLightingOnly(pixelPos) * color.rgb;
 }
 
 [numthreads(8, 8, 1)]
@@ -66,6 +76,8 @@ void main(
 				rwOutput[pixelPos] = float4(texAO[pixelPos].xxx, 1); break;
 			case 6: // GI
 				rwOutput[pixelPos] = float4(texGI[pixelPos].rgb, 1); break;
+			case 7: // Indirect Lighting
+				rwOutput[pixelPos] = float4(IndirectLightingOnly(pixelPos), 1); break;
 			}
 		}
 	}

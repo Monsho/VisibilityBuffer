@@ -227,8 +227,6 @@ private:
 	bool					bEnableWorkGraph_ = false;
 	
 	// light parameters.
-	float					skyColor_[3] = {0.565f, 0.843f, 0.925f};
-	float					groundColor_[3] = {0.639f, 0.408f, 0.251f};
 	float					ambientIntensity_ = 0.1f;
 	float					directionalTheta_ = 30.0f;
 	float					directionalPhi_ = 45.0f;

@@ -124,6 +124,10 @@ public:
 	{
 		return &shadowSampler_;
 	}
+	sl12::Sampler* GetEnvSampler()
+	{
+		return &envSampler_;
+	}
 	
 private:
 	UniqueHandle<sl12::ResourceLoader>	resLoader_;
@@ -139,6 +143,7 @@ private:
 	UniqueHandle<sl12::Sampler>	linearWrapSampler_;
 	UniqueHandle<sl12::Sampler>	linearClampSampler_;
 	UniqueHandle<sl12::Sampler>	shadowSampler_;
+	UniqueHandle<sl12::Sampler>	envSampler_;
 };	// class RenderSystem
 
 struct TemporalCBs
@@ -210,6 +215,7 @@ public:
 	void UpdateBindlessTextures();
 	void CopyMaterialData(sl12::CommandList* pCmdList);
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
+	void CreateIrradianceMap(sl12::CommandList* pCmdList);
 
 	bool InitRenderPass();
 	void SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc);
@@ -249,21 +255,15 @@ public:
 	{
 		return hDotTex_;
 	}
-	sl12::BufferView* GetSuzanneMeshletBV()
+	sl12::BufferView* GetMeshletBoundsSRV(const sl12::ResourceHandle& hMeshRes)
 	{
-		return &SuzanneMeshletBV_;
-	}
-	sl12::BufferView* GetSponzaMeshletBV()
-	{
-		return &SponzaMeshletBV_;
-	}
-	sl12::BufferView* GetCurtainMeshletBV()
-	{
-		return &CurtainMeshletBV_;
-	}
-	sl12::BufferView* GetSphereMeshletBV()
-	{
-		return &SphereMeshletBV_;
+		sl12::u64 ID = hMeshRes.GetID();
+		auto it = meshletBoundsSRVs_.find(ID);
+		if (it != meshletBoundsSRVs_.end())
+		{
+			return &it->second;
+		}
+		return nullptr;
 	}
 	std::vector<std::shared_ptr<sl12::SceneMesh>>& GetSceneMeshes()
 	{
@@ -329,6 +329,11 @@ public:
 		return &renderGraph_;
 	}
 
+	sl12::TextureView* GetIrradianceMapSRV()
+	{
+		return &irradianceMapSRV_;
+	}
+
 private:
 	void ComputeSceneAABB();
 	void SetupRenderPassGraph(const RenderPassSetupDesc& desc);
@@ -350,18 +355,14 @@ private:
 	sl12::ResourceHandle	hSponzaMesh_;
 	sl12::ResourceHandle	hCurtainMesh_;
 	sl12::ResourceHandle	hSphereMesh_;
+	sl12::ResourceHandle	hBistroMesh_;
 	sl12::ResourceHandle	hDetailTex_;
 	sl12::ResourceHandle	hDotTex_;
+	sl12::ResourceHandle	hHDRI_;
 
 	// meshlet bounds buffer.
-	UniqueHandle<sl12::Buffer> SuzanneMeshletB_;
-	UniqueHandle<sl12::Buffer> SponzaMeshletB_;
-	UniqueHandle<sl12::Buffer> CurtainMeshletB_;
-	UniqueHandle<sl12::Buffer> SphereMeshletB_;
-	UniqueHandle<sl12::BufferView> SuzanneMeshletBV_;
-	UniqueHandle<sl12::BufferView> SponzaMeshletBV_;
-	UniqueHandle<sl12::BufferView> CurtainMeshletBV_;
-	UniqueHandle<sl12::BufferView> SphereMeshletBV_;
+	std::map<sl12::u64, UniqueHandle<sl12::Buffer>>		meshletBoundsBuffers_;
+	std::map<sl12::u64, UniqueHandle<sl12::BufferView>>	meshletBoundsSRVs_;
 
 	// scene meshes.
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
@@ -378,6 +379,9 @@ private:
 	UniqueHandle<sl12::UnorderedAccessView>	miplevelUAV_;
 	UniqueHandle<sl12::Buffer>				miplevelReadbacks_[2];
 	std::vector<NeededMiplevel>				neededMiplevels_;
+
+	UniqueHandle<sl12::Texture>				irradianceMap_;
+	UniqueHandle<sl12::TextureView>			irradianceMapSRV_;
 
 	// temporal cbuffers.
 	TemporalCBs tempCBs_;

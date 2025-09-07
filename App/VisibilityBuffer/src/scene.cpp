@@ -1,6 +1,8 @@
 ﻿#include "scene.h"
 #include "shader_types.h"
 #include "sl12/resource_texture.h"
+#include "sl12/descriptor_set.h"
+#include "sl12/command_list.h"
 #include "sl12/string_util.h"
 #include "pass/gbuffer_pass.h"
 #include "pass/shadowmap_pass.h"
@@ -62,6 +64,7 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 		linearWrapSampler_ = sl12::MakeUnique<sl12::Sampler>(pDev);
 		linearClampSampler_ = sl12::MakeUnique<sl12::Sampler>(pDev);
 		shadowSampler_ = sl12::MakeUnique<sl12::Sampler>(pDev);
+		envSampler_ = sl12::MakeUnique<sl12::Sampler>(pDev);
 
 		D3D12_SAMPLER_DESC desc{};
 		desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -78,6 +81,15 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_GREATER;
 		shadowSampler_->Initialize(pDev, desc);
+
+		desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+		desc.AddressU = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		desc.MaxLOD = FLT_MAX;
+		desc.MinLOD = 0.0f;
+		desc.MipLODBias = 0.0f;
+		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
+		envSampler_->Initialize(pDev, desc);
 	}
 	
 	// compile shaders.
@@ -100,6 +112,7 @@ RenderSystem::~RenderSystem()
 	linearWrapSampler_.Reset();
 	linearClampSampler_.Reset();
 	shadowSampler_.Reset();
+	envSampler_.Reset();
 
 	cbvMan_.Reset();
 	shaderMan_.Reset();
@@ -151,8 +164,13 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 		hSponzaMesh_ = resLoader->LoadRequest<sl12::ResourceItemMesh>("mesh/IntelSponza/IntelSponza.rmesh");
 		hCurtainMesh_ = resLoader->LoadRequest<sl12::ResourceItemMesh>("mesh/IntelCurtain/IntelCurtain.rmesh");
 	}
+	else if (meshType == 3)
+	{
+		hBistroMesh_ = resLoader->LoadRequest<sl12::ResourceItemMesh>("mesh/Bistro/BistroExterior.rmesh");
+	}
 	hDetailTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/detail_normal.dds");
 	hDotTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
+	hHDRI_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/citrus_orchard_road_puresky_4k.exr");
 
 	return true;
 }
@@ -261,6 +279,22 @@ bool Scene::CreateSceneMeshes(int meshType)
 			auto mesh = std::make_shared<sl12::SceneMesh>(pDevice_, hCurtainMesh_.GetItem<sl12::ResourceItemMesh>());
 			DirectX::XMFLOAT3 pos(0.0f, 100.0f, 0.0f);
 			DirectX::XMFLOAT3 scl(100.0f, 100.0f, 100.0f);
+			DirectX::XMFLOAT4X4 mat;
+			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
+									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
+			DirectX::XMStoreFloat4x4(&mat, m);
+			mesh->SetMtxLocalToWorld(mat);
+
+			sceneMeshes_.push_back(mesh);
+		}
+	}
+	else if (meshType == 3)
+	{
+		// Bistro
+		{
+			auto mesh = std::make_shared<sl12::SceneMesh>(pDevice_, hBistroMesh_.GetItem<sl12::ResourceItemMesh>());
+			DirectX::XMFLOAT3 pos(1240.0f, 920.0f, -20.0f);
+			DirectX::XMFLOAT3 scl(20.0f, 20.0f, 20.0f);
 			DirectX::XMFLOAT4X4 mat;
 			DirectX::XMMATRIX m = DirectX::XMMatrixScaling(scl.x, scl.y, scl.z)
 									* DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z);
@@ -567,21 +601,18 @@ void Scene::CreateMeshletBounds(sl12::CommandList* pCmdList)
 		pCmdList->TransitionBarrier(&B, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
 	};
 
-	if (hSuzanneMesh_.IsValid())
+	for (auto&& mesh : sceneMeshes_)
 	{
-		CreateAndCopy(hSuzanneMesh_, SuzanneMeshletB_, SuzanneMeshletBV_);
-	}
-	if (hSponzaMesh_.IsValid())
-	{
-		CreateAndCopy(hSponzaMesh_, SponzaMeshletB_, SponzaMeshletBV_);
-	}
-	if (hCurtainMesh_.IsValid())
-	{
-		CreateAndCopy(hCurtainMesh_, CurtainMeshletB_, CurtainMeshletBV_);
-	}
-	if (hSphereMesh_.IsValid())
-	{
-		CreateAndCopy(hSphereMesh_, SphereMeshletB_, SphereMeshletBV_);
+		sl12::ResourceHandle Handle = mesh->GetParentResource()->GetHandle();
+		sl12::u64 ID = Handle.GetID();
+		if (meshletBoundsBuffers_.find(ID) == meshletBoundsBuffers_.end())
+		{
+			UniqueHandle<sl12::Buffer> Buffer;
+			UniqueHandle<sl12::BufferView> View;
+			CreateAndCopy(Handle, Buffer, View);
+			meshletBoundsBuffers_[ID] = std::move(Buffer);
+			meshletBoundsSRVs_[ID] = std::move(View);
+		}
 	}
 }
 
@@ -899,6 +930,76 @@ void Scene::LoadRenderGraphCommand()
 void Scene::ExecuteRenderGraphCommand()
 {
 	renderGraph_->Execute();
+}
+
+void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
+{
+	const sl12::u32 kIrradianceWidth = 1024;
+	
+	// 初回のみ
+	if (irradianceMap_.IsValid())
+	{
+		return;
+	}
+	
+	auto hdriTex = hHDRI_.GetItem<sl12::ResourceItemTexture>();
+	sl12::u32 width = hdriTex->GetTexture().GetTextureDesc().width;
+	sl12::u32 height = hdriTex->GetTexture().GetTextureDesc().height;
+
+	float scale = (float)width / (float)kIrradianceWidth;
+	width = kIrradianceWidth;
+	height = (sl12::u32)((float)height / scale);
+	float mipLevel = std::log2f(scale);
+	
+	sl12::TextureDesc desc;
+	desc.Initialize2D(DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1, 1, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
+	irradianceMap_ = sl12::MakeUnique<sl12::Texture>(pDevice_);
+	irradianceMap_->Initialize(pDevice_, desc);
+
+	irradianceMapSRV_ = sl12::MakeUnique<sl12::TextureView>(pDevice_);
+	irradianceMapSRV_->Initialize(pDevice_, &irradianceMap_);
+
+	UniqueHandle<sl12::UnorderedAccessView> UAV = sl12::MakeUnique<sl12::UnorderedAccessView>(pDevice_);
+	UAV->Initialize(pDevice_, &irradianceMap_);
+
+	UniqueHandle<sl12::RootSignature> RootSig = sl12::MakeUnique<sl12::RootSignature>(pDevice_);
+	RootSig->Initialize(pDevice_, pRenderSystem_->GetShader(MakeIrradianceC));
+
+	UniqueHandle<sl12::ComputePipelineState> PSO = sl12::MakeUnique<sl12::ComputePipelineState>(pDevice_);
+	{
+		sl12::ComputePipelineStateDesc psoDesc;
+		psoDesc.pRootSignature = &RootSig;
+		psoDesc.pCS = pRenderSystem_->GetShader(MakeIrradianceC);
+		PSO->Initialize(pDevice_, psoDesc);
+	}
+
+	struct CB
+	{
+		sl12::u32 Width, Height;
+		sl12::u32 IterCount;
+		float MipLevel;
+	};
+	CB cbData = { width, height, 5000, mipLevel };
+	auto hCBV = pRenderSystem_->GetCbvManager()->GetTemporal(&cbData, sizeof(cbData));
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, hCBV.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, hdriTex->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, UAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetEnvSampler()->GetDescInfo().cpuHandle);
+
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState(PSO->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&RootSig, &descSet);
+
+	// dispatch.
+	UINT x = (width + 7) / 8;
+	UINT y = (height + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+	pCmdList->AddTransitionBarrier(&irradianceMap_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
 }
 
 

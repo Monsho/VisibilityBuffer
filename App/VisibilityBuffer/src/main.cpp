@@ -15,7 +15,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	std::string homeDir = ".\\";
 	std::string appShaderDir = "";
 	std::string sysShaderInclDir = "";
-	int meshType = 1;
+	int meshType = 3;
 	int screenWidth = kDisplayWidth;
 	int screenHeight = kDisplayHeight;
 

@@ -260,23 +260,7 @@ void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 		descSet.SetCsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 		sl12::u32 meshletCnt = 0;
-		sl12::BufferView* meshletBV = nullptr;
-		if (pScene_->GetSuzanneMeshHandle().IsValid() && mesh->GetParentResource() == pScene_->GetSuzanneMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			meshletBV = pScene_->GetSuzanneMeshletBV();
-		}
-		else if (pScene_->GetSponzaMeshHandle().IsValid() && mesh->GetParentResource() == pScene_->GetSponzaMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			meshletBV = pScene_->GetSponzaMeshletBV();
-		}
-		else if (pScene_->GetCurtainMeshHandle().IsValid() && mesh->GetParentResource() == pScene_->GetCurtainMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			meshletBV = pScene_->GetCurtainMeshletBV();
-		}
-		else if (pScene_->GetSphereMeshHandle().IsValid() && mesh->GetParentResource() == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			meshletBV = pScene_->GetSphereMeshletBV();
-		}
+		sl12::BufferView* meshletBV = pScene_->GetMeshletBoundsSRV(mesh->GetParentResource()->GetHandle());
 		descSet.SetCsSrv(0, meshletBV->GetDescInfo().cpuHandle);
 		meshletCnt = (sl12::u32)(meshletBV->GetViewDesc().Buffer.NumElements);
 

@@ -297,13 +297,13 @@ bool SampleApplication::Initialize()
 		return false;
 	}
 
-	// create meshlet bounds buffers.
-	scene_->CreateMeshletBounds(&utilCmdList);
-	
 	// create scene meshes.
 	scene_->CreateSceneMeshes(meshType_);
 	scene_->CopyMaterialData(&utilCmdList);
 	
+	// create meshlet bounds buffers.
+	scene_->CreateMeshletBounds(&utilCmdList);
+
 	// execute utility commands.
 	utilCmdList->Close();
 	utilCmdList->Execute();
@@ -1492,8 +1492,6 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 	{
 		LightCB cbLight;
 		
-		memcpy(&cbLight.ambientSky, skyColor_, sizeof(cbLight.ambientSky));
-		memcpy(&cbLight.ambientGround, groundColor_, sizeof(cbLight.ambientGround));
 		cbLight.ambientIntensity = ambientIntensity_;
 
 		auto dir = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -1698,8 +1696,6 @@ bool SampleApplication::Execute()
 		// light settings.
 		if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImGui::ColorEdit3("Ambient Sky Color", skyColor_);
-			ImGui::ColorEdit3("Ambient Ground Color", groundColor_);
 			ImGui::SliderFloat("Ambient Intensity", &ambientIntensity_, 0.0f, 10.0f);
 			ImGui::SliderFloat("Directional Theta", &directionalTheta_, 0.0f, 90.0f);
 			ImGui::SliderFloat("Directional Phi", &directionalPhi_, 0.0f, 360.0f);
@@ -1791,6 +1787,7 @@ bool SampleApplication::Execute()
 				"World Normal",
 				"AO",
 				"GI",
+				"Indirect Light",
 			};
 			ImGui::Combo("Display Mode", &displayMode_, kDisplayModes, ARRAYSIZE(kDisplayModes));
 
@@ -1904,6 +1901,9 @@ bool SampleApplication::Execute()
 		cbMesh.mtxPrevLocalToWorld = mesh->GetMtxPrevLocalToWorld();
 		TempCB.hMeshCBs.push_back(cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh)));
 	}
+
+	// create irradiance map.
+	scene_->CreateIrradianceMap(pFrameStartCmdList);
 
 	frameStartCmdlist_->Close();
 
