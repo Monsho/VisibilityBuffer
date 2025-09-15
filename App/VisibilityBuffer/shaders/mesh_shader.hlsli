@@ -3,6 +3,8 @@
 
 #define LANE_COUNT_IN_WAVE 32
 
+#define TRIANGLE_BACKFACE_CULLING 0
+
 struct Payload
 {
 	uint MeshletIndices[LANE_COUNT_IN_WAVE];
@@ -17,6 +19,9 @@ struct VSOutput
 struct PrimAttr
 {
 	uint	primitiveID : SV_PrimitiveID;
+#if TRIANGLE_BACKFACE_CULLING
+	bool	isCull : SV_CullPrimitive;
+#endif
 };
 
 uint3 UnpackPrimitiveIndex(uint index)
