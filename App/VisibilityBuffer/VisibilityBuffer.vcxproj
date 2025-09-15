@@ -90,6 +90,13 @@
     <None Include="shaders\material_tile.c.hlsl" />
     <None Include="shaders\vrs.c.hlsl" />
     <None Include="shaders\make_irradiance.c.hlsl" />
+    <None Include="shaders\visibility_mesh_masked.m.hlsl" />
+    <None Include="shaders\visibility_mesh_masked.p.hlsl" />
+    <None Include="shaders\visibility_masked.p.hlsl" />
+    <None Include="shaders\visibility_masked.vv.hlsl" />
+    <None Include="shaders\mesh_masked.p.hlsl" />
+    <None Include="shaders\depth_masked.p.hlsl" />
+    <None Include="shaders\depth_masked.vv.hlsl" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\shadowmap_pass.cpp" />
     <ClCompile Include="src\pass\indirect_light_pass.cpp" />
@@ -103,11 +110,11 @@
     <None Include="shaders\material_depth.p.hlsl" />
     <None Include="shaders\material_tile.p.hlsl" />
     <None Include="shaders\material_tile.vv.hlsl" />
-    <None Include="shaders\mesh.p.hlsl" />
+    <None Include="shaders\mesh_opaque.p.hlsl" />
     <None Include="shaders\mesh.vv.hlsl" />
     <None Include="shaders\tonemap.p.hlsl" />
-    <None Include="shaders\visibility.p.hlsl" />
-    <None Include="shaders\visibility.vv.hlsl" />
+    <None Include="shaders\visibility_opaque.p.hlsl" />
+    <None Include="shaders\visibility_opaque.vv.hlsl" />
     <None Include="shaders\shadow.vv.hlsl" />
     <None Include="shaders\shadow.p.hlsl" />
     <None Include="shaders\blur.p.hlsl" />
@@ -125,11 +132,11 @@
     <None Include="shaders\ssgi_standard.c.hlsl" />
     <None Include="shaders\denoise_with_gi.c.hlsl" />
     <None Include="shaders\meshlet_cull.c.hlsl" />
-    <None Include="shaders\depth.vv.hlsl" />
+    <None Include="shaders\depth_opaque.vv.hlsl" />
     <None Include="shaders\miplevel_feedback.c.hlsl" />
     <None Include="shaders\visibility_mesh.a.hlsl" />
-    <None Include="shaders\visibility_mesh.m.hlsl" />
-    <None Include="shaders\visibility_mesh.p.hlsl" />
+    <None Include="shaders\visibility_mesh_opaque.m.hlsl" />
+    <None Include="shaders\visibility_mesh_opaque.p.hlsl" />
     <None Include="shaders\depth_reduction.p.hlsl" />
     <None Include="shaders\visibility_mesh_1st.a.hlsl" />
     <None Include="shaders\visibility_mesh_2nd.a.hlsl" />
@@ -138,8 +145,10 @@
     <ClCompile Include="src\sample_application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="shaders\constant_defs.h" />
-    <ClInclude Include="shaders\vrs.hlsli" />
+    <None Include="shaders\constant_defs.h" />
+    <None Include="shaders\visibility_mesh_mesh_shader.hlsli" />
+    <None Include="shaders\visibility_mesh_pixel_shader.hlsli" />
+    <None Include="shaders\vrs.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />
     <ClInclude Include="src\pass\render_resource_settings.h" />

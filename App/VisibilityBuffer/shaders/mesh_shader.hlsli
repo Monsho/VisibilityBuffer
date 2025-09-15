@@ -10,9 +10,16 @@ struct Payload
 	uint MeshletIndices[LANE_COUNT_IN_WAVE];
 };
 
-struct VSOutput
+struct VSOpacityOutput
 {
 	float4	position	: SV_POSITION;
+	nointerpolation uint meshletIndex	: MESHLET_INDEX;
+};
+
+struct VSMaskedOutput
+{
+	float4	position	: SV_POSITION;
+	float2	texcoord	: TEXCOORD0;
 	nointerpolation uint meshletIndex	: MESHLET_INDEX;
 };
 

@@ -222,14 +222,14 @@ VisibilityVsPass::VisibilityVsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	indirectExec_ = sl12::MakeUnique<sl12::IndirectExecuter>(pDev);
 
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityVV), pRenderSys->GetShader(ShaderName::VisibilityP), nullptr, nullptr, nullptr, 1);
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityOpaqueVV), pRenderSys->GetShader(ShaderName::VisibilityOpaqueP), nullptr, nullptr, nullptr, 1);
 
 	// init pipeline state.
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
-		desc.pVS = pRenderSys->GetShader(ShaderName::VisibilityVV);
-		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityP);
+		desc.pVS = pRenderSys->GetShader(ShaderName::VisibilityOpaqueVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -400,15 +400,15 @@ VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	pso2nd_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityMesh1stA), pRenderSys->GetShader(ShaderName::VisibilityMeshM), pRenderSys->GetShader(ShaderName::VisibilityMeshP), 0);
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityMesh1stA), pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueM), pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueP), 0);
 
 	// init pipeline state.
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
 		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
-		desc.pMS = pRenderSys->GetShader(ShaderName::VisibilityMeshM);
-		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMeshP);
+		desc.pMS = pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueM);
+		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;

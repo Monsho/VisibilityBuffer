@@ -327,9 +327,9 @@ bool SampleApplication::Initialize()
 	psoShadowExp_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoBlur_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
 	psoDepthReduction_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(&device_);
-	rsVsPs_->Initialize(&device_, renderSys_->GetShader(ShaderName::MeshVV), renderSys_->GetShader(ShaderName::MeshP), nullptr, nullptr, nullptr);
-	rsVsPsC1_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityVV), renderSys_->GetShader(ShaderName::VisibilityP), nullptr, nullptr, nullptr, 1);
-	rsMs_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityMesh1stA), renderSys_->GetShader(ShaderName::VisibilityMeshM), renderSys_->GetShader(ShaderName::VisibilityMeshP), 0);
+	rsVsPs_->Initialize(&device_, renderSys_->GetShader(ShaderName::MeshVV), renderSys_->GetShader(ShaderName::MeshOpaqueP), nullptr, nullptr, nullptr);
+	rsVsPsC1_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityOpaqueVV), renderSys_->GetShader(ShaderName::VisibilityOpaqueP), nullptr, nullptr, nullptr, 1);
+	rsMs_->Initialize(&device_, renderSys_->GetShader(ShaderName::VisibilityMesh1stA), renderSys_->GetShader(ShaderName::VisibilityMeshOpaqueM), renderSys_->GetShader(ShaderName::VisibilityMeshOpaqueP), 0);
 
 	const DXGI_FORMAT kPositionFormat = sl12::ResourceItemMesh::GetPositionFormat();
 	const DXGI_FORMAT kNormalFormat = sl12::ResourceItemMesh::GetNormalFormat();
@@ -338,7 +338,7 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPs_;
-		desc.pVS = renderSys_->GetShader(ShaderName::DepthVV);
+		desc.pVS = renderSys_->GetShader(ShaderName::DepthOpaqueVV);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -374,7 +374,7 @@ bool SampleApplication::Initialize()
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
 		desc.pVS = renderSys_->GetShader(ShaderName::MeshVV);
-		desc.pPS = renderSys_->GetShader(ShaderName::MeshP);
+		desc.pPS = renderSys_->GetShader(ShaderName::MeshOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -457,8 +457,8 @@ bool SampleApplication::Initialize()
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsVsPsC1_;
-		desc.pVS = renderSys_->GetShader(ShaderName::VisibilityVV);
-		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityP);
+		desc.pVS = renderSys_->GetShader(ShaderName::VisibilityOpaqueVV);
+		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -495,8 +495,8 @@ bool SampleApplication::Initialize()
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rsMs_;
 		desc.pAS = renderSys_->GetShader(ShaderName::VisibilityMesh1stA);
-		desc.pMS = renderSys_->GetShader(ShaderName::VisibilityMeshM);
-		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityMeshP);
+		desc.pMS = renderSys_->GetShader(ShaderName::VisibilityMeshOpaqueM);
+		desc.pPS = renderSys_->GetShader(ShaderName::VisibilityMeshOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;

@@ -71,8 +71,8 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
-	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso_;
+	sl12::UniqueHandle<sl12::RootSignature> rsOpaque_, rsMasked_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoOpaque_, psoOpaqueDS_, psoMasked_, psoMaskedDS_;
 	UniqueHandle<sl12::IndirectExecuter> indirectExec_;
 };
 
@@ -97,7 +97,7 @@ public:
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoMesh_, psoTriplanar_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoMeshOpaque_, psoMeshOpaqueDS_, psoMeshMasked_, psoMeshMaskedDS_, psoTriplanar_;
 	UniqueHandle<sl12::IndirectExecuter> indirectExec_;
 };
 

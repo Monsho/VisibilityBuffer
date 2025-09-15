@@ -279,17 +279,22 @@ void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
-	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	rsOpaque_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	rsMasked_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoOpaque_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoOpaqueDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMaskedDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthVV), nullptr, nullptr, nullptr, nullptr);
+	rsOpaque_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthOpaqueVV), nullptr, nullptr, nullptr, nullptr);
+	rsMasked_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthMaskedVV), pRenderSys->GetShader(ShaderName::DepthMaskedP), nullptr, nullptr, nullptr);
 
 	// init pipeline state.
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
-		desc.pRootSignature = &rs_;
-		desc.pVS = pRenderSys->GetShader(ShaderName::DepthVV);
+		desc.pRootSignature = &rsOpaque_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::DepthOpaqueVV);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -315,9 +320,59 @@ DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 		desc.dsvFormat = kDepthFormat;
 		desc.multisampleCount = 1;
 
-		if (!pso_->Initialize(pDev, desc))
+		if (!psoOpaque_->Initialize(pDev, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init depth pso.");
+			sl12::ConsolePrint("Error: failed to init depth opaque pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+
+		if (!psoOpaqueDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init depth opaque doublesided pso.");
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rsMasked_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::DepthMaskedVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::DepthMaskedP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
+			{"POSITION", 0, sl12::ResourceItemMesh::GetPositionFormat(), 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
+		desc.inputLayout.pElements = input_elems;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.dsvFormat = kDepthFormat;
+		desc.multisampleCount = 1;
+
+		if (!psoMasked_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init depth masked pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		
+		if (!psoMaskedDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init depth masked doublesided pso.");
 		}
 	}
 
@@ -330,8 +385,12 @@ DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 DepthPrePass::~DepthPrePass()
 {
 	indirectExec_.Reset();
-	pso_.Reset();
-	rs_.Reset();
+	psoOpaque_.Reset();
+	psoOpaqueDS_.Reset();
+	psoMasked_.Reset();
+	psoMaskedDS_.Reset();
+	rsOpaque_.Reset();
+	rsMasked_.Reset();
 }
 
 std::vector<sl12::TransientResource> DepthPrePass::GetInputResources(const sl12::RenderPassID& ID) const
@@ -393,13 +452,16 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 
 	// set descriptors.
 	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
-	sl12::DescriptorSet descSet;
-	descSet.Reset();
-	descSet.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	sl12::DescriptorSet dsOpaque, dsMasked;
+	dsOpaque.Reset();
+	dsOpaque.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	dsMasked.Reset();
+	dsMasked.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	dsMasked.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
-	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
+	sl12::GraphicsPipelineState* NowPSO = nullptr;
+	sl12::RootSignature* NowRS = nullptr;
+	
 	// draw meshes.
 	sl12::u32 meshIndex = 0;
 	sl12::u32 meshletTotal = 0;
@@ -408,8 +470,8 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 		auto meshRes = mesh->GetParentResource();
 		
 		// set mesh constant.
-		descSet.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+		dsOpaque.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		dsMasked.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 		// set vertex buffer.
 		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
@@ -426,7 +488,59 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 		for (int i = 0; i < submesh_count; i++)
 		{
 			auto&& submesh = submeshes[i];
+			auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
 			sl12::u32 meshletCnt = (sl12::u32)submesh.meshlets.size();
+
+			// select pso.
+			sl12::GraphicsPipelineState* pso = nullptr;
+			sl12::RootSignature* NowRS = nullptr;
+			sl12::DescriptorSet* NowDS = nullptr;
+			bool isSetTex = false;
+			switch (material.blendType)
+			{
+			case sl12::ResourceMeshMaterialBlendType::Masked:
+				if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+				{
+					pso = &psoMasked_;
+				}
+				else
+				{
+					pso = &psoMaskedDS_;
+				}
+				NowRS = &rsMasked_;
+				NowDS = &dsMasked;
+				isSetTex = true;
+				break;
+			case sl12::ResourceMeshMaterialBlendType::Translucent:
+			default:
+				if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+				{
+					pso = &psoOpaque_;
+				}
+				else
+				{
+					pso = &psoOpaqueDS_;
+				}
+				NowRS = &rsOpaque_;
+				NowDS = &dsOpaque;
+				break;
+			}
+
+			if (NowPSO != pso)
+			{
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				NowPSO = pso;
+			}
+			
+			if (isSetTex)
+			{
+				auto bc_tex_view = GetTextureView(material.baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+				NowDS->SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
+			}
+
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(NowRS, NowDS);
 
 			pCmdList->GetLatestCommandList()->ExecuteIndirect(
 				indirectExec_->GetCommandSignature(),			// command signature
@@ -449,19 +563,22 @@ GBufferPass::GBufferPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	psoMesh_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMeshOpaque_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMeshOpaqueDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMeshMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMeshMaskedDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoTriplanar_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	indirectExec_ = sl12::MakeUnique<sl12::IndirectExecuter>(pDev);
 
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::MeshVV), pRenderSys->GetShader(ShaderName::MeshP), nullptr, nullptr, nullptr, 1);
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::MeshVV), pRenderSys->GetShader(ShaderName::MeshOpaqueP), nullptr, nullptr, nullptr, 1);
 
 	// init pipeline state.
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
 		desc.pVS = pRenderSys->GetShader(ShaderName::MeshVV);
-		desc.pPS = pRenderSys->GetShader(ShaderName::MeshP);
+		desc.pPS = pRenderSys->GetShader(ShaderName::MeshOpaqueP);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -493,9 +610,31 @@ GBufferPass::GBufferPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 		desc.dsvFormat = kDepthFormat;
 		desc.multisampleCount = 1;
 
-		if (!psoMesh_->Initialize(pDev, desc))
+		if (!psoMeshOpaque_->Initialize(pDev, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init mesh pso.");
+			sl12::ConsolePrint("Error: failed to init mesh opaque pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		
+		if (!psoMeshOpaqueDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init mesh opaque doublesided pso.");
+		}
+
+		desc.pPS = pRenderSys->GetShader(ShaderName::MeshMaskedP);
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+
+		if (!psoMeshMasked_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init mesh masked pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+
+		if (!psoMeshMaskedDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init mesh masked doublesided pso.");
 		}
 	}
 	{
@@ -548,7 +687,10 @@ GBufferPass::GBufferPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 GBufferPass::~GBufferPass()
 {
 	indirectExec_.Reset();
-	psoMesh_.Reset();
+	psoMeshOpaque_.Reset();
+	psoMeshOpaqueDS_.Reset();
+	psoMeshMasked_.Reset();
+	psoMeshMaskedDS_.Reset();
 	psoTriplanar_.Reset();
 	rs_.Reset();
 }
@@ -669,18 +811,6 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	{
 		// select pso.
 		auto meshRes = mesh->GetParentResource();
-		sl12::GraphicsPipelineState* pso = &psoMesh_;
-		if (pScene_->GetSphereMeshHandle().IsValid() && meshRes == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
-		{
-			pso = &psoTriplanar_;
-		}
-		if (NowPSO != pso)
-		{
-			// set pipeline.
-			pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
-			pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			NowPSO = pso;
-		}
 		
 		// set mesh constant.
 		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
@@ -703,10 +833,53 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 		for (int i = 0; i < submesh_count; i++)
 		{
 			auto&& submesh = submeshes[i];
+			auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
 			sl12::u32 meshletCnt = (sl12::u32)submesh.meshlets.size();
-			if (pso == &psoMesh_)
+
+			// select pso.
+			sl12::GraphicsPipelineState* pso = nullptr;
+			if (pScene_->GetSphereMeshHandle().IsValid() && meshRes == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
-				auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
+				pso = &psoTriplanar_;
+			}
+			else
+			{
+				switch (material.blendType)
+				{
+				case sl12::ResourceMeshMaterialBlendType::Masked:
+					if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+					{
+						pso = &psoMeshMasked_;
+					}
+					else
+					{
+						pso = &psoMeshMaskedDS_;
+					}
+					break;
+				case sl12::ResourceMeshMaterialBlendType::Translucent:
+				default:
+					if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+					{
+						pso = &psoMeshOpaque_;
+					}
+					else
+					{
+						pso = &psoMeshOpaqueDS_;
+					}
+					break;
+				}
+			}
+
+			if (NowPSO != pso)
+			{
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				NowPSO = pso;
+			}
+
+			if (pso != &psoTriplanar_)
+			{
 				auto bc_tex_view = GetTextureView(material.baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 				auto nm_tex_view = GetTextureView(material.normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
 				auto orm_tex_view = GetTextureView(material.ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
