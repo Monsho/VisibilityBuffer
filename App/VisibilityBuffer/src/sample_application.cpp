@@ -16,6 +16,8 @@
 
 #include "../shaders/constant_defs.h"
 #define USE_IN_CPP
+#include <Shlwapi.h>
+
 #include "../shaders/cbuffer.hlsli"
 
 namespace
@@ -199,6 +201,30 @@ namespace
 			return &const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView();
 		}
 		return pDummyView;
+	}
+
+	std::string CreateTimestampedFilename(const std::string& originalFilename)
+	{
+		const auto now = std::chrono::system_clock::now();
+		const std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+
+		std::tm local_tm{};
+		errno_t err = localtime_s(&local_tm, &now_c);
+
+		std::stringstream ss;
+		ss << std::put_time(&local_tm, "%Y%m%d_%H%M%S");
+		std::string timestampStr = ss.str();
+
+		const size_t dotPos = originalFilename.find_last_of('.');
+
+		if (dotPos == std::string::npos)
+		{
+			return originalFilename + "_" + timestampStr;
+		}
+		else
+		{
+			return originalFilename.substr(0, dotPos) + "_" + timestampStr + originalFilename.substr(dotPos);
+		}
 	}
 }
 
@@ -1806,6 +1832,12 @@ bool SampleApplication::Execute()
 						sl12::ConsolePrint("TexMiplevel: %s (%d)\n", Tex->GetFilePath().c_str(), Tex->GetCurrMipLevel());
 					}
 				}
+			}
+			const std::string kCaptureFileName = "CaptureResult.wpix";
+			if (ImGui::Button("PIX Capture"))
+			{
+				captureFileName_ = CreateTimestampedFilename(kCaptureFileName);
+				device_.CaptureGPUonPIX(captureFileName_);
 			}
 			static const char* kPoolSizes[] = {
 				"Infinite",

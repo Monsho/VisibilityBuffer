@@ -277,6 +277,8 @@ private:
 	int	displayWidth_, displayHeight_;
 	int meshType_;
 	sl12::u64	frameIndex_ = 0;
+
+	std::string				captureFileName_;
 };	// class SampleApplication
 
 //	EOF
