@@ -5,21 +5,37 @@
 #include "sl12/descriptor_set.h"
 
 
+namespace
+{
+	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
+	{
+		auto resTex = resTexHandle.GetItem<sl12::ResourceItemTextureBase>();
+		if (resTex && resTex->IsViewValid())
+		{
+			return &const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView();
+		}
+		return pDummyView;
+	}
+}
+
 //----------------
 ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
-	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	rsOpaque_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	rsMasked_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoOpaque_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ShadowVV), nullptr, nullptr, nullptr, nullptr);
+	rsOpaque_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ShadowOpaqueVV), nullptr, nullptr, nullptr, nullptr);
+	rsMasked_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ShadowMaskedVV), pRenderSys->GetShader(ShaderName::ShadowMaskedP), nullptr, nullptr, nullptr);
 
 	// init pipeline state.
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
-		desc.pRootSignature = &rs_;
-		desc.pVS = pRenderSys->GetShader(ShaderName::ShadowVV);
+		desc.pRootSignature = &rsOpaque_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::ShadowOpaqueVV);
 
 		desc.blend.sampleMask = UINT_MAX;
 		desc.blend.rtDesc[0].isBlendEnable = false;
@@ -46,17 +62,56 @@ ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene
 		desc.dsvFormat = kShadowMapFormat;
 		desc.multisampleCount = 1;
 
-		if (!pso_->Initialize(pDev, desc))
+		if (!psoOpaque_->Initialize(pDev, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init shadow depth pso.");
+			sl12::ConsolePrint("Error: failed to init shadow depth opaque pso.");
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rsMasked_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::ShadowMaskedVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::ShadowMaskedP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_FRONT;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = false;
+		desc.rasterizer.isFrontCCW = true;
+		desc.rasterizer.slopeScaledDepthBias = 2.0f;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
+			{"POSITION", 0, sl12::ResourceItemMesh::GetPositionFormat(), 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
+		desc.inputLayout.pElements = input_elems;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.dsvFormat = kShadowMapFormat;
+		desc.multisampleCount = 1;
+
+		if (!psoMasked_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init shadow depth masked pso.");
 		}
 	}
 }
 
 ShadowMapPass::~ShadowMapPass()
 {
-	pso_.Reset();
-	rs_.Reset();
+	psoOpaque_.Reset();
+	psoMasked_.Reset();
+	rsOpaque_.Reset();
+	rsMasked_.Reset();
 }
 
 std::vector<sl12::TransientResource> ShadowMapPass::GetInputResources(const sl12::RenderPassID& ID) const
@@ -110,26 +165,28 @@ void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	// set descriptors.
-	sl12::DescriptorSet descSet;
-	descSet.Reset();
-	descSet.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
+	sl12::DescriptorSet dsOpaque, dsMasked;
+	dsOpaque.Reset();
+	dsOpaque.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
+	dsMasked.Reset();
+	dsMasked.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
 
-	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
-	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
+	sl12::GraphicsPipelineState* NowPSO = nullptr;
+	
 	// draw meshes.
 	sl12::u32 meshIndex = 0;
 	for (auto&& mesh : pScene_->GetSceneMeshes())
 	{
 		// set mesh constant.
-		descSet.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		dsOpaque.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		dsMasked.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 		auto meshRes = mesh->GetParentResource();
 
 		// set vertex buffer.
 		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
 			sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(meshRes->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
 		};
 		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
 
@@ -142,8 +199,34 @@ void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 		for (int i = 0; i < submesh_count; i++)
 		{
 			auto&& submesh = submeshes[i];
+			auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
 
-			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+			sl12::GraphicsPipelineState* pso = &psoOpaque_;
+			sl12::RootSignature* rs = &rsOpaque_;
+			sl12::DescriptorSet* ds = &dsOpaque;
+			if (material.blendType == sl12::ResourceMeshMaterialBlendType::Masked)
+			{
+				pso = &psoMasked_;
+				rs = &rsMasked_;
+				ds = &dsMasked;
+
+				auto bc_tex_view = GetTextureView(material.baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+				ds->SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
+			}
+			else if (material.blendType != sl12::ResourceMeshMaterialBlendType::Opaque)
+			{
+				continue;
+			}
+
+			if (NowPSO != pso)
+			{
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				NowPSO = pso;
+			}
+
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(rs, ds);
 
 			UINT StartIndexLocation = (UINT)(submesh.indexOffsetBytes / sl12::ResourceItemMesh::GetIndexStride());
 			int BaseVertexLocation = (int)(submesh.positionOffsetBytes / sl12::ResourceItemMesh::GetPositionStride());

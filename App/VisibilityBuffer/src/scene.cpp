@@ -172,6 +172,8 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 	hDotTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
 	hHDRI_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/citrus_orchard_road_puresky_4k.exr");
 
+	meshletResource_ = sl12::MakeUnique<MeshletResource>(nullptr);
+	
 	return true;
 }
 
@@ -179,10 +181,6 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 void Scene::Finalize()
 {
 	sceneMeshes_.clear();
-
-	materialDataB_.Reset();
-	materialDataCopyB_.Reset();
-	materialDataBV_.Reset();
 
 	miplevelBuffer_.Reset();
 	miplevelCopySrc_.Reset();
@@ -306,7 +304,8 @@ bool Scene::CreateSceneMeshes(int meshType)
 	}
 
 	ComputeSceneAABB();
-	CreateMaterialList();
+	CreateMeshletResource();
+	CreateMiplevelFeedback();
 
 	return true;
 }
@@ -348,112 +347,15 @@ void Scene::ComputeSceneAABB()
 }
 
 //----
-void Scene::CreateMaterialList()
+void Scene::CreateMiplevelFeedback()
 {
-	if (!workMaterials_.empty())
-	{
-		return;
-	}
-
-	// list material.
-	for (auto&& mesh : sceneMeshes_)
-	{
-		auto meshRes = mesh->GetParentResource();
-
-		// select pso type.
-		int psoType = 0;
-		if (hSphereMesh_.IsValid() && hSphereMesh_.GetItem<sl12::ResourceItemMesh>() == meshRes)
-		{
-			psoType = 1;
-		}
-		
-		for (auto&& mat : meshRes->GetMaterials())
-		{
-			auto it = std::find_if(
-				workMaterials_.begin(), workMaterials_.end(),
-				[&mat](const WorkMaterial& rhs) { return rhs.pResMaterial == &mat; });
-			if (it == workMaterials_.end())
-			{
-				WorkMaterial work{};
-				work.pResMaterial = &mat;
-				work.psoType = psoType;
-				work.texHandles.push_back(work.pResMaterial->baseColorTex);
-				work.texHandles.push_back(work.pResMaterial->normalTex);
-				work.texHandles.push_back(work.pResMaterial->ormTex);
-
-				// add to list.
-				workMaterials_.push_back(work);
-			}
-		}
-	}
-
-	// work graph resources.
-	{
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Default;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.stride = sizeof(MaterialData);
-		desc.size = desc.stride * workMaterials_.size();
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-
-		materialDataB_ = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-		materialDataCopyB_ = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-		materialDataBV_ = sl12::MakeUnique<sl12::BufferView>(pDevice_);
-		materialDataB_->Initialize(pDevice_, desc);
-		materialDataBV_->Initialize(pDevice_, &materialDataB_, 0, (sl12::u32)workMaterials_.size(), sizeof(MaterialData));
-		desc.heap = sl12::BufferHeap::Dynamic;
-		materialDataCopyB_->Initialize(pDevice_, desc);
-
-		MaterialData* data = static_cast<MaterialData*>(materialDataCopyB_->Map());
-		auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
-		bindlessTextures_.clear();
-		bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
-		bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
-		bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
-		for (auto&& work : workMaterials_)
-		{
-			if (work.psoType == 0)
-			{
-				data->shaderIndex = 0;
-				// default.
-				data->colorTexIndex = data->ormTexIndex = 0;
-				data->normalTexIndex = 1;
-				// each textures.
-				auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->colorTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-				resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->normalTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-				resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
-				if (resTex)
-				{
-					data->ormTexIndex = (UINT)bindlessTextures_.size();
-					bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-				}
-			}
-			else
-			{
-				data->shaderIndex = 1;
-				data->colorTexIndex = data->ormTexIndex = 0;
-				data->normalTexIndex = 2;
-			}
-			data++;
-		}
-		materialDataCopyB_->Unmap();
-	}
+	auto&& materials = meshletResource_->GetWorldMaterials();
 
 	// create miplevel feedback buffer.
 	{
 		sl12::BufferDesc desc{};
 		desc.heap = sl12::BufferHeap::Default;
-		desc.size = sizeof(sl12::u32) * workMaterials_.size();
+		desc.size = sizeof(sl12::u32) * materials.size();
 		desc.stride = 0;
 		desc.usage = sl12::ResourceUsage::UnorderedAccess;
 		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
@@ -474,7 +376,7 @@ void Scene::CreateMaterialList()
 		miplevelCopySrc_->Unmap();
 	}
 
-	neededMiplevels_.resize(workMaterials_.size());
+	neededMiplevels_.resize(materials.size());
 	for (auto&& s : neededMiplevels_)
 	{
 		s.minLevel = 0xff;
@@ -483,68 +385,6 @@ void Scene::CreateMaterialList()
 	}
 	miplevelReadbacks_[0].Reset();
 	miplevelReadbacks_[1].Reset();
-}
-
-//----
-void Scene::UpdateBindlessTextures()
-{
-	auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(hDotTex_.GetItem<sl12::ResourceItemTextureBase>());
-	bindlessTextures_.clear();
-	bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::Black)->GetDescInfo().cpuHandle);
-	bindlessTextures_.push_back(pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal)->GetDescInfo().cpuHandle);
-	bindlessTextures_.push_back(dot_res->GetTextureView().GetDescInfo().cpuHandle);
-	for (auto&& work : workMaterials_)
-	{
-		if (work.psoType == 0)
-		{
-			// each textures.
-			auto resTex = work.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
-			if (resTex)
-			{
-				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-			}
-			resTex = work.pResMaterial->normalTex.GetItem<sl12::ResourceItemTextureBase>();
-			if (resTex)
-			{
-				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-			}
-			resTex = work.pResMaterial->ormTex.GetItem<sl12::ResourceItemTextureBase>();
-			if (resTex)
-			{
-				bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
-			}
-		}
-	}
-}
-
-//----
-int Scene::GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat)
-{
-	auto it = std::find_if(
-		workMaterials_.begin(), workMaterials_.end(),
-		[mat](const WorkMaterial& rhs){ return mat == rhs.pResMaterial; });
-	if (it == workMaterials_.end())
-		return -1;
-	auto index = std::distance(workMaterials_.begin(), it);
-	return (int)index;
-};
-
-//----
-void Scene::CopyMaterialData(sl12::CommandList* pCmdList)
-{
-	if (materialDataCopyB_.IsValid())
-	{
-		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST);
-		pCmdList->AddTransitionBarrier(&materialDataCopyB_, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE);
-		pCmdList->FlushBarriers();
-
-		pCmdList->GetLatestCommandList()->CopyBufferRegion(materialDataB_->GetResourceDep(), 0, materialDataCopyB_->GetResourceDep(), 0, materialDataCopyB_->GetBufferDesc().size);
-
-		pCmdList->AddTransitionBarrier(&materialDataB_, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
-		pCmdList->FlushBarriers();
-
-		materialDataCopyB_.Reset();
-	}
 }
 
 //----
@@ -1000,6 +840,11 @@ void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
 	pCmdList->AddTransitionBarrier(&irradianceMap_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+}
+
+void Scene::CreateMeshletResource()
+{
+	meshletResource_->CreateResources(pDevice_, sceneMeshes_);
 }
 
 

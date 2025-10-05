@@ -61,13 +61,22 @@ public:
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoOpaque_, psoOpaqueDS_, psoMasked_, psoMaskedDS_;
 	UniqueHandle<sl12::IndirectExecuter> indirectExec_;
 };
 
 //----
 class VisibilityMsPass : public AppPassBase
 {
+	enum EPipelineType
+	{
+		Opaque,
+		OpaqueDS,
+		Masked,
+		MaskedDS,
+		Max
+	};
+	
 public:
 	VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~VisibilityMsPass();
@@ -87,7 +96,7 @@ public:
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso1st_, pso2nd_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso1st_[EPipelineType::Max], pso2nd_[EPipelineType::Max];
 };
 
 //----

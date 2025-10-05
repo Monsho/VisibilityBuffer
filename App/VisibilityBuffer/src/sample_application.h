@@ -28,35 +28,6 @@ class SampleApplication
 {
 	template <typename T> using UniqueHandle = sl12::UniqueHandle<T>;
 	
-	struct WorkMaterial
-	{
-		const sl12::ResourceItemMesh::Material*	pResMaterial;
-		std::vector<sl12::ResourceHandle>		texHandles;
-		int										psoType;
-
-		bool operator==(const WorkMaterial& rhs) const
-		{
-			return pResMaterial == rhs.pResMaterial;
-		}
-		bool operator!=(const WorkMaterial& rhs) const
-		{
-			return !operator==(rhs);
-		}
-
-		sl12::u32 GetCurrentMiplevel() const
-		{
-			if (!texHandles.empty())
-			{
-				auto sTex = texHandles[0].GetItem<sl12::ResourceItemStreamingTexture>();
-				if (sTex)
-				{
-					return sTex->GetCurrMipLevel();
-				}
-			}
-			return 0;
-		}
-	};	// struct WorkMaterial
-
 	struct NeededMiplevel
 	{
 		sl12::u32	minLevel;
@@ -75,12 +46,8 @@ public:
 	virtual int Input(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-	// void CreateMaterialList();
-	void CreateBuffers(sl12::CommandList* pCmdList);
-
 	void ControlCamera(float deltaTime = 1.0f / 60.0f);
 
-	void SetupRenderGraph(struct TargetIDContainer& OutContainer);
 	void SetupConstantBuffers(struct TemporalCBs& OutCBs);
 
 	void ManageTextureStream(const std::vector<sl12::u32>& miplevels);
@@ -153,41 +120,6 @@ private:
 	UniqueHandle<CommandLists>	frameEndCmdList_;
 	UniqueHandle<sl12::RenderGraph_Deprecated>		renderGraphDeprecated_;
 
-	// root sig & pso.
-	UniqueHandle<sl12::RootSignature>			rsVsPs_, rsVsPsC1_;
-	UniqueHandle<sl12::RootSignature>			rsCs_;
-	UniqueHandle<sl12::RootSignature>			rsMs_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoDepth_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoMesh_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoTriplanar_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoVisibility_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoMatDepth_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoTonemap_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoMaterialTile_, psoMaterialTileTriplanar_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowDepth_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoShadowExp_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoBlur_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoVisibilityMesh1st_, psoVisibilityMesh2nd_;
-	UniqueHandle<sl12::GraphicsPipelineState>	psoDepthReduction_;
-	UniqueHandle<sl12::ComputePipelineState>	psoLighting_, psoIndirect_;
-	UniqueHandle<sl12::ComputePipelineState>	psoClassify_;
-	UniqueHandle<sl12::ComputePipelineState>	psoClearArg_;
-	UniqueHandle<sl12::ComputePipelineState>	psoNormalToDeriv_;
-	UniqueHandle<sl12::ComputePipelineState>	psoSsaoHbao_, psoSsaoBitmask_, psoSsgi_, psoSsgiDI_;
-	UniqueHandle<sl12::ComputePipelineState>	psoDenoise_, psoDenoiseGI_;
-	UniqueHandle<sl12::ComputePipelineState>	psoDeinterleave_;
-	UniqueHandle<sl12::ComputePipelineState>	psoMeshletCull_;
-	UniqueHandle<sl12::ComputePipelineState>	psoHiZ_;
-	UniqueHandle<sl12::ComputePipelineState>	psoClearMip_, psoFeedbackMip_;
-
-	UniqueHandle<sl12::IndirectExecuter>	tileDrawIndirect_;
-	
-	UniqueHandle<sl12::Buffer>				instanceB_, submeshB_, meshletB_, drawCallB_;
-	UniqueHandle<sl12::BufferView>			instanceBV_, submeshBV_, meshletBV_, drawCallBV_;
-	UniqueHandle<sl12::Buffer>				drawArgB_, tileIndexB_;
-	UniqueHandle<sl12::BufferView>			tileIndexBV_;
-	UniqueHandle<sl12::UnorderedAccessView>	drawArgUAV_, tileIndexUAV_;
-
 	UniqueHandle<sl12::Texture>				detailDerivTex_;
 	UniqueHandle<sl12::TextureView>			detailDerivSrv_;
 
@@ -199,16 +131,7 @@ private:
 	UniqueHandle<sl12::Gui>		gui_;
 	sl12::InputData				inputData_{};
 
-	// work graphs.
-	UniqueHandle<sl12::RootSignature>		rsWg_;
-	UniqueHandle<sl12::WorkGraphState>		materialResolveState_;
-	UniqueHandle<sl12::WorkGraphContext>	materialResolveContext_;
-	
 	// history.
-	sl12::RenderGraphTargetID	depthHistory_ = sl12::kInvalidTargetID;
-	sl12::RenderGraphTargetID	hiZHistory_ = sl12::kInvalidTargetID;
-	sl12::RenderGraphTargetID	ssaoHistory_ = sl12::kInvalidTargetID;
-	sl12::RenderGraphTargetID	ssgiHistory_ = sl12::kInvalidTargetID;
 	DirectX::XMMATRIX		mtxPrevWorldToView_, mtxPrevViewToClip_, mtxPrevWorldToClip_;
 
 	sl12::Timestamp			timestamps_[2];

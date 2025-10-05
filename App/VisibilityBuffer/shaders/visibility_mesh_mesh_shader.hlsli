@@ -58,8 +58,7 @@ void main(
 	out primitives PrimAttr prims[256]
 )
 {
-	uint meshletIndex = payload.MeshletIndices[gid];
-	uint globalMeshletIndex = meshletIndex + cbMeshletCull.meshletStartIndex;
+	uint globalMeshletIndex = payload.MeshletIndices[gid];
 	DrawCallData dcData = rDrawCallData[globalMeshletIndex];
 	MeshletData mlData = rMeshletData[dcData.meshletIndex];
 	SubmeshData smData = rSubmeshData[mlData.submeshIndex];

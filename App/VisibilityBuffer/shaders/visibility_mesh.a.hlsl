@@ -24,13 +24,13 @@ void main(uint gtid : SV_GroupThreadID, uint gid : SV_GroupID, uint dtid : SV_Di
 {
 	bool visible = false;
 	bool nonOccCull = false;
-	uint meshletIndex = dtid;
-	if (meshletIndex < cbMeshletCull.meshletCount)
+	uint meshletIndex = cbMeshletCull.localMeshletIndex + dtid;
+	uint globalMeshletIndex = meshletIndex + cbMeshletCull.meshletStartIndex;
+	if (dtid < cbMeshletCull.meshletCount)
 	{
 		MeshletBound bound = rMeshletBounds[meshletIndex];
 		
 #if  OCC_PASS_INDEX == 1
-		uint globalMeshletIndex = meshletIndex + cbMeshletCull.meshletStartIndex;
 		if (!IsFrustumCull(bound, cbFrustum.frustumPlanes, cbMesh.mtxLocalToWorld)
 			&& !IsBackfaceCull(bound, cbScene.eyePosition.xyz, cbMesh.mtxLocalToWorld))
 		{
@@ -55,7 +55,6 @@ void main(uint gtid : SV_GroupThreadID, uint gid : SV_GroupID, uint dtid : SV_Di
 
 		rwDrawFlags.Store(globalMeshletIndex * 4, (visible || nonOccCull) ? 1 : 0);
 #else
-		uint globalMeshletIndex = meshletIndex + cbMeshletCull.meshletStartIndex;
 		if (rDrawFlags.Load(globalMeshletIndex * 4) == 0)
 		{
 			float4x4 mtxLocalToProj = mul(cbScene.mtxWorldToProj, cbMesh.mtxLocalToWorld);
@@ -74,7 +73,7 @@ void main(uint gtid : SV_GroupThreadID, uint gid : SV_GroupID, uint dtid : SV_Di
 	if (visible)
 	{
 		uint index = WavePrefixCountBits(visible);
-		sPayload.MeshletIndices[index] = meshletIndex;
+		sPayload.MeshletIndices[index] = globalMeshletIndex;
 	}
 
 	uint visible_count = WaveActiveCountBits(visible);

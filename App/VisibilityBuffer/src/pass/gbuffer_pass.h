@@ -24,7 +24,6 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
-	sl12::UniqueHandle<sl12::Buffer> indirectArgUpload_;
 };
 
 class MeshletCullingPass : public AppPassBase

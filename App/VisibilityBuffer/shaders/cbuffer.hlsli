@@ -120,6 +120,7 @@ struct MeshletCullCB
 	uint	argStartAddress;
 	uint	meshletStartIndex;
 	uint	meshletCount;
+	uint	localMeshletIndex;
 };
 
 struct DebugCB

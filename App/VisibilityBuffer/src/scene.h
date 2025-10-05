@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app_pass_base.h"
+#include "meshlet_resource.h"
 
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
@@ -211,9 +212,7 @@ public:
 
 	void SetViewportResolution(sl12::u32 width, sl12::u32 height);
 	bool CreateSceneMeshes(int meshType);
-	void CreateMaterialList();
-	void UpdateBindlessTextures();
-	void CopyMaterialData(sl12::CommandList* pCmdList);
+	void CreateMiplevelFeedback();
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 	void CreateIrradianceMap(sl12::CommandList* pCmdList);
 
@@ -229,6 +228,11 @@ public:
 	sl12::u32 GetScreenHeight() const
 	{
 		return screenHeight_;
+	}
+
+	MeshletResource* GetMeshletResource()
+	{
+		return &meshletResource_;
 	}
 
 	sl12::ResourceHandle GetSuzanneMeshHandle()
@@ -274,27 +278,6 @@ public:
 		aabbMin = sceneAABBMin_;
 		aabbMax = sceneAABBMax_;
 	}
-	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>& GetBindlessTextures()
-	{
-		return bindlessTextures_;
-	}
-	sl12::Buffer* GetMaterialDataB()
-	{
-		return &materialDataB_;
-	}
-	sl12::Buffer* GetMaterialDataCopyB()
-	{
-		return &materialDataCopyB_;
-	}
-	sl12::BufferView* GetMaterialDataBV()
-	{
-		return &materialDataBV_;
-	}
-	std::vector<WorkMaterial>& GetWorkMaterials()
-	{
-		return workMaterials_;
-	}
-	int GetMaterialIndex(const sl12::ResourceItemMesh::Material* mat);
 	sl12::Buffer* GetMiplevelBuffer()
 	{
 		return &miplevelBuffer_;
@@ -337,6 +320,7 @@ public:
 private:
 	void ComputeSceneAABB();
 	void SetupRenderPassGraph(const RenderPassSetupDesc& desc);
+	void CreateMeshletResource();
 
 private:
 	static const int kBufferCount = sl12::Swapchain::kMaxBuffer;
@@ -349,6 +333,8 @@ private:
 	RenderSystem*	pRenderSystem_ = nullptr;
 
 	sl12::u32		screenWidth_, screenHeight_;
+
+	UniqueHandle<MeshletResource>	meshletResource_;
 	
 	// resource handles.
 	sl12::ResourceHandle	hSuzanneMesh_;
@@ -367,12 +353,6 @@ private:
 	// scene meshes.
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
-
-	// work graph resources.
-	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>	bindlessTextures_;
-	UniqueHandle<sl12::Buffer>					materialDataB_, materialDataCopyB_;
-	UniqueHandle<sl12::BufferView>				materialDataBV_;
-	std::vector<WorkMaterial>					workMaterials_;
 
 	// miplevel feedback resources.
 	UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;

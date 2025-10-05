@@ -97,6 +97,9 @@
     <None Include="shaders\mesh_masked.p.hlsl" />
     <None Include="shaders\depth_masked.p.hlsl" />
     <None Include="shaders\depth_masked.vv.hlsl" />
+    <None Include="shaders\shadow_masked.p.hlsl" />
+    <None Include="shaders\shadow_masked.vv.hlsl" />
+    <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\shadowmap_pass.cpp" />
     <ClCompile Include="src\pass\indirect_light_pass.cpp" />
@@ -115,7 +118,7 @@
     <None Include="shaders\tonemap.p.hlsl" />
     <None Include="shaders\visibility_opaque.p.hlsl" />
     <None Include="shaders\visibility_opaque.vv.hlsl" />
-    <None Include="shaders\shadow.vv.hlsl" />
+    <None Include="shaders\shadow_opaque.vv.hlsl" />
     <None Include="shaders\shadow.p.hlsl" />
     <None Include="shaders\blur.p.hlsl" />
     <None Include="shaders\ts_normal_to_deriv.c.hlsl" />
@@ -150,6 +153,7 @@
     <None Include="shaders\visibility_mesh_pixel_shader.hlsli" />
     <None Include="shaders\vrs.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
+    <ClInclude Include="src\meshlet_resource.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />
     <ClInclude Include="src\pass\render_resource_settings.h" />
     <ClInclude Include="src\pass\shadowmap_pass.h" />

@@ -6,6 +6,9 @@
 
 #include "../../shaders/constant_defs.h"
 #define USE_IN_CPP
+#include "visibility_pass.h"
+#include "visibility_pass.h"
+
 #include "../../shaders/cbuffer.hlsli"
 
 
@@ -14,7 +17,7 @@ namespace
 	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
 	{
 		auto resTex = resTexHandle.GetItem<sl12::ResourceItemTextureBase>();
-		if (resTex)
+		if (resTex && resTex->IsViewValid())
 		{
 			return &const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView();
 		}
@@ -66,22 +69,29 @@ void BufferReadyPass::GatherData(Data& OutData) const
 
 std::vector<sl12::TransientResource> BufferReadyPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
-	Data data;
-	GatherData(data);
-
+	auto pMR = pScene_->GetMeshletResource();
+	auto pInstanceUpload = pMR->GetInstanceUpload();
+	auto pSubmeshUpload = pMR->GetSubmeshUpload();
+	auto pMeshletUpload = pMR->GetMeshletUpload();
+	auto pDrawCallUpload = pMR->GetDrawCallUpload();
+	
 	sl12::TransientResource ib(kInstanceBufferID, sl12::TransientState::CopyDst);
 	sl12::TransientResource sb(kSubmeshBufferID, sl12::TransientState::CopyDst);
 	sl12::TransientResource mb(kMeshletBufferID, sl12::TransientState::CopyDst);
 	sl12::TransientResource db(kDrawCallBufferID, sl12::TransientState::CopyDst);
 
 	ib.desc.bIsTexture = false;
-	ib.desc.bufferDesc.InitializeStructured(sizeof(InstanceData), pScene_->GetSceneMeshes().size(), sl12::ResourceUsage::ShaderResource);
+	ib.desc.bufferDesc.InitializeStructured(sizeof(InstanceData), 1, sl12::ResourceUsage::ShaderResource);
+	ib.desc.bufferDesc.size = pInstanceUpload->GetBufferDesc().size;
 	sb.desc.bIsTexture = false;
-	sb.desc.bufferDesc.InitializeStructured(sizeof(SubmeshData), data.submeshCount, sl12::ResourceUsage::ShaderResource);
+	sb.desc.bufferDesc.InitializeStructured(sizeof(SubmeshData), 1, sl12::ResourceUsage::ShaderResource);
+	sb.desc.bufferDesc.size = pSubmeshUpload->GetBufferDesc().size;
 	mb.desc.bIsTexture = false;
-	mb.desc.bufferDesc.InitializeStructured(sizeof(MeshletData), data.meshletCount, sl12::ResourceUsage::ShaderResource);
+	mb.desc.bufferDesc.InitializeStructured(sizeof(MeshletData), 1, sl12::ResourceUsage::ShaderResource);
+	mb.desc.bufferDesc.size = pMeshletUpload->GetBufferDesc().size;
 	db.desc.bIsTexture = false;
-	db.desc.bufferDesc.InitializeStructured(sizeof(DrawCallData), data.drawCallCount, sl12::ResourceUsage::ShaderResource);
+	db.desc.bufferDesc.InitializeStructured(sizeof(DrawCallData), 1, sl12::ResourceUsage::ShaderResource);
+	db.desc.bufferDesc.size = pDrawCallUpload->GetBufferDesc().size;
 
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(ib);
@@ -93,123 +103,21 @@ std::vector<sl12::TransientResource> BufferReadyPass::GetOutputResources(const s
 
 void BufferReadyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
-	Data data;
-	GatherData(data);
-
-	// create copy src buffers.
-	UniqueHandle<sl12::Buffer> instanceSrc = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-	UniqueHandle<sl12::Buffer> submeshSrc = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-	UniqueHandle<sl12::Buffer> meshletSrc = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-	UniqueHandle<sl12::Buffer> drawCallSrc = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-	{
-		sl12::BufferDesc desc;
-		desc.InitializeStructured(sizeof(InstanceData), pScene_->GetSceneMeshes().size(), sl12::ResourceUsage::Unknown, sl12::BufferHeap::Dynamic);
-		instanceSrc->Initialize(pDevice_, desc);
-	}
-	{
-		sl12::BufferDesc desc;
-		desc.InitializeStructured(sizeof(SubmeshData), data.submeshCount, sl12::ResourceUsage::Unknown, sl12::BufferHeap::Dynamic);
-		submeshSrc->Initialize(pDevice_, desc);
-	}
-	{
-		sl12::BufferDesc desc;
-		desc.InitializeStructured(sizeof(MeshletData), data.meshletCount, sl12::ResourceUsage::Unknown, sl12::BufferHeap::Dynamic);
-		meshletSrc->Initialize(pDevice_, desc);
-	}
-	{
-		sl12::BufferDesc desc;
-		desc.InitializeStructured(sizeof(DrawCallData), data.drawCallCount, sl12::ResourceUsage::Unknown, sl12::BufferHeap::Dynamic);
-		drawCallSrc->Initialize(pDevice_, desc);
-	}
-	InstanceData* meshData = (InstanceData*)instanceSrc->Map();
-	SubmeshData* submeshData = (SubmeshData*)submeshSrc->Map();
-	MeshletData* meshletData = (MeshletData*)meshletSrc->Map();
-	DrawCallData* drawCallData = (DrawCallData*)drawCallSrc->Map();
-
-	// fill source.
-	sl12::u32 submeshTotal = 0;
-	for (auto meshRes : data.meshList)
-	{
-		// select pso type.
-		int psoType = 0;
-		if (pScene_->GetSphereMeshHandle().IsValid() && pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>() == meshRes)
-		{
-			psoType = 1;
-		}
-		
-		auto&& submeshes = meshRes->GetSubmeshes();
-		for (auto&& submesh : submeshes)
-		{
-			sl12::u32 submeshIndexOffset = (sl12::u32)(meshRes->GetIndexHandle().offset + submesh.indexOffsetBytes);
-			submeshData->materialIndex = pScene_->GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]);
-			submeshData->posOffset = (sl12::u32)(meshRes->GetPositionHandle().offset + submesh.positionOffsetBytes);
-			submeshData->normalOffset = (sl12::u32)(meshRes->GetNormalHandle().offset + submesh.normalOffsetBytes);
-			submeshData->tangentOffset = (sl12::u32)(meshRes->GetTangentHandle().offset + submesh.tangentOffsetBytes);
-			submeshData->uvOffset = (sl12::u32)(meshRes->GetTexcoordHandle().offset + submesh.texcoordOffsetBytes);
-			submeshData->indexOffset = submeshIndexOffset;
-			submeshData++;
-
-			sl12::u32 submeshPackedPrimOffset = (sl12::u32)(meshRes->GetMeshletPackedPrimHandle().offset + submesh.meshletPackedPrimOffsetBytes);
-			sl12::u32 submeshVertexIndexOffset = (sl12::u32)(meshRes->GetMeshletVertexIndexHandle().offset + submesh.meshletVertexIndexOffsetBytes);
-			for (auto&& meshlet : submesh.meshlets)
-			{
-				meshletData->submeshIndex = submeshTotal;
-				meshletData->indexOffset = submeshIndexOffset + meshlet.indexOffset * (sl12::u32)sl12::ResourceItemMesh::GetIndexStride();
-				meshletData->meshletPackedPrimCount = meshlet.primitiveCount;
-				meshletData->meshletPackedPrimOffset = submeshPackedPrimOffset + meshlet.primitiveOffset * (sl12::u32)sizeof(sl12::u32);
-				meshletData->meshletVertexIndexCount = meshlet.vertexIndexCount;
-				meshletData->meshletVertexIndexOffset = submeshVertexIndexOffset + meshlet.vertexIndexOffset * (sl12::u32)sl12::ResourceItemMesh::GetIndexStride();
-				meshletData++;
-			}
-
-			submeshTotal++;
-		}
-	}
-	sl12::u32 instanceIndex = 0;
-	for (auto&& mesh : pScene_->GetSceneMeshes())
-	{
-		auto meshRes = mesh->GetParentResource();
-		auto meshIndex = data.meshMap[meshRes];
-		auto submeshOffset = data.submeshOffsets[meshIndex];
-		
-		// set mesh constant.
-		DirectX::XMMATRIX l2w = DirectX::XMLoadFloat4x4(&mesh->GetMtxLocalToWorld());
-		DirectX::XMMATRIX w2l = DirectX::XMMatrixInverse(nullptr, l2w);
-		meshData->mtxBoxTransform = mesh->GetParentResource()->GetMtxBoxToLocal();
-		meshData->mtxLocalToWorld = mesh->GetMtxLocalToWorld();
-		DirectX::XMStoreFloat4x4(&meshData->mtxWorldToLocal, w2l);
-		meshData++;
-
-		auto&& submeshes = meshRes->GetSubmeshes();
-		sl12::u32 submesh_count = (sl12::u32)submeshes.size();
-		for (sl12::u32 i = 0; i < submesh_count; i++)
-		{
-			auto meshletOffset = data.meshletOffsets[submeshOffset + i];
-			sl12::u32 meshlet_count = (sl12::u32)submeshes[i].meshlets.size();
-			for (sl12::u32 j = 0; j < meshlet_count; j++)
-			{
-				drawCallData->instanceIndex = instanceIndex;
-				drawCallData->meshletIndex = meshletOffset + j;
-				drawCallData++;
-			}
-		}
-
-		instanceIndex++;
-	}
-	instanceSrc->Unmap();
-	submeshSrc->Unmap();
-	meshletSrc->Unmap();
-	drawCallSrc->Unmap();
+	auto pMR = pScene_->GetMeshletResource();
+	auto pInstanceUpload = pMR->GetInstanceUpload();
+	auto pSubmeshUpload = pMR->GetSubmeshUpload();
+	auto pMeshletUpload = pMR->GetMeshletUpload();
+	auto pDrawCallUpload = pMR->GetDrawCallUpload();
 
 	// copy commands.
 	auto pIB = pResManager->GetRenderGraphResource(kInstanceBufferID);
 	auto pSB = pResManager->GetRenderGraphResource(kSubmeshBufferID);
 	auto pMB = pResManager->GetRenderGraphResource(kMeshletBufferID);
 	auto pDB = pResManager->GetRenderGraphResource(kDrawCallBufferID);
-	pCmdList->GetLatestCommandList()->CopyBufferRegion(pIB->pBuffer->GetResourceDep(), 0, instanceSrc->GetResourceDep(), 0, instanceSrc->GetBufferDesc().size);
-	pCmdList->GetLatestCommandList()->CopyBufferRegion(pSB->pBuffer->GetResourceDep(), 0, submeshSrc->GetResourceDep(), 0, submeshSrc->GetBufferDesc().size);
-	pCmdList->GetLatestCommandList()->CopyBufferRegion(pMB->pBuffer->GetResourceDep(), 0, meshletSrc->GetResourceDep(), 0, meshletSrc->GetBufferDesc().size);
-	pCmdList->GetLatestCommandList()->CopyBufferRegion(pDB->pBuffer->GetResourceDep(), 0, drawCallSrc->GetResourceDep(), 0, drawCallSrc->GetBufferDesc().size);
+	pCmdList->GetLatestCommandList()->CopyBufferRegion(pIB->pBuffer->GetResourceDep(), 0, pInstanceUpload->GetResourceDep(), 0, pInstanceUpload->GetBufferDesc().size);
+	pCmdList->GetLatestCommandList()->CopyBufferRegion(pSB->pBuffer->GetResourceDep(), 0, pSubmeshUpload->GetResourceDep(), 0, pSubmeshUpload->GetBufferDesc().size);
+	pCmdList->GetLatestCommandList()->CopyBufferRegion(pMB->pBuffer->GetResourceDep(), 0, pMeshletUpload->GetResourceDep(), 0, pMeshletUpload->GetBufferDesc().size);
+	pCmdList->GetLatestCommandList()->CopyBufferRegion(pDB->pBuffer->GetResourceDep(), 0, pDrawCallUpload->GetResourceDep(), 0, pDrawCallUpload->GetBufferDesc().size);
 }
 
 
@@ -218,7 +126,10 @@ VisibilityVsPass::VisibilityVsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoOpaque_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoOpaqueDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMaskedDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	indirectExec_ = sl12::MakeUnique<sl12::IndirectExecuter>(pDev);
 
 	// init root signature.
@@ -256,9 +167,60 @@ VisibilityVsPass::VisibilityVsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 		desc.dsvFormat = kDepthFormat;
 		desc.multisampleCount = 1;
 
-		if (!pso_->Initialize(pDev, desc))
+		if (!psoOpaque_->Initialize(pDev, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init visibility pso.");
+			sl12::ConsolePrint("Error: failed to init visibility opaque pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		
+		if (!psoOpaqueDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility opaque doublesided pso.");
+		}
+	}
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::VisibilityMaskedVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMaskedP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
+			{"POSITION", 0, sl12::ResourceItemMesh::GetPositionFormat(), 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
+		desc.inputLayout.pElements = input_elems;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = kVisibilityFormat;
+		desc.dsvFormat = kDepthFormat;
+		desc.multisampleCount = 1;
+
+		if (!psoMasked_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility masked pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		
+		if (!psoMaskedDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility masked doublesided pso.");
 		}
 	}
 
@@ -270,7 +232,10 @@ VisibilityVsPass::VisibilityVsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 VisibilityVsPass::~VisibilityVsPass()
 {
 	indirectExec_.Reset();
-	pso_.Reset();
+	psoOpaque_.Reset();
+	psoOpaqueDS_.Reset();
+	psoMasked_.Reset();
+	psoMaskedDS_.Reset();
 	rs_.Reset();
 }
 
@@ -339,52 +304,95 @@ void VisibilityVsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
 
-	// set descriptors.
-	sl12::DescriptorSet descSet;
-	descSet.Reset();
-	descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-
-	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
-	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
 	// draw meshes.
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	auto&& materials = pMR->GetWorldMaterials();
 	sl12::u32 meshIndex = 0;
 	sl12::u32 meshletTotal = 0;
-	for (auto&& mesh : pScene_->GetSceneMeshes())
+	for (auto&& instance : instances)
 	{
-		// set mesh constant.
+		// set descriptors.
+		sl12::DescriptorSet descSet;
+		descSet.Reset();
+		descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
-		auto meshRes = mesh->GetParentResource();
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoOpaque_->GetPSO());
+		pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
 
 		// set vertex buffer.
 		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
-			sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
 		};
 		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
 
 		// set index buffer.
-		auto ibv = sl12::MeshManager::CreateIndexView(meshRes->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
+		auto ibv = sl12::MeshManager::CreateIndexView(resMesh->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
 		pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
 
 		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 
-		UINT meshletCnt = 0;
-		for (auto&& submesh : meshRes->GetSubmeshes())
-		{
-			meshletCnt += (sl12::u32)submesh.meshlets.size();
-		}
+		// opaque.
 		pCmdList->GetLatestCommandList()->ExecuteIndirect(
 			indirectExec_->GetCommandSignature(),			// command signature
-			meshletCnt,										// max command count
+			resInfo->meshletCount[0],						// max command count
 			pIndirectRes->pBuffer->GetResourceDep(),		// argument buffer
 			indirectExec_->GetStride() * meshletTotal,		// argument buffer offset
 			nullptr,										// count buffer
 			0);								// count buffer offset
+		meshletTotal += resInfo->meshletCount[0];
 
-		meshletTotal += meshletCnt;
+		// masked.
+		descSet.Reset();
+		descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+
+		// set vertex buffer.
+		const D3D12_VERTEX_BUFFER_VIEW maskedVbvs[] = {
+			sl12::MeshManager::CreateVertexView(resMesh->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
+		};
+		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(maskedVbvs), maskedVbvs);
+
+		sl12::GraphicsPipelineState* NowPSO = nullptr;
+		auto&& submeshes = resMesh->GetSubmeshes();
+		for (sl12::u32 i = 0; i < resInfo->submeshCount[1]; i++)
+		{
+			sl12::u32 submeshIndex = resInfo->submeshCount[0] + i;
+			auto submeshInfo = resInfo->nonXluSubmeshInfos[submeshIndex];
+			auto material = materials[submeshInfo.materialIndex].pResMaterial;
+
+			auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+			descSet.SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
+			
+			// set pipeline.
+			sl12::GraphicsPipelineState* pso = material->cullMode == sl12::ResourceMeshMaterialCullMode::None ? &psoMaskedDS_ : &psoMasked_;
+			if (pso != NowPSO)
+			{
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				NowPSO = pso;
+			}
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+			sl12::u32 meshletCnt = (sl12::u32)submeshes[submeshInfo.submeshIndex].meshlets.size();
+			pCmdList->GetLatestCommandList()->ExecuteIndirect(
+				indirectExec_->GetCommandSignature(),			// command signature
+				meshletCnt,										// max command count
+				pIndirectRes->pBuffer->GetResourceDep(),		// argument buffer
+				indirectExec_->GetStride() * meshletTotal,		// argument buffer offset
+				nullptr,										// count buffer
+				0);								// count buffer offset
+			meshletTotal += meshletCnt;
+		}
 
 		meshIndex++;
 	}
@@ -396,8 +404,14 @@ VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso1st_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
-	pso2nd_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	for (auto&& pso : pso1st_)
+	{
+		pso = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	}
+	for (auto&& pso : pso2nd_)
+	{
+		pso = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	}
 
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::VisibilityMesh1stA), pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueM), pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueP), 0);
@@ -406,7 +420,6 @@ VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	{
 		sl12::GraphicsPipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
-		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
 		desc.pMS = pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueM);
 		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMeshOpaqueP);
 
@@ -429,13 +442,51 @@ VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 		desc.dsvFormat = kDepthFormat;
 		desc.multisampleCount = 1;
 
-		if (!pso1st_->Initialize(pDev, desc))
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
+		if (!pso1st_[EPipelineType::Opaque]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh2ndA);
+		if (!pso2nd_[EPipelineType::Opaque]->Initialize(pDev, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
 		}
 
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
+		if (!pso1st_[EPipelineType::OpaqueDS]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
 		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh2ndA);
-		if (!pso2nd_->Initialize(pDev, desc))
+		if (!pso2nd_[EPipelineType::OpaqueDS]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
+		desc.pMS = pRenderSys->GetShader(ShaderName::VisibilityMeshMaskedM);
+		desc.pPS = pRenderSys->GetShader(ShaderName::VisibilityMeshMaskedP);
+		if (!pso1st_[EPipelineType::Masked]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh2ndA);
+		if (!pso2nd_[EPipelineType::Masked]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh1stA);
+		if (!pso1st_[EPipelineType::MaskedDS]->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
+		}
+		desc.pAS = pRenderSys->GetShader(ShaderName::VisibilityMesh2ndA);
+		if (!pso2nd_[EPipelineType::MaskedDS]->Initialize(pDev, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init visibility mesh pso.");
 		}
@@ -444,8 +495,14 @@ VisibilityMsPass::VisibilityMsPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 
 VisibilityMsPass::~VisibilityMsPass()
 {
-	pso1st_.Reset();
-	pso2nd_.Reset();
+	for (auto& pso : pso1st_)
+	{
+		pso.Reset();
+	}
+	for (auto& pso : pso2nd_)
+	{
+		pso.Reset();
+	}
 	rs_.Reset();
 }
 
@@ -496,13 +553,10 @@ std::vector<sl12::TransientResource> VisibilityMsPass::GetOutputResources(const 
 	{
 		sl12::TransientResource flag(kDrawFlagID, sl12::TransientState::UnorderedAccess);
 		size_t totalMeshlets = 0;
-		for (auto&& mesh : pScene_->GetSceneMeshes())
+		for (auto&& instance : pScene_->GetMeshletResource()->GetMeshInstanceInfos())
 		{
-			auto res = mesh->GetParentResource();
-			for (auto&& submesh : res->GetSubmeshes())
-			{
-				totalMeshlets += submesh.meshlets.size();
-			}
+			auto resInfo = pScene_->GetMeshletResource()->GetMeshResInfo(instance.meshInstance.lock()->GetParentResource());
+			totalMeshlets += resInfo->meshletCount[0] + resInfo->meshletCount[1];
 		}
 		flag.desc.bIsTexture = false;
 		flag.desc.bufferDesc.InitializeByteAddress(totalMeshlets * 4, 0);
@@ -515,6 +569,7 @@ std::vector<sl12::TransientResource> VisibilityMsPass::GetOutputResources(const 
 void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	bool b1st = ID == kVisibilityMs1stPass;
+	UniqueHandle<sl12::GraphicsPipelineState>* psoList = b1st ? pso1st_ : pso2nd_;
 	
 	GPU_MARKER(pCmdList, 0, b1st ? "VisibilityMs1stPass" : "VisibilityMs2ndPass");
 
@@ -597,33 +652,83 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	// ps
 	descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	
-	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState((b1st ? pso1st_ : pso2nd_)->GetPSO());
-
 	// draw meshes.
-	sl12::u32 meshIndex = 0;
-	auto&& meshletCBs = pScene_->GetMeshletCBs();
-	for (auto&& mesh : pScene_->GetSceneMeshes())
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	auto&& materials = pMR->GetWorldMaterials();
+	sl12::u32 meshletTotal = 0;
+	sl12::u32 instanceIndex = 0;
+	for (auto&& instance : instances)
 	{
-		auto meshRes = mesh->GetParentResource();
-
-		sl12::BufferView* pMeshletBoundSrv = pScene_->GetMeshletBoundsSRV(mesh->GetParentResource()->GetHandle());
-		UINT meshletCnt = pMeshletBoundSrv->GetViewDesc().Buffer.NumElements;
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
 		
-		// set mesh constant.
-		descSet.SetAsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetAsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
-		descSet.SetMsCbv(2, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetMsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		const sl12::BufferView* pMeshletBoundSrv = pMR->GetMeshletBoundsSRV(resMesh);
 
+		// opaque.
+		UINT meshletCnt = resInfo->meshletCount[0];
+
+		MeshletCullCB cb;
+		cb.meshletCount = meshletCnt;
+		cb.meshletStartIndex = meshletTotal;
+		cb.localMeshletIndex = 0;
+		cb.argStartAddress = meshletTotal * kIndirectArgsBufferStride;
+		sl12::CbvHandle hCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+
+		// set mesh constant.
+		descSet.SetAsCbv(2, TempCB.hMeshCBs[instanceIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetAsCbv(3, hCB.GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetAsSrv(0, pMeshletBoundSrv->GetDescInfo().cpuHandle);
+		descSet.SetMsCbv(2, TempCB.hMeshCBs[instanceIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetMsCbv(3, hCB.GetCBV()->GetDescInfo().cpuHandle);
+
+		// set pipeline.
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoList[EPipelineType::Opaque]->GetPSO());
 		pCmdList->SetMeshRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 		const UINT kLaneCount = 32;
 		UINT dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
 		pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
+		meshletTotal += meshletCnt;
 
-		meshIndex++;
+		// masked.
+		sl12::GraphicsPipelineState* NowPSO = nullptr;
+		auto&& submeshes = resMesh->GetSubmeshes();
+		sl12::u32 localMeshletIndex = meshletCnt;
+		for (sl12::u32 i = 0; i < resInfo->submeshCount[1]; i++)
+		{
+			sl12::u32 submeshIndex = resInfo->submeshCount[0] + i;
+			auto submeshInfo = resInfo->nonXluSubmeshInfos[submeshIndex];
+			auto material = materials[submeshInfo.materialIndex].pResMaterial;
+			meshletCnt = (sl12::u32)submeshes[submeshInfo.submeshIndex].meshlets.size();
+		
+			auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+			descSet.SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+		
+			cb.meshletCount = meshletCnt;
+			cb.localMeshletIndex = localMeshletIndex;
+			sl12::CbvHandle hMaskedCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+			descSet.SetAsCbv(3, hMaskedCB.GetCBV()->GetDescInfo().cpuHandle);
+			descSet.SetMsCbv(3, hMaskedCB.GetCBV()->GetDescInfo().cpuHandle);
+		
+			// set pipeline.
+			sl12::GraphicsPipelineState* pso = &psoList[material->cullMode == sl12::ResourceMeshMaterialCullMode::None ? EPipelineType::MaskedDS : EPipelineType::Masked];
+			if (pso != NowPSO)
+			{
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				NowPSO = pso;
+			}
+			pCmdList->SetMeshRootSignatureAndDescriptorSet(&rs_, &descSet);
+		
+			dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
+			pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
+			meshletTotal += meshletCnt;
+			localMeshletIndex += meshletCnt;
+		}
+
+		instanceIndex++;
 	}
 }
 
@@ -822,15 +927,15 @@ std::vector<sl12::TransientResource> ClassifyPass::GetOutputResources(const sl12
 	sl12::TransientResource arg(kTileArgBufferID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource index(kTileIndexBufferID, sl12::TransientState::UnorderedAccess);
 
-	auto&& workMaterials = pScene_->GetWorkMaterials();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
 	UINT tileXCount = (pScene_->GetScreenWidth() + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileYCount = (pScene_->GetScreenHeight() + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT tileMax = tileXCount * tileYCount;
 
 	arg.desc.bIsTexture = false;
-	arg.desc.bufferDesc.InitializeByteAddress(sizeof(D3D12_DRAW_ARGUMENTS) * workMaterials.size(), 0);
+	arg.desc.bufferDesc.InitializeByteAddress(sizeof(D3D12_DRAW_ARGUMENTS) * worldMaterials.size(), 0);
 	index.desc.bIsTexture = false;
-	index.desc.bufferDesc.InitializeByteAddress(sizeof(sl12::u32) * tileMax * workMaterials.size(), 0);
+	index.desc.bufferDesc.InitializeByteAddress(sizeof(sl12::u32) * tileMax * worldMaterials.size(), 0);
 
 	ret.push_back(arg);
 	ret.push_back(index);
@@ -859,7 +964,7 @@ void ClassifyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 
 	UINT x = (pScene_->GetScreenWidth() + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 	UINT y = (pScene_->GetScreenHeight() + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
-	sl12::u32 materialMax = (sl12::u32)pScene_->GetWorkMaterials().size();
+	sl12::u32 materialMax = (sl12::u32)pScene_->GetMeshletResource()->GetWorldMaterials().size();
 
 	// set descriptors.
 	sl12::DescriptorSet descSet;
@@ -1094,13 +1199,9 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	sl12::GraphicsPipelineState* NowPSO = nullptr;
 
 	sl12::u32 matIndex = 0;
-	for (auto&& work : pScene_->GetWorkMaterials())
+	for (auto&& mat : pScene_->GetMeshletResource()->GetWorldMaterials())
 	{
 		sl12::GraphicsPipelineState* pso = &psoStandard_;
-		if (work.psoType == 1)
-		{
-			pso = &psoTriplanar_;
-		}
 
 		if (NowPSO != pso)
 		{
@@ -1115,21 +1216,13 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 		sl12::CbvHandle hMatTileCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 		descSet.SetVsCbv(2, hMatTileCB.GetCBV()->GetDescInfo().cpuHandle);
 
-		if (work.psoType == 0)
-		{
-			auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
-			auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
-			auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
-			descSet.SetPsSrv(8, bc_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(9, nm_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetPsSrv(10, orm_tex_view->GetDescInfo().cpuHandle);
-		}
-		else
-		{
-			auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
-			descSet.SetPsSrv(8, dot_res->GetTextureView().GetDescInfo().cpuHandle);
-		}
+		descSet.SetPsSrv(8, bc_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetPsSrv(9, nm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetPsSrv(10, orm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);
@@ -1249,8 +1342,6 @@ std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(con
 
 void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
-	pScene_->UpdateBindlessTextures();
-	
 	GPU_MARKER(pCmdList, 0, "MaterialResolvePass");
 
 	// input.
@@ -1282,6 +1373,19 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	auto&& TempCB = pScene_->GetTemporalCBs();
 	auto&& meshMan = pRenderSystem_->GetMeshManager();
 	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+	auto pMR = pScene_->GetMeshletResource();
+
+	// copy material data for work graph.
+	const sl12::Buffer* pMaterialDataUpload = pMR->GetMaterialDataUpload();
+	sl12::TransientResourceDesc wgResDesc;
+	wgResDesc.bIsTexture = false;
+	wgResDesc.bufferDesc = pMaterialDataUpload->GetBufferDesc();
+	wgResDesc.bufferDesc.heap = sl12::BufferHeap::Default;
+	wgResDesc.bufferDesc.usage = sl12::ResourceUsage::ShaderResource;
+	auto pMaterialDataRes = pResManager->CreatePassOnlyResource(wgResDesc);
+	auto pMaterialDataSRV = pResManager->CreateOrGetBufferView(pMaterialDataRes, 0, 0, (sl12::u32)pMaterialDataRes->pBuffer->GetBufferDesc().stride);
+	pCmdList->GetLatestCommandList()->CopyResource(pMaterialDataRes->pBuffer->GetResourceDep(), pMaterialDataUpload->GetResourceDep());
+	pMR->UpdateBindlessTextures(pDevice_);
 
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -1295,7 +1399,7 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	descSet.SetCsSrv(5, pMeshletSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(6, pDrawCallSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(7, pDepthSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(8, pScene_->GetMaterialDataBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(8, pMaterialDataSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(9, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
@@ -1307,7 +1411,7 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	wgContext_->SetProgram(pCmdList, D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE);
 
 	std::vector<std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>> bindlessArrays;
-	bindlessArrays.push_back(pScene_->GetBindlessTextures());
+	bindlessArrays.push_back(pMR->GetBindlessTextures());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet, &bindlessArrays);
 
 	// dispatch graph.
@@ -1451,8 +1555,8 @@ std::vector<sl12::TransientResource> MaterialComputeBinningPass::GetOutputResour
 	sl12::TransientResource off(kBinningOffsetBufferID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource pix(kBinningPixBufferID, sl12::TransientState::UnorderedAccess);
 
-	auto&& workMaterials = pScene_->GetWorkMaterials();
-	size_t numMaterials = workMaterials.size();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
+	size_t numMaterials = worldMaterials.size();
 	sl12::u32 screenWidth = pScene_->GetScreenWidth();
 	sl12::u32 screenHeight = pScene_->GetScreenHeight();
 
@@ -1504,8 +1608,8 @@ void MaterialComputeBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	auto pBinPixUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinPixRes, 0, 0, (sl12::u32)pBinPixRes->pBuffer->GetBufferDesc().stride, 0);
 
 	// pass only resources.
-	auto&& workMaterials = pScene_->GetWorkMaterials();
-	size_t numMaterials = workMaterials.size();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
+	size_t numMaterials = worldMaterials.size();
 	size_t numBlocks = (numMaterials + 255) / 256;
 	sl12::TransientResourceDesc StatusDesc, BlockDesc;
 	StatusDesc.bIsTexture = false;
@@ -1789,13 +1893,9 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	sl12::ComputePipelineState* NowPSO = nullptr;
 
 	sl12::u32 matIndex = 0;
-	for (auto&& work : pScene_->GetWorkMaterials())
+	for (auto&& mat : pScene_->GetMeshletResource()->GetWorldMaterials())
 	{
 		sl12::ComputePipelineState* pso = &psoStandard_;
-		if (work.psoType == 1)
-		{
-			pso = &psoTriplanar_;
-		}
 
 		if (NowPSO != pso)
 		{
@@ -1804,21 +1904,13 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 			NowPSO = pso;
 		}
 
-		if (work.psoType == 0)
-		{
-			auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
-			auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
-			auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
-			descSet.SetCsSrv(11, bc_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(12, nm_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(13, orm_tex_view->GetDescInfo().cpuHandle);
-		}
-		else
-		{
-			auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
-			descSet.SetCsSrv(12, dot_res->GetTextureView().GetDescInfo().cpuHandle);
-		}
+		descSet.SetCsSrv(11, bc_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(12, nm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(13, orm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);
@@ -1900,8 +1992,8 @@ std::vector<sl12::TransientResource> MaterialTileBinningPass::GetOutputResources
 	sl12::TransientResource tile(kTileBinTileIndexID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource arg(kTileBinArgBufferID, sl12::TransientState::UnorderedAccess);
 
-	auto&& workMaterials = pScene_->GetWorkMaterials();
-	size_t numMaterials = workMaterials.size();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
+	size_t numMaterials = worldMaterials.size();
 	sl12::u32 screenWidth = pScene_->GetScreenWidth();
 	sl12::u32 screenHeight = pScene_->GetScreenHeight();
 	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
@@ -1958,12 +2050,12 @@ void MaterialTileBinningPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 	auto pTileIndexUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pTileIndexRes, 0, 0, sizeof(sl12::u32), 0);
 	auto pBinArgUAV = pResManager->CreateOrGetUnorderedAccessBufferView(pBinArgRes, 0, 0, 0, 0);
 
-	auto&& workMaterials = pScene_->GetWorkMaterials();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
 	sl12::u32 screenWidth = pScene_->GetScreenWidth();
 	sl12::u32 screenHeight = pScene_->GetScreenHeight();
 	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
 	sl12::u32 tileY = (screenHeight + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
-	sl12::u32 numMaterials = (sl12::u32)workMaterials.size();
+	sl12::u32 numMaterials = (sl12::u32)worldMaterials.size();
 
 	// constant buffers.
 	struct TileBinningCB
@@ -2157,12 +2249,12 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 	auto&& meshMan = pRenderSystem_->GetMeshManager();
 	auto&& cbvMan = pRenderSystem_->GetCbvManager();
 
-	auto&& workMaterials = pScene_->GetWorkMaterials();
+	auto&& worldMaterials = pScene_->GetMeshletResource()->GetWorldMaterials();
 	sl12::u32 screenWidth = pScene_->GetScreenWidth();
 	sl12::u32 screenHeight = pScene_->GetScreenHeight();
 	sl12::u32 tileX = (screenWidth + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
 	sl12::u32 tileY = (screenHeight + TILE_PIXEL_WIDTH - 1) / TILE_PIXEL_WIDTH;
-	sl12::u32 numMaterials = (sl12::u32)workMaterials.size();
+	sl12::u32 numMaterials = (sl12::u32)worldMaterials.size();
 
 	// constant buffers.
 	struct TileBinningCB
@@ -2203,13 +2295,9 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 	sl12::ComputePipelineState* NowPSO = nullptr;
 
 	sl12::u32 matIndex = 0;
-	for (auto&& work : pScene_->GetWorkMaterials())
+	for (auto&& mat : pScene_->GetMeshletResource()->GetWorldMaterials())
 	{
 		sl12::ComputePipelineState* pso = &psoStandard_;
-		if (work.psoType == 1)
-		{
-			pso = &psoTriplanar_;
-		}
 
 		if (NowPSO != pso)
 		{
@@ -2218,21 +2306,13 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 			NowPSO = pso;
 		}
 
-		if (work.psoType == 0)
-		{
-			auto bc_tex_view = GetTextureView(work.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
-			auto nm_tex_view = GetTextureView(work.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
-			auto orm_tex_view = GetTextureView(work.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
-			descSet.SetCsSrv(12, bc_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(13, nm_tex_view->GetDescInfo().cpuHandle);
-			descSet.SetCsSrv(14, orm_tex_view->GetDescInfo().cpuHandle);
-		}
-		else
-		{
-			auto dot_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDotTexHandle().GetItem<sl12::ResourceItemTextureBase>());
-			descSet.SetCsSrv(13, dot_res->GetTextureView().GetDescInfo().cpuHandle);
-		}
+		descSet.SetCsSrv(12, bc_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(13, nm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(14, orm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);

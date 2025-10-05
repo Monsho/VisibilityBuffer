@@ -13,7 +13,7 @@ namespace
 	sl12::TextureView* GetTextureView(sl12::ResourceHandle resTexHandle, sl12::TextureView* pDummyView)
 	{
 		auto resTex = resTexHandle.GetItem<sl12::ResourceItemTextureBase>();
-		if (resTex)
+		if (resTex && resTex->IsViewValid())
 		{
 			return &const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView();
 		}
@@ -39,38 +39,16 @@ std::vector<sl12::TransientResource> MeshletArgCopyPass::GetInputResources(const
 
 std::vector<sl12::TransientResource> MeshletArgCopyPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
-	auto cbvMan = pRenderSystem_->GetCbvManager();
-	auto&& meshletCBs = pScene_->GetMeshletCBs();
-	sl12::u32 numMeshlets = 0;
-	meshletCBs.clear();
-	for (auto&& mesh : pScene_->GetSceneMeshes())
-	{
-		auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
-		sl12::u32 cnt = 0;
-		for (auto&& submesh : submeshes)
-		{
-			cnt += (sl12::u32)submesh.meshlets.size();
-		}
-
-		MeshletCullCB cb;
-		cb.meshletStartIndex = numMeshlets;
-		cb.meshletCount = cnt;
-		cb.argStartAddress = numMeshlets * kIndirectArgsBufferStride;
-
-		auto handle = cbvMan->GetTemporal(&cb, sizeof(cb));
-		meshletCBs.push_back(std::move(handle));
-
-		numMeshlets += cnt;
-	}
+	auto pMR = pScene_->GetMeshletResource();
+	auto pUpload = pMR->GetMeshletIndirectArgUpload();
 
 	std::vector<sl12::TransientResource> ret;
 
 	sl12::TransientResource arg(kMeshletIndirectArgID, sl12::TransientState::CopyDst);
 
 	arg.desc.bIsTexture = false;
+	arg.desc.bufferDesc = pUpload->GetBufferDesc();
 	arg.desc.bufferDesc.heap = sl12::BufferHeap::Default;
-	arg.desc.bufferDesc.size = kIndirectArgsBufferStride * numMeshlets + 4/* overflow support. */;
-	arg.desc.bufferDesc.stride = kIndirectArgsBufferStride;
 	arg.desc.bufferDesc.usage = sl12::ResourceUsage::UnorderedAccess;
 
 	ret.push_back(arg);
@@ -81,84 +59,15 @@ void MeshletArgCopyPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 {
 	GPU_MARKER(pCmdList, 0, "MeshletArgCopyPass");
 
-	// create indirect arg copy source buffer.
-	if (!indirectArgUpload_.IsValid())
-	{
-		auto cbvMan = pRenderSystem_->GetCbvManager();
-		auto&& meshletCBs = pScene_->GetMeshletCBs();
-
-		indirectArgUpload_.Reset();
-		meshletCBs.clear();
-
-		sl12::u32 numMeshlets = 0;
-		for (auto&& mesh : pScene_->GetSceneMeshes())
-		{
-			auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
-			sl12::u32 cnt = 0;
-			for (auto&& submesh : submeshes)
-			{
-				cnt += (sl12::u32)submesh.meshlets.size();
-			}
-
-			MeshletCullCB cb;
-			cb.meshletStartIndex = numMeshlets;
-			cb.meshletCount = cnt;
-			cb.argStartAddress = numMeshlets * kIndirectArgsBufferStride;
-
-			auto handle = cbvMan->GetResident(sizeof(cb));
-			cbvMan->RequestResidentCopy(handle, &cb, sizeof(cb));
-			meshletCBs.push_back(std::move(handle));
-
-			numMeshlets += cnt;
-		}
-		cbvMan->ExecuteCopy(pCmdList);
-
-		// create buffers.
-		indirectArgUpload_ = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-
-		sl12::BufferDesc desc{};
-		desc.stride = kIndirectArgsBufferStride;
-		desc.size = desc.stride * numMeshlets + 4/* overflow support. */;
-		desc.usage = sl12::ResourceUsage::Unknown;
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.initialState = D3D12_RESOURCE_STATE_COMMON;
-		indirectArgUpload_->Initialize(pDevice_, desc);
-
-		// build upload buffer.
-		sl12::u8* pUpload = static_cast<sl12::u8*>(indirectArgUpload_->Map());
-		for (auto&& mesh : pScene_->GetSceneMeshes())
-		{
-			auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
-			for (auto&& submesh : submeshes)
-			{
-				UINT StartIndexLocation = (UINT)(submesh.indexOffsetBytes / sl12::ResourceItemMesh::GetIndexStride());
-				int BaseVertexLocation = (int)(submesh.positionOffsetBytes / sl12::ResourceItemMesh::GetPositionStride());
-				
-				for (auto&& meshlet : submesh.meshlets)
-				{
-					// root const.
-					memset(pUpload, 0, sizeof(sl12::u32));
-					pUpload += sizeof(sl12::u32);
-
-					// draw arg.
-					D3D12_DRAW_INDEXED_ARGUMENTS arg{};
-					arg.IndexCountPerInstance = meshlet.indexCount;
-					arg.InstanceCount = 1;
-					arg.StartIndexLocation = StartIndexLocation + meshlet.indexOffset;
-					arg.BaseVertexLocation = BaseVertexLocation;
-					arg.StartInstanceLocation = 0;
-					memcpy(pUpload, &arg, sizeof(arg));
-					pUpload += sizeof(arg);
-				}
-			}
-		}
-		indirectArgUpload_->Unmap();
-	}
-
 	auto pArgRes = pResManager->GetRenderGraphResource(kMeshletIndirectArgID);
 
+	auto pMR = pScene_->GetMeshletResource();
+	auto pUpload = pMR->GetMeshletIndirectArgUpload();
+
+	// copy bounds.
+	pMR->CopyMeshletBounds(pCmdList);
 	// copy indirect arg buffer.
-	pCmdList->GetLatestCommandList()->CopyResource(pArgRes->pBuffer->GetResourceDep(), indirectArgUpload_->GetResourceDep());
+	pCmdList->GetLatestCommandList()->CopyResource(pArgRes->pBuffer->GetResourceDep(), pUpload->GetResourceDep());
 }
 
 
@@ -199,29 +108,8 @@ std::vector<sl12::TransientResource> MeshletCullingPass::GetInputResources(const
 
 std::vector<sl12::TransientResource> MeshletCullingPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
-	auto cbvMan = pRenderSystem_->GetCbvManager();
-	auto&& meshletCBs = pScene_->GetMeshletCBs();
-	sl12::u32 numMeshlets = 0;
-	for (auto&& mesh : pScene_->GetSceneMeshes())
-	{
-		auto&& submeshes = mesh->GetParentResource()->GetSubmeshes();
-		sl12::u32 cnt = 0;
-		for (auto&& submesh : submeshes)
-		{
-			cnt += (sl12::u32)submesh.meshlets.size();
-		}
-
-		MeshletCullCB cb;
-		cb.meshletStartIndex = numMeshlets;
-		cb.meshletCount = cnt;
-		cb.argStartAddress = numMeshlets * kIndirectArgsBufferStride;
-
-		auto handle = cbvMan->GetResident(sizeof(cb));
-		cbvMan->RequestResidentCopy(handle, &cb, sizeof(cb));
-		meshletCBs.push_back(std::move(handle));
-
-		numMeshlets += cnt;
-	}
+	auto pMR = pScene_->GetMeshletResource();
+	auto pUpload = pMR->GetMeshletIndirectArgUpload();
 
 	std::vector<sl12::TransientResource> ret;
 
@@ -229,8 +117,8 @@ std::vector<sl12::TransientResource> MeshletCullingPass::GetOutputResources(cons
 
 	arg.desc.bIsTexture = false;
 	arg.desc.bufferDesc.heap = sl12::BufferHeap::Default;
-	arg.desc.bufferDesc.size = kIndirectArgsBufferStride * numMeshlets + 4/* overflow support. */;
-	arg.desc.bufferDesc.stride = kIndirectArgsBufferStride;
+	arg.desc.bufferDesc.size = pUpload->GetBufferDesc().size;
+	arg.desc.bufferDesc.stride = pUpload->GetBufferDesc().stride;
 	arg.desc.bufferDesc.usage = sl12::ResourceUsage::UnorderedAccess;
 
 	ret.push_back(arg);
@@ -251,18 +139,30 @@ void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hFrustumCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pArgUAV->GetDescInfo().cpuHandle);
 
-	sl12::u32 meshIndex = 0;
-	auto&& meshletCBs = pScene_->GetMeshletCBs();
-	for (auto&& mesh : pScene_->GetSceneMeshes())
+	auto&& cbvMan = pRenderSystem_->GetCbvManager();
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	sl12::u32 meshletTotal = 0;
+	sl12::u32 instanceIndex = 0;
+	for (auto&& instance : instances)
 	{
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
+		
 		// set mesh constant.
-		descSet.SetCsCbv(2, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
-		descSet.SetCsCbv(3, meshletCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+		descSet.SetCsCbv(2, pScene_->GetTemporalCBs().hMeshCBs[instanceIndex].GetCBV()->GetDescInfo().cpuHandle);
 
-		sl12::u32 meshletCnt = 0;
-		sl12::BufferView* meshletBV = pScene_->GetMeshletBoundsSRV(mesh->GetParentResource()->GetHandle());
+		// create cull constant.
+		sl12::u32 meshletCnt = resInfo->meshletCount[0] + resInfo->meshletCount[1];
+		MeshletCullCB cb;
+		cb.meshletCount = meshletCnt;
+		cb.meshletStartIndex = meshletTotal;
+		cb.argStartAddress = meshletTotal * kIndirectArgsBufferStride;
+		sl12::CbvHandle hCB = cbvMan->GetTemporal(&cb, sizeof(cb));
+		descSet.SetCsCbv(3, hCB.GetCBV()->GetDescInfo().cpuHandle);
+		
+		const sl12::BufferView* meshletBV = pMR->GetMeshletBoundsSRV(resMesh);
 		descSet.SetCsSrv(0, meshletBV->GetDescInfo().cpuHandle);
-		meshletCnt = (sl12::u32)(meshletBV->GetViewDesc().Buffer.NumElements);
 
 		pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
@@ -270,7 +170,8 @@ void MeshletCullingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 		UINT t = (meshletCnt + 32 - 1) / 32;
 		pCmdList->GetLatestCommandList()->Dispatch(t, 1, 1);
 		
-		meshIndex++;
+		instanceIndex++;
+		meshletTotal += meshletCnt;
 	}
 }
 
@@ -353,7 +254,7 @@ DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 
 		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
 			{"POSITION", 0, sl12::ResourceItemMesh::GetPositionFormat(), 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 		};
 		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
 		desc.inputLayout.pElements = input_elems;
@@ -463,11 +364,15 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	sl12::RootSignature* NowRS = nullptr;
 	
 	// draw meshes.
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	auto&& materials = pMR->GetWorldMaterials();
 	sl12::u32 meshIndex = 0;
 	sl12::u32 meshletTotal = 0;
-	for (auto&& mesh : pScene_->GetSceneMeshes())
+	for (auto&& instance : instances)
 	{
-		auto meshRes = mesh->GetParentResource();
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
 		
 		// set mesh constant.
 		dsOpaque.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
@@ -475,20 +380,22 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 
 		// set vertex buffer.
 		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
-			sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
 		};
 		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
 
 		// set index buffer.
-		auto ibv = sl12::MeshManager::CreateIndexView(meshRes->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
+		auto ibv = sl12::MeshManager::CreateIndexView(resMesh->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
 		pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
 
-		auto&& submeshes = meshRes->GetSubmeshes();
-		auto submesh_count = submeshes.size();
+		auto&& submeshes = resMesh->GetSubmeshes();
+		auto submesh_count = resInfo->nonXluSubmeshInfos.size();
 		for (int i = 0; i < submesh_count; i++)
 		{
-			auto&& submesh = submeshes[i];
-			auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
+			auto&& submeshInfo = resInfo->nonXluSubmeshInfos[i];
+			auto&& submesh = submeshes[submeshInfo.submeshIndex];
+			auto&& material = materials[submeshInfo.materialIndex].pResMaterial;
 			sl12::u32 meshletCnt = (sl12::u32)submesh.meshlets.size();
 
 			// select pso.
@@ -496,10 +403,10 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 			sl12::RootSignature* NowRS = nullptr;
 			sl12::DescriptorSet* NowDS = nullptr;
 			bool isSetTex = false;
-			switch (material.blendType)
+			switch (material->blendType)
 			{
 			case sl12::ResourceMeshMaterialBlendType::Masked:
-				if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+				if (material->cullMode == sl12::ResourceMeshMaterialCullMode::Back)
 				{
 					pso = &psoMasked_;
 				}
@@ -513,7 +420,7 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 				break;
 			case sl12::ResourceMeshMaterialBlendType::Translucent:
 			default:
-				if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+				if (material->cullMode == sl12::ResourceMeshMaterialCullMode::Back)
 				{
 					pso = &psoOpaque_;
 				}
@@ -536,7 +443,7 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 			
 			if (isSetTex)
 			{
-				auto bc_tex_view = GetTextureView(material.baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+				auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 				NowDS->SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
 			}
 
@@ -805,49 +712,54 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	sl12::GraphicsPipelineState* NowPSO = nullptr;
 
 	// draw meshes.
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	auto&& materials = pMR->GetWorldMaterials();
 	sl12::u32 meshIndex = 0;
 	sl12::u32 meshletTotal = 0;
-	for (auto&& mesh : pScene_->GetSceneMeshes())
+	for (auto&& instance : instances)
 	{
 		// select pso.
-		auto meshRes = mesh->GetParentResource();
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
 		
 		// set mesh constant.
 		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 
 		// set vertex buffer.
 		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
-			sl12::MeshManager::CreateVertexView(meshRes->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
-			sl12::MeshManager::CreateVertexView(meshRes->GetNormalHandle(), 0, 0, sl12::ResourceItemMesh::GetNormalStride()),
-			sl12::MeshManager::CreateVertexView(meshRes->GetTangentHandle(), 0, 0, sl12::ResourceItemMesh::GetTangentStride()),
-			sl12::MeshManager::CreateVertexView(meshRes->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetNormalHandle(), 0, 0, sl12::ResourceItemMesh::GetNormalStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTangentHandle(), 0, 0, sl12::ResourceItemMesh::GetTangentStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
 		};
 		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
 
 		// set index buffer.
-		auto ibv = sl12::MeshManager::CreateIndexView(meshRes->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
+		auto ibv = sl12::MeshManager::CreateIndexView(resMesh->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
 		pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
 
-		auto&& submeshes = meshRes->GetSubmeshes();
-		auto submesh_count = submeshes.size();
+		auto&& submeshes = resMesh->GetSubmeshes();
+		auto submesh_count = resInfo->nonXluSubmeshInfos.size();
 		for (int i = 0; i < submesh_count; i++)
 		{
-			auto&& submesh = submeshes[i];
-			auto&& material = meshRes->GetMaterials()[submesh.materialIndex];
+			auto&& submeshInfo = resInfo->nonXluSubmeshInfos[i];
+			auto&& submesh = submeshes[submeshInfo.submeshIndex];
+			auto&& material = materials[submeshInfo.materialIndex].pResMaterial;
 			sl12::u32 meshletCnt = (sl12::u32)submesh.meshlets.size();
 
 			// select pso.
 			sl12::GraphicsPipelineState* pso = nullptr;
-			if (pScene_->GetSphereMeshHandle().IsValid() && meshRes == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
+			if (pScene_->GetSphereMeshHandle().IsValid() && resMesh == pScene_->GetSphereMeshHandle().GetItem<sl12::ResourceItemMesh>())
 			{
 				pso = &psoTriplanar_;
 			}
 			else
 			{
-				switch (material.blendType)
+				switch (material->blendType)
 				{
 				case sl12::ResourceMeshMaterialBlendType::Masked:
-					if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+					if (material->cullMode == sl12::ResourceMeshMaterialCullMode::Back)
 					{
 						pso = &psoMeshMasked_;
 					}
@@ -858,7 +770,7 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 					break;
 				case sl12::ResourceMeshMaterialBlendType::Translucent:
 				default:
-					if (material.cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+					if (material->cullMode == sl12::ResourceMeshMaterialCullMode::Back)
 					{
 						pso = &psoMeshOpaque_;
 					}
@@ -880,9 +792,9 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 
 			if (pso != &psoTriplanar_)
 			{
-				auto bc_tex_view = GetTextureView(material.baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
-				auto nm_tex_view = GetTextureView(material.normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
-				auto orm_tex_view = GetTextureView(material.ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+				auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+				auto nm_tex_view = GetTextureView(material->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+				auto orm_tex_view = GetTextureView(material->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
 				descSet.SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
 				descSet.SetPsSrv(1, nm_tex_view->GetDescInfo().cpuHandle);
@@ -895,7 +807,7 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 			}
 
 			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
-			pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rs_->GetRootConstantIndex(), (UINT)pScene_->GetMaterialIndex(&meshRes->GetMaterials()[submesh.materialIndex]), 0);
+			pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rs_->GetRootConstantIndex(), (UINT)submeshInfo.materialIndex, 0);
 
 			pCmdList->GetLatestCommandList()->ExecuteIndirect(
 				indirectExec_->GetCommandSignature(),			// command signature
