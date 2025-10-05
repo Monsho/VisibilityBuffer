@@ -125,7 +125,7 @@ void main(
 		}
 		else
 		{
-			rwOutput[pixelPos] = float4(Lighting(pixelPos, depth), 1);
+			rwOutput[pixelPos] += float4(Lighting(pixelPos, depth), 1);
 		}
 	}
 }

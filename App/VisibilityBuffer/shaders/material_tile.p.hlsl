@@ -23,7 +23,8 @@ Texture2D<float>				texDepth		: register(t7);
 Texture2D						texColor		: register(t8);
 Texture2D						texNormal		: register(t9);
 Texture2D						texORM			: register(t10);
-Texture2D						texDetail		: register(t11);
+Texture2D						texEmissive		: register(t11);
+Texture2D						texDetail		: register(t12);
 
 SamplerState		samLinearWrap	: register(s0);
 
@@ -31,9 +32,10 @@ RWTexture2D<uint2>	rwFeedback		: register(u0);
 
 struct PSOutput
 {
-	float4	color	: SV_TARGET0;
-	float4	orm		: SV_TARGET1;
-	float4	normal	: SV_TARGET2;
+	float4	accum	: SV_TARGET0;
+	float4	color	: SV_TARGET1;
+	float4	orm		: SV_TARGET2;
+	float4	normal	: SV_TARGET3;
 };
 
 [earlydepthstencil]
@@ -83,6 +85,7 @@ PSOutput main(PSInput In)
 	// sample texture.
 	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
+	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).xyz * 2 - 1;
 
 	float3 normalV = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
@@ -120,6 +123,7 @@ PSOutput main(PSInput In)
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
 
+	Out.accum = float4(emissive, 0);
 	Out.color = float4(bc, 1);
 	Out.orm.rgb = orm;
 	Out.normal.xyz = normalInWS * 0.5 + 0.5;

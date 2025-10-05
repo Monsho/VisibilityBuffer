@@ -32,14 +32,16 @@ StructuredBuffer<uint>			rTileIndex		: register(t11);
 Texture2D						texColor		: register(t12);
 Texture2D						texNormal		: register(t13);
 Texture2D						texORM			: register(t14);
-Texture2D						texDetail		: register(t15);
+Texture2D						texEmissive		: register(t15);
+Texture2D						texDetail		: register(t16);
 
 SamplerState		samLinearWrap	: register(s0);
 
 RWTexture2D<uint2>	rwFeedback		: register(u0);
-RWTexture2D<float4>	rwColor			: register(u1);
-RWTexture2D<float4>	rwORM			: register(u2);
-RWTexture2D<float4>	rwNormal		: register(u3);
+RWTexture2D<float4>	rwAccum			: register(u1);
+RWTexture2D<float4>	rwColor			: register(u2);
+RWTexture2D<float4>	rwORM			: register(u3);
+RWTexture2D<float4>	rwNormal		: register(u4);
 
 
 VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
@@ -115,6 +117,7 @@ void StandardCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 	// sample texture.
 	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
+	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).xyz * 2 - 1;
 
 	float3 normalV = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
@@ -152,6 +155,7 @@ void StandardCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
 	
+	rwAccum[pixelPos] = float4(emissive, 0);
 	rwColor[pixelPos] = float4(bc, 1);
 	rwORM[pixelPos] = float4(orm, 1);
 	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);
@@ -179,6 +183,7 @@ void TriplanarCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 
 	float4 bc = float4(0.5, 0.5, 0.5, 1.0);
 	float3 orm = float3(1.0, 0.5, 0.0);
+	float3 emissive = 0;
 	float3 N = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
 
 	// triplanar weights.
@@ -216,6 +221,7 @@ void TriplanarCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 		normalInWS = normalize(normalX.zyx * weights.x + normalY.xzy * weights.y + normalZ.xyz * weights.z);
 	}
 
+	rwAccum[pixelPos] = float4(emissive, 0);
 	rwColor[pixelPos] = bc;
 	rwORM[pixelPos] = float4(orm, 1);
 	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);

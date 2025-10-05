@@ -166,7 +166,9 @@ struct MaterialData
 	uint	colorTexIndex;
 	uint	ormTexIndex;
 	uint	normalTexIndex;
+	uint	emissiveTexIndex;
 	uint	shaderIndex;
+	uint	pad[3];
 };
 
 #define SHADOW_TYPE 0

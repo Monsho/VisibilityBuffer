@@ -1035,6 +1035,7 @@ MaterialTilePass::MaterialTilePass(sl12::Device* pDev, RenderSystem* pRenderSys,
 
 		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = kLightAccumFormat;
 		desc.rtvFormats[desc.numRTVs++] = kGBufferAFormat;
 		desc.rtvFormats[desc.numRTVs++] = kGBufferBFormat;
 		desc.rtvFormats[desc.numRTVs++] = kGBufferCFormat;
@@ -1085,6 +1086,7 @@ std::vector<sl12::TransientResource> MaterialTilePass::GetOutputResources(const 
 {
 	std::vector<sl12::TransientResource> ret;
 
+	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::RenderTarget);
@@ -1093,6 +1095,8 @@ std::vector<sl12::TransientResource> MaterialTilePass::GetOutputResources(const 
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
+	accum.desc.bIsTexture = true;
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	ga.desc.bIsTexture = true;
 	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
 	gb.desc.bIsTexture = true;
@@ -1107,6 +1111,7 @@ std::vector<sl12::TransientResource> MaterialTilePass::GetOutputResources(const 
 	mip.desc.bIsTexture = true;
 	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
 
+	ret.push_back(accum);
 	ret.push_back(ga);
 	ret.push_back(gb);
 	ret.push_back(gc);
@@ -1128,6 +1133,7 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
 	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
 	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
 	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
 	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
@@ -1141,6 +1147,7 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
 	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
 	auto pGbARTV = pResManager->CreateOrGetRenderTargetView(pGbARes);
 	auto pGbBRTV = pResManager->CreateOrGetRenderTargetView(pGbBRes);
 	auto pGbCRTV = pResManager->CreateOrGetRenderTargetView(pGbCRes);
@@ -1149,6 +1156,7 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	
 	// set render targets.
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
+		pAccumRTV->GetDescInfo().cpuHandle,
 		pGbARTV->GetDescInfo().cpuHandle,
 		pGbBRTV->GetDescInfo().cpuHandle,
 		pGbCRTV->GetDescInfo().cpuHandle,
@@ -1192,7 +1200,7 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetPsSrv(5, pMeshletSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(6, pDrawCallSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(7, pDepthSRV->GetDescInfo().cpuHandle);
-	descSet.SetPsSrv(11, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(12, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 	descSet.SetPsUav(0, pMipUAV->GetDescInfo().cpuHandle);
 
@@ -1219,10 +1227,12 @@ void MaterialTilePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
 		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto emm_tex_view = GetTextureView(mat.pResMaterial->emissiveTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
 		descSet.SetPsSrv(8, bc_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetPsSrv(9, nm_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetPsSrv(10, orm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetPsSrv(11, emm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetGraphicsRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);
@@ -1313,6 +1323,7 @@ std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(con
 {
 	std::vector<sl12::TransientResource> ret;
 
+	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::UnorderedAccess);
@@ -1320,6 +1331,8 @@ std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(con
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
+	accum.desc.bIsTexture = true;
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	ga.desc.bIsTexture = true;
 	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
 	gb.desc.bIsTexture = true;
@@ -1332,6 +1345,7 @@ std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(con
 	mip.desc.bIsTexture = true;
 	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
 
+	ret.push_back(accum);
 	ret.push_back(ga);
 	ret.push_back(gb);
 	ret.push_back(gc);
@@ -1353,6 +1367,7 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
 
 	// output.
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
 	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
 	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
@@ -1364,6 +1379,7 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
 	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pAccumRes);
 	auto pGbAUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbARes);
 	auto pGbBUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbBRes);
 	auto pGbCUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbCRes);
@@ -1403,9 +1419,10 @@ void MaterialResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientRe
 	descSet.SetCsSrv(9, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(1, pGbAUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(2, pGbBUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(3, pGbCUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pAccumUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, pGbAUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(3, pGbBUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(4, pGbCUAV->GetDescInfo().cpuHandle);
 
 	// set program.
 	wgContext_->SetProgram(pCmdList, D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE);
@@ -1798,6 +1815,7 @@ std::vector<sl12::TransientResource> MaterialComputeGBufferPass::GetOutputResour
 {
 	std::vector<sl12::TransientResource> ret;
 
+	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::UnorderedAccess);
@@ -1805,6 +1823,8 @@ std::vector<sl12::TransientResource> MaterialComputeGBufferPass::GetOutputResour
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
+	accum.desc.bIsTexture = true;
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	ga.desc.bIsTexture = true;
 	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
 	gb.desc.bIsTexture = true;
@@ -1817,6 +1837,7 @@ std::vector<sl12::TransientResource> MaterialComputeGBufferPass::GetOutputResour
 	mip.desc.bIsTexture = true;
 	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
 
+	ret.push_back(accum);
 	ret.push_back(ga);
 	ret.push_back(gb);
 	ret.push_back(gc);
@@ -1852,11 +1873,13 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	auto pBinPixSRV = pResManager->CreateOrGetBufferView(pBinPixRes, 0, 0, (sl12::u32)pBinPixRes->pBuffer->GetBufferDesc().stride);
 
 	// outputs.
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
 	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
 	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pMipRes = pResManager->GetRenderGraphResource(kMiplevelFeedbackID);
 
+	auto pAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pAccumRes);
 	auto pGbAUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbARes);
 	auto pGbBUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbBRes);
 	auto pGbCUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbCRes);
@@ -1883,12 +1906,13 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 	descSet.SetCsSrv(8, pBinCountSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(9, pBinOffsetSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(10, pBinPixSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(14, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(15, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(1, pGbAUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(2, pGbBUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(3, pGbCUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pAccumUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, pGbAUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(3, pGbBUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(4, pGbCUAV->GetDescInfo().cpuHandle);
 
 	sl12::ComputePipelineState* NowPSO = nullptr;
 
@@ -1907,10 +1931,12 @@ void MaterialComputeGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Tran
 		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
 		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto emm_tex_view = GetTextureView(mat.pResMaterial->emissiveTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
 		descSet.SetCsSrv(11, bc_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(12, nm_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(13, orm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(14, emm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);
@@ -2178,6 +2204,7 @@ std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetOutputResources
 {
 	std::vector<sl12::TransientResource> ret;
 
+	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ga(kGBufferAID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gb(kGBufferBID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gc(kGBufferCID, sl12::TransientState::UnorderedAccess);
@@ -2185,6 +2212,8 @@ std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetOutputResources
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
+	accum.desc.bIsTexture = true;
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	ga.desc.bIsTexture = true;
 	ga.desc.textureDesc.Initialize2D(kGBufferAFormat, width, height, 1, 1, 0);
 	gb.desc.bIsTexture = true;
@@ -2197,6 +2226,7 @@ std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetOutputResources
 	mip.desc.bIsTexture = true;
 	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, 0);
 
+	ret.push_back(accum);
 	ret.push_back(ga);
 	ret.push_back(gb);
 	ret.push_back(gc);
@@ -2234,11 +2264,13 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 	auto pTileIndexUAV = pResManager->CreateOrGetBufferView(pTileIndexRes, 0, 0, (sl12::u32)pTileIndexRes->pBuffer->GetBufferDesc().stride);
 
 	// outputs.
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pGbARes = pResManager->GetRenderGraphResource(kGBufferAID);
 	auto pGbBRes = pResManager->GetRenderGraphResource(kGBufferBID);
 	auto pGbCRes = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pMipRes = pResManager->GetRenderGraphResource(kMiplevelFeedbackID);
 
+	auto pAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pAccumRes);
 	auto pGbAUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbARes);
 	auto pGbBUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbBRes);
 	auto pGbCUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pGbCRes);
@@ -2285,12 +2317,13 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 	descSet.SetCsSrv(9, pPixelInfoSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(10, pPixlesInTileSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(11, pTileIndexUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(15, detail_res->GetTextureView().GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(16, detail_res->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pMipUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(1, pGbAUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(2, pGbBUAV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(3, pGbCUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pAccumUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, pGbAUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(3, pGbBUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(4, pGbCUAV->GetDescInfo().cpuHandle);
 
 	sl12::ComputePipelineState* NowPSO = nullptr;
 
@@ -2309,10 +2342,12 @@ void MaterialTileGBufferPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 		auto bc_tex_view = GetTextureView(mat.pResMaterial->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 		auto nm_tex_view = GetTextureView(mat.pResMaterial->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
 		auto orm_tex_view = GetTextureView(mat.pResMaterial->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+		auto emm_tex_view = GetTextureView(mat.pResMaterial->emissiveTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 
 		descSet.SetCsSrv(12, bc_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(13, nm_tex_view->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(14, orm_tex_view->GetDescInfo().cpuHandle);
+		descSet.SetCsSrv(15, emm_tex_view->GetDescInfo().cpuHandle);
 
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rs_->GetRootConstantIndex(), matIndex, 0);

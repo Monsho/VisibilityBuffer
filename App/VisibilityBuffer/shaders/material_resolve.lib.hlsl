@@ -28,9 +28,10 @@ Texture2D						texMaterial[]	: register(t0, space32);
 SamplerState		samLinearWrap	: register(s0);
 
 RWTexture2D<uint2>	rwFeedback		: register(u0);
-RWTexture2D<float4>	rwColor			: register(u1);
-RWTexture2D<float4>	rwORM			: register(u2);
-RWTexture2D<float4>	rwNormal		: register(u3);
+RWTexture2D<float4>	rwAccum			: register(u1);
+RWTexture2D<float4>	rwColor			: register(u2);
+RWTexture2D<float4>	rwORM			: register(u3);
+RWTexture2D<float4>	rwNormal		: register(u4);
 
 struct DistributeNodeRecord
 {
@@ -142,6 +143,7 @@ void MaterialStandardNode(ThreadNodeInputRecord<MaterialNodeRecord> inputRecord)
 	MaterialData mat = rMaterialData[matIndex];
 	float3 bc = texMaterial[NonUniformResourceIndex(mat.colorTexIndex)].SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 orm = texMaterial[NonUniformResourceIndex(mat.ormTexIndex)].SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
+	float3 emissive = texMaterial[NonUniformResourceIndex(mat.emissiveTexIndex)].SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
 	float3 normalInTS = texMaterial[NonUniformResourceIndex(mat.normalTexIndex)].SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).xyz * 2 - 1;
 
 	float3 normalV = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
@@ -179,6 +181,7 @@ void MaterialStandardNode(ThreadNodeInputRecord<MaterialNodeRecord> inputRecord)
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
 	
+	rwAccum[pixelPos] = float4(emissive, 0);
 	rwColor[pixelPos] = float4(bc, 1);
 	rwORM[pixelPos] = float4(orm, 1);
 	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);
@@ -199,6 +202,7 @@ void MaterialTriplanarNode(ThreadNodeInputRecord<MaterialNodeRecord> inputRecord
 
 	float4 bc = float4(0.5, 0.5, 0.5, 1.0);
 	float3 orm = float3(1.0, 0.5, 0.0);
+	float3 emissive = 0;
 	float3 N = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
 
 	// triplanar weights.
@@ -238,6 +242,7 @@ void MaterialTriplanarNode(ThreadNodeInputRecord<MaterialNodeRecord> inputRecord
 		normalInWS = normalize(normalX.zyx * weights.x + normalY.xzy * weights.y + normalZ.xyz * weights.z);
 	}
 
+	rwAccum[pixelPos] = float4(emissive, 0);
 	rwColor[pixelPos] = bc;
 	rwORM[pixelPos] = float4(orm, 1);
 	rwNormal[pixelPos] = float4(normalInWS * 0.5 + 0.5, 1);

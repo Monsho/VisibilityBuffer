@@ -152,6 +152,7 @@
     <None Include="shaders\visibility_mesh_mesh_shader.hlsli" />
     <None Include="shaders\visibility_mesh_pixel_shader.hlsli" />
     <None Include="shaders\vrs.hlsli" />
+    <None Include="shaders\mesh.p.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
     <ClInclude Include="src\meshlet_resource.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />

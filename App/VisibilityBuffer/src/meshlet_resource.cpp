@@ -453,6 +453,11 @@ void MeshletResource::UpdateBindlessTextures(sl12::Device* pDev)
 		{
 			bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
 		}
+		resTex = mat.pResMaterial->emissiveTex.GetItem<sl12::ResourceItemTextureBase>();
+		if (resTex)
+		{
+			bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+		}
 	}
 }
 
@@ -495,6 +500,12 @@ void MeshletResource::CreateWorkGraphResources(sl12::Device* pDev)
 		if (resTex)
 		{
 			data->ormTexIndex = (UINT)bindlessTextures_.size();
+			bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
+		}
+		resTex = mat.pResMaterial->emissiveTex.GetItem<sl12::ResourceItemTextureBase>();
+		if (resTex)
+		{
+			data->emissiveTexIndex = (UINT)bindlessTextures_.size();
 			bindlessTextures_.push_back(const_cast<sl12::ResourceItemTextureBase*>(resTex)->GetTextureView().GetDescInfo().cpuHandle);
 		}
 		data++;
