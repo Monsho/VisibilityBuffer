@@ -183,6 +183,8 @@ struct RenderPassSetupDesc
 	bool bNeedDeinterleave = false;
 	bool bUseVRS = false;
 	float vrsIntensityThreshold = 1.0f;
+	float vrsDepthThreshold = 1.0f;
+	int debugMode = 0;
 	
 	bool operator==(const RenderPassSetupDesc& rhs) const
 	{
@@ -192,7 +194,9 @@ struct RenderPassSetupDesc
 			&& (ssaoType == rhs.ssaoType)
 			&& (bNeedDeinterleave == rhs.bNeedDeinterleave)
 			&& (bUseVRS == rhs.bUseVRS)
-			&& (vrsIntensityThreshold == rhs.vrsIntensityThreshold);
+			&& (vrsIntensityThreshold == rhs.vrsIntensityThreshold)
+			&& (vrsDepthThreshold == rhs.vrsDepthThreshold)
+			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
 	{

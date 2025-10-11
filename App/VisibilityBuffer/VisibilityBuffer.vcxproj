@@ -99,6 +99,7 @@
     <None Include="shaders\depth_masked.vv.hlsl" />
     <None Include="shaders\shadow_masked.p.hlsl" />
     <None Include="shaders\shadow_masked.vv.hlsl" />
+    <None Include="shaders\debug.p.hlsl" />
     <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\shadowmap_pass.cpp" />

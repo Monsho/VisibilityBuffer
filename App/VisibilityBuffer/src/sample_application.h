@@ -187,7 +187,8 @@ private:
 
 	// vrs parameters.
 	bool					bUseVRS_ = false;
-	float					vrsThreshold_ = 0.01f;
+	float					vrsIntensityThreshold_ = 0.01f;
+	float					vrsDepthThreshold_ = 1.0f;
 
 	// debug parameters.
 	int						displayMode_ = 0;

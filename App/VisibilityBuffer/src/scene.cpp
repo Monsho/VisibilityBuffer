@@ -615,6 +615,11 @@ bool Scene::InitRenderPass()
 		passNodes_[AppPassType::PrefixSumTest] = renderGraph_->AddPass(sl12::RenderPassID("PrefixSumTest"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
+	{
+		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -647,10 +652,6 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel]);
-	if (bEnableVRS)
-	{
-		node = node.AddChild(passNodes_[AppPassType::ReprojectVRS]);
-	}
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
@@ -669,6 +670,11 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	    		.AddChild(passNodes_[AppPassType::HiZafterFirstCull])
 	    		.AddChild(passNodes_[AppPassType::VisibilityMs2nd]);
 	    }
+		// VRS reprojection.
+		if (bEnableVRS)
+		{
+			node = node.AddChild(passNodes_[AppPassType::ReprojectVRS]);
+		}
 		// visibility to gbuffer.
 		if (desc.visToGBufferType == 0)
 		{
@@ -705,6 +711,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
+	if (!(desc.debugMode == 0 || (desc.debugMode == 8 && !bEnableVRS)))
+	{
+		node = node.AddChild(passNodes_[AppPassType::Debug]);
+	}
 
 	// compute queue.
 	if (bEnableMeshletCulling)

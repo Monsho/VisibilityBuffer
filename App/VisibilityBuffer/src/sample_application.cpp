@@ -228,12 +228,15 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 			auto U = DirectX::XMMatrixIdentity();
 			DirectX::XMStoreFloat4x4(&cbScene.mtxProjToPrevProj, U);
 			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevViewToProj, mtxViewToClip);
+			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevProjToProj, U);
 		}
 		else
 		{
 			auto mtxClipToPrevClip = mtxClipToWorld * mtxPrevWorldToClip_;
+			auto mtxPrevClipToClip = DirectX::XMMatrixInverse(nullptr, mtxClipToPrevClip);
 			DirectX::XMStoreFloat4x4(&cbScene.mtxProjToPrevProj, mtxClipToPrevClip);
 			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevViewToProj, mtxPrevViewToClip_);
+			DirectX::XMStoreFloat4x4(&cbScene.mtxPrevProjToProj, mtxPrevClipToClip);
 		}
 		cbScene.eyePosition.x = cameraPos_.x;
 		cbScene.eyePosition.y = cameraPos_.y;
@@ -540,7 +543,8 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Use VRS", &bUseVRS_);
 			if (bUseVRS_)
 			{
-				ImGui::SliderFloat("Threshold", &vrsThreshold_, 0.0001f, 0.1f);
+				ImGui::SliderFloat("Intensity Threshold", &vrsIntensityThreshold_, 0.0001f, 0.1f);
+				ImGui::SliderFloat("Depth Threshold", &vrsDepthThreshold_, 0.1f, 100.0f);
 			}
 		}
 
@@ -556,6 +560,7 @@ bool SampleApplication::Execute()
 				"AO",
 				"GI",
 				"Indirect Light",
+				"VRS",
 			};
 			ImGui::Combo("Display Mode", &displayMode_, kDisplayModes, ARRAYSIZE(kDisplayModes));
 
@@ -649,7 +654,9 @@ bool SampleApplication::Execute()
 	setupDesc.ssaoType = ssaoType_;
 	setupDesc.bNeedDeinterleave = bIsDeinterleave_;
 	setupDesc.bUseVRS = bUseVRS_;
-	setupDesc.vrsIntensityThreshold = vrsThreshold_;
+	setupDesc.vrsIntensityThreshold = vrsIntensityThreshold_;
+	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
+	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	
 	auto meshMan = renderSys_->GetMeshManager();

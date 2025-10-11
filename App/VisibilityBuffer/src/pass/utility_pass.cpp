@@ -504,6 +504,10 @@ std::vector<sl12::TransientResource> GenerateVrsPass::GetInputResources(const sl
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kVisBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -528,8 +532,16 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	GPU_MARKER(pCmdList, 1, "GenerateVRS");
 
 	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
+	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
+	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
 	auto pVRSRes = pResManager->GetRenderGraphResource(kPrevVrsID);
 	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
+	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, pDrawCallRes->pBuffer->GetBufferDesc().stride);
 	auto pVRSUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pVRSRes);
 	
 	sl12::u32 width = pScene_->GetScreenWidth();
@@ -543,9 +555,10 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	struct GenCB
 	{
 		sl12::u32 screenSize[2];
-		float threshold;
+		float intesityThreshold;
+		float depthThreshold;
 	};
-	GenCB cb = {{width, height}, threshold_};
+	GenCB cb = {{width, height}, intensityThreshold_, 0.0f};
 	auto hGenCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 
 	// set descriptors.
@@ -554,6 +567,10 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, hGenCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pAccumSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pVisSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pSubmeshSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pMeshletSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pDrawCallSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pVRSUAV->GetDescInfo().cpuHandle);
 
 	// set pipeline.
@@ -601,6 +618,7 @@ std::vector<sl12::TransientResource> ReprojectVrsPass::GetInputResources(const s
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kPrevVrsID, 1), sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kDepthBufferID, 1), sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -625,7 +643,8 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 	// input
 	auto pPrevVrsRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kPrevVrsID, 1));
-	auto pDepthRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kDepthBufferID, 1));
+	auto pPrevDepthRes = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kDepthBufferID, 1));
+	auto pCurrDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 
 	// output
 	auto pCurrVrsRes = pResManager->GetRenderGraphResource(kCurrVrsID);
@@ -635,7 +654,8 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	
 	// views
 	auto pPrevVrsSRV = pPrevVrsRes ? pResManager->CreateOrGetTextureView(pPrevVrsRes) : pBlackView;
-	auto pDepthSRV = pDepthRes ? pResManager->CreateOrGetTextureView(pDepthRes) : pBlackView;
+	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pBlackView;
+	auto pCurrDepthSRV = pResManager->CreateOrGetTextureView(pCurrDepthRes);
 	auto pCurrVrsUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pCurrVrsRes);
 	
 	sl12::u32 width = pScene_->GetScreenWidth();
@@ -649,9 +669,10 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	struct GenCB
 	{
 		sl12::u32 screenSize[2];
-		float threshold;
+		float intensityThreshold;
+		float depthThreshold;
 	};
-	GenCB cb = {{halfWidth, halfHeight}, 0.0f};
+	GenCB cb = {{halfWidth, halfHeight}, 0.0f, depthThreshold_};
 	auto hGenCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 
 	// set descriptors.
@@ -660,8 +681,10 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, hGenCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pPrevVrsSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(1, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pCurrDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pCurrVrsUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
@@ -847,6 +870,155 @@ void PrefixSumTestPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 		// dispatch.
 		pCmdList->GetLatestCommandList()->Dispatch(kBlockCount, 1, 1);
 	}
+}
+
+
+//----------------
+DebugPass::DebugPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::FullscreenVV), pRenderSys->GetShader(ShaderName::DebugP), nullptr, nullptr, nullptr);
+
+	// init pipeline state.
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::DebugP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = false;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = false;
+		desc.depthStencil.isDepthWriteEnable = false;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = pDev->GetSwapchain().GetTexture(0)->GetResourceDesc().Format;
+		desc.dsvFormat = DXGI_FORMAT_UNKNOWN;
+		desc.multisampleCount = 1;
+
+		if (!pso_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init debug pso.");
+		}
+	}
+}
+
+DebugPass::~DebugPass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> DebugPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	const sl12::TransientResourceID kIDs[] = {
+		kLightAccumID,
+		kGBufferAID,
+		kGBufferBID,
+		kGBufferBID,
+		kGBufferCID,
+		kDenoiseAOID,
+		kDenoiseGIID,
+		kLightAccumID,
+		kCurrVrsID,
+	};
+	
+	std::vector<sl12::TransientResource> ret;
+	if (debugMode_ == 8)
+	{
+		ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kCurrVrsID, sl12::TransientState::ShaderResource));
+	}
+	else
+	{
+		ret.push_back(sl12::TransientResource(kIDs[debugMode_], sl12::TransientState::ShaderResource));
+	}
+	return ret;
+}
+
+std::vector<sl12::TransientResource> DebugPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kSwapchainID, sl12::TransientState::RenderTarget));
+	return ret;
+}
+
+void DebugPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 1, "DebugPass");
+
+	const sl12::TransientResourceID kIDs[] = {
+		kLightAccumID,
+		kGBufferAID,
+		kGBufferBID,
+		kGBufferBID,
+		kGBufferCID,
+		kDenoiseAOID,
+		kDenoiseGIID,
+		kLightAccumID,
+		kCurrVrsID,
+	};
+
+	auto pSourceRes = pResManager->GetRenderGraphResource(debugMode_ != 8 ? kIDs[debugMode_] : kLightAccumID);
+	auto pVrsRes = pResManager->GetRenderGraphResource(kCurrVrsID);
+	auto pSwapRes = pResManager->GetRenderGraphResource(kSwapchainID);
+	auto pSourceSRV = pResManager->CreateOrGetTextureView(pSourceRes);
+	auto pSwapRTV = pResManager->CreateOrGetRenderTargetView(pSwapRes);
+	
+	// set render targets.
+	auto&& rtv = pSwapRTV->GetDescInfo().cpuHandle;
+	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	
+	// set viewport.
+	D3D12_VIEWPORT vp;
+	vp.TopLeftX = vp.TopLeftY = 0.0f;
+	vp.Width = (float)width;
+	vp.Height = (float)height;
+	vp.MinDepth = 0.0f;
+	vp.MaxDepth = 1.0f;
+	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+	// set scissor rect.
+	D3D12_RECT rect;
+	rect.left = rect.top = 0;
+	rect.right = width;
+	rect.bottom = height;
+	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetPsCbv(0, pScene_->GetTemporalCBs().hDebugCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(0, pSourceSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+	if (pVrsRes)
+	{
+		auto pVrsSRV = pResManager->CreateOrGetTextureView(pVrsRes);
+		descSet.SetPsSrv(1, pVrsSRV->GetDescInfo().cpuHandle);
+	}
+
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	// draw fullscreen.
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
 }
 
 

@@ -149,7 +149,7 @@ public:
 
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
 	{
-		threshold_ = desc.vrsIntensityThreshold;
+		intensityThreshold_ = desc.vrsIntensityThreshold;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
@@ -163,7 +163,7 @@ public:
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
-	float threshold_ = 1.0f;
+	float intensityThreshold_ = 1.0f;
 };
 
 //----
@@ -180,7 +180,7 @@ public:
 
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
 	{
-		threshold_ = desc.vrsIntensityThreshold;
+		depthThreshold_ = desc.vrsDepthThreshold;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
@@ -194,7 +194,7 @@ public:
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
-	float threshold_ = 1.0f;
+	float depthThreshold_ = 1.0f;
 };
 
 //----
@@ -220,6 +220,37 @@ public:
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoInit_, psoMain_;
+};
+
+//----
+class DebugPass : public AppPassBase
+{
+public:
+	DebugPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~DebugPass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::PrefixSumTest;
+	}
+
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{
+		debugMode_ = desc.debugMode;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Graphics;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+	
+private:
+	int debugMode_ = 0;
+	sl12::UniqueHandle<sl12::RootSignature> rs_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso_;
 };
 
 //	EOF

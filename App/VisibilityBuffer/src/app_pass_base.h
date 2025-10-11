@@ -40,6 +40,7 @@ enum class AppPassType
 	GenerateVRS,
 	ReprojectVRS,
 	PrefixSumTest,
+	Debug,
 	Invalid
 };
 
