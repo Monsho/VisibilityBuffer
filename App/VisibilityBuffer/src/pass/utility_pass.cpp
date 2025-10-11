@@ -578,8 +578,10 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (halfWidth + 7) / 8;
-	UINT y = (halfHeight + 7) / 8;
+	UINT x = (width + 7) / 8;
+	UINT y = (height + 7) / 8;
+	// UINT x = (halfWidth + 7) / 8;
+	// UINT y = (halfHeight + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 

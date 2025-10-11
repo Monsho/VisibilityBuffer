@@ -43,9 +43,59 @@ float3 ScreenPosToViewPos(float2 uv, float depth)
     return viewPos.xyz / viewPos.w;
 }
 
+groupshared uint2 shPixelVRS_XY[VRS_TILE_X * VRS_TILE_Y];
+
 [numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
-void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID)
+void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadID)
 {
+#if 1
+    int2 srcPixelPos = dtid;
+
+    int sharedIndex = gid.x + gid.y * VRS_TILE_X;
+    if (any(srcPixelPos >= cbGen.screenSize))
+    {
+        shPixelVRS_XY[sharedIndex] = 0;
+        return;
+    }
+
+    // from intensity.
+    const int2 kOffsets[4] = {
+        int2(0, -1),
+        int2(-1, 0), int2(1, 0),
+        int2(0, 1)
+    };
+    float intensity[4];
+    for (int i = 0; i < 4; i++)
+    {
+        int2 offset = kOffsets[i];
+        intensity[i] = GetIntensity(texInput[srcPixelPos + offset]);
+    }
+    float dIX = abs(intensity[1] - intensity[2]);
+    float dIY = abs(intensity[0] - intensity[3]);
+    float threshold = cbGen.intensityThreshold;
+    shPixelVRS_XY[sharedIndex] = uint2(
+            dIX > threshold ? 0 : VRS_2x1,
+            dIY > threshold ? 0 : VRS_1x2);
+    
+    // from visibility.
+    int matIDs[4] = {
+        GetMaterialID(texVis[srcPixelPos + uint2(0, 0)]),
+        GetMaterialID(texVis[srcPixelPos + uint2(1, 0)]),
+        GetMaterialID(texVis[srcPixelPos + uint2(0, 1)]),
+        GetMaterialID(texVis[srcPixelPos + uint2(1, 1)])
+    };
+    shPixelVRS_XY[sharedIndex].x = min(shPixelVRS_XY[sharedIndex].x, (matIDs[0] == matIDs[1] && matIDs[2] == matIDs[3]) ? VRS_2x1 : 0);
+    shPixelVRS_XY[sharedIndex].y = min(shPixelVRS_XY[sharedIndex].y, (matIDs[0] == matIDs[2] && matIDs[1] == matIDs[3]) ? VRS_1x2 : 0);
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    if ((srcPixelPos.x & 0x1) == 0 && (srcPixelPos.y & 0x1) == 0)
+    {
+        uint2 vrs = min(shPixelVRS_XY[sharedIndex], min(shPixelVRS_XY[sharedIndex + 1], min(shPixelVRS_XY[sharedIndex + VRS_TILE_X], shPixelVRS_XY[sharedIndex + VRS_TILE_X + 1])));
+        texOutput[dtid / 2] = vrs.x | vrs.y;
+    }
+    
+#else
     uint2 pixelPos = dtid * 2;
     if (any(pixelPos >= cbGen.screenSize))
         return;
@@ -81,6 +131,7 @@ void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID)
     vrsY = min(vrsY, (matIDs[0] == matIDs[2] && matIDs[1] == matIDs[3]) ? VRS_1x2 : 0);
     
     texOutput[dtid] = vrsX | vrsY;
+#endif
 }
 
 [numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
