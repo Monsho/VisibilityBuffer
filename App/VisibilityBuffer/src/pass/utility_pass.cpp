@@ -546,8 +546,6 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
-	sl12::u32 halfWidth = (width + 1) / 2;
-	sl12::u32 halfHeight = (height + 1) / 2;
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
 	auto&& cbvMan = pRenderSystem_->GetCbvManager();
@@ -580,8 +578,6 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	// dispatch.
 	UINT x = (width + 7) / 8;
 	UINT y = (height + 7) / 8;
-	// UINT x = (halfWidth + 7) / 8;
-	// UINT y = (halfHeight + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 

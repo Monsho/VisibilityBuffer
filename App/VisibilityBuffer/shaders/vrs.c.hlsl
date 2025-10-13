@@ -48,7 +48,6 @@ groupshared uint2 shPixelVRS_XY[VRS_TILE_X * VRS_TILE_Y];
 [numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
 void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadID)
 {
-#if 1
     int2 srcPixelPos = dtid;
 
     int sharedIndex = gid.x + gid.y * VRS_TILE_X;
@@ -94,44 +93,6 @@ void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadI
         uint2 vrs = min(shPixelVRS_XY[sharedIndex], min(shPixelVRS_XY[sharedIndex + 1], min(shPixelVRS_XY[sharedIndex + VRS_TILE_X], shPixelVRS_XY[sharedIndex + VRS_TILE_X + 1])));
         texOutput[dtid / 2] = vrs.x | vrs.y;
     }
-    
-#else
-    uint2 pixelPos = dtid * 2;
-    if (any(pixelPos >= cbGen.screenSize))
-        return;
-    
-    if (any(pixelPos + 1 >= cbGen.screenSize))
-    {
-        texOutput[dtid] = VRS_1x1;
-        return;
-    }
-
-    // from intensity.
-    float intensity[4] = {
-        GetIntensity(texInput[pixelPos + uint2(0, 0)]),
-        GetIntensity(texInput[pixelPos + uint2(1, 0)]),
-        GetIntensity(texInput[pixelPos + uint2(0, 1)]),
-        GetIntensity(texInput[pixelPos + uint2(1, 1)])
-    };
-    float dI_LR = max(abs(intensity[0] - intensity[1]), abs(intensity[2] - intensity[3]));
-    float dI_TB = max(abs(intensity[0] - intensity[2]), abs(intensity[1] - intensity[3]));
-    uint vrsX = 0;
-    uint vrsY = 0;
-    vrsX = (dI_LR < cbGen.intensityThreshold) ? VRS_2x1 : 0;
-    vrsY = (dI_TB < cbGen.intensityThreshold) ? VRS_1x2 : 0;
-
-    // from visibility.
-    int matIDs[4] = {
-        GetMaterialID(texVis[pixelPos + uint2(0, 0)]),
-        GetMaterialID(texVis[pixelPos + uint2(1, 0)]),
-        GetMaterialID(texVis[pixelPos + uint2(0, 1)]),
-        GetMaterialID(texVis[pixelPos + uint2(1, 1)])
-    };
-    vrsX = min(vrsX, (matIDs[0] == matIDs[1] && matIDs[2] == matIDs[3]) ? VRS_2x1 : 0);
-    vrsY = min(vrsY, (matIDs[0] == matIDs[2] && matIDs[1] == matIDs[3]) ? VRS_1x2 : 0);
-    
-    texOutput[dtid] = vrsX | vrsY;
-#endif
 }
 
 [numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
