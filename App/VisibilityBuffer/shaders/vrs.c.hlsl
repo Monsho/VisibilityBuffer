@@ -11,9 +11,10 @@ RWTexture2D<uint>               texOutput           : register(u0);
 // geneate
 Texture2D                       texInput            : register(t0);
 Texture2D<uint>					texVis				: register(t1);
-StructuredBuffer<SubmeshData>	rSubmeshData		: register(t2);
-StructuredBuffer<MeshletData>	rMeshletData		: register(t3);
-StructuredBuffer<DrawCallData>	rDrawCallData		: register(t4);
+Texture2D<float>				texDepth			: register(t2);
+StructuredBuffer<SubmeshData>	rSubmeshData		: register(t3);
+StructuredBuffer<MeshletData>	rMeshletData		: register(t4);
+StructuredBuffer<DrawCallData>	rDrawCallData		: register(t5);
 
 // reprojection
 Texture2D<uint>                 texPrevOutput       : register(t0);
@@ -26,8 +27,13 @@ float GetIntensity(float4 color)
     return color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
 }
 
-int GetMaterialID(uint vis)
+int GetMaterialID(uint vis, float depth)
 {
+    if (depth <= 0.0)
+    {
+        return -1;
+    }
+    
     uint drawCallIndex, primID;
     DecodeVisibility(vis, drawCallIndex, primID);
     DrawCallData dc = rDrawCallData[drawCallIndex];
@@ -58,6 +64,21 @@ void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadI
     }
 
     // from intensity.
+#if 0 // 3x3
+    const int2 kOffsets[8] = {
+        int2(-1, -1), int2(0, -1), int2(1, -1),
+        int2(-1, 0), int2(1, 0),
+        int2(-1, 1), int2(0, 1), int2(1, 1)
+    };
+    float intensity[8];
+    for (int i = 0; i < 8; i++)
+    {
+        int2 offset = kOffsets[i];
+        intensity[i] = GetIntensity(texInput[srcPixelPos + offset]);
+    }
+    float dIX = abs(intensity[0] + intensity[3] * 2.0 + intensity[5] - intensity[2] - intensity[4] * 2.0 - intensity[7]);
+    float dIY = abs(intensity[0] + intensity[1] * 2.0 + intensity[2] - intensity[5] - intensity[6] * 2.0 - intensity[7]);
+#else // 上下左右
     const int2 kOffsets[4] = {
         int2(0, -1),
         int2(-1, 0), int2(1, 0),
@@ -71,20 +92,24 @@ void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadI
     }
     float dIX = abs(intensity[1] - intensity[2]);
     float dIY = abs(intensity[0] - intensity[3]);
+#endif
     float threshold = cbGen.intensityThreshold;
     shPixelVRS_XY[sharedIndex] = uint2(
             dIX > threshold ? 0 : VRS_2x1,
             dIY > threshold ? 0 : VRS_1x2);
     
     // from visibility.
-    int matIDs[4] = {
-        GetMaterialID(texVis[srcPixelPos + uint2(0, 0)]),
-        GetMaterialID(texVis[srcPixelPos + uint2(1, 0)]),
-        GetMaterialID(texVis[srcPixelPos + uint2(0, 1)]),
-        GetMaterialID(texVis[srcPixelPos + uint2(1, 1)])
+    int matIDs[5] = {
+        GetMaterialID(texVis[srcPixelPos + int2(0, 0)], texDepth[srcPixelPos + int2(0, 0)]),
+        GetMaterialID(texVis[srcPixelPos + int2(-1, 0)], texDepth[srcPixelPos + int2(-1, 0)]),
+        GetMaterialID(texVis[srcPixelPos + int2(0, -1)], texDepth[srcPixelPos + int2(0, -1)]),
+        GetMaterialID(texVis[srcPixelPos + int2(1, 0)], texDepth[srcPixelPos + int2(1, 0)]),
+        GetMaterialID(texVis[srcPixelPos + int2(0, 1)], texDepth[srcPixelPos + int2(0, 1)])
     };
-    shPixelVRS_XY[sharedIndex].x = min(shPixelVRS_XY[sharedIndex].x, (matIDs[0] == matIDs[1] && matIDs[2] == matIDs[3]) ? VRS_2x1 : 0);
-    shPixelVRS_XY[sharedIndex].y = min(shPixelVRS_XY[sharedIndex].y, (matIDs[0] == matIDs[2] && matIDs[1] == matIDs[3]) ? VRS_1x2 : 0);
+    bool bSameXMat = matIDs[0] == matIDs[1] && matIDs[0] == matIDs[3];
+    bool bSameYMat = matIDs[0] == matIDs[2] && matIDs[0] == matIDs[4];
+    shPixelVRS_XY[sharedIndex].x = min(shPixelVRS_XY[sharedIndex].x, bSameXMat ? VRS_2x1 : 0);
+    shPixelVRS_XY[sharedIndex].y = min(shPixelVRS_XY[sharedIndex].y, bSameYMat ? VRS_1x2 : 0);
     
     GroupMemoryBarrierWithGroupSync();
 

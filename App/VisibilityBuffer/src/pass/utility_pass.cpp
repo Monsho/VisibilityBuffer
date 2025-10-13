@@ -505,6 +505,7 @@ std::vector<sl12::TransientResource> GenerateVrsPass::GetInputResources(const sl
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kVisBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
@@ -533,15 +534,17 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 
 	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pVisRes = pResManager->GetRenderGraphResource(kVisBufferID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pSubmeshRes = pResManager->GetRenderGraphResource(kSubmeshBufferID);
 	auto pMeshletRes = pResManager->GetRenderGraphResource(kMeshletBufferID);
 	auto pDrawCallRes = pResManager->GetRenderGraphResource(kDrawCallBufferID);
 	auto pVRSRes = pResManager->GetRenderGraphResource(kPrevVrsID);
 	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
 	auto pVisSRV = pResManager->CreateOrGetTextureView(pVisRes);
-	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, pSubmeshRes->pBuffer->GetBufferDesc().stride);
-	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, pMeshletRes->pBuffer->GetBufferDesc().stride);
-	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, pDrawCallRes->pBuffer->GetBufferDesc().stride);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pSubmeshSRV = pResManager->CreateOrGetBufferView(pSubmeshRes, 0, 0, (sl12::u32)pSubmeshRes->pBuffer->GetBufferDesc().stride);
+	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
+	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
 	auto pVRSUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pVRSRes);
 	
 	sl12::u32 width = pScene_->GetScreenWidth();
@@ -566,9 +569,10 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	descSet.SetCsCbv(1, hGenCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pAccumSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pVisSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(2, pSubmeshSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(3, pMeshletSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(4, pDrawCallSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pSubmeshSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pMeshletSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pDrawCallSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pVRSUAV->GetDescInfo().cpuHandle);
 
 	// set pipeline.

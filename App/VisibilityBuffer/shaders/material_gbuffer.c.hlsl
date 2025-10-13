@@ -34,7 +34,7 @@ RWTexture2D<float4>	rwORM			: register(u3);
 RWTexture2D<float4>	rwNormal		: register(u4);
 
 
-VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
+VertexAttr ComputeVertexAttribute(in uint2 pos, in uint vrsType, out InstanceData OutInstance)
 {
 	// get visibility.
 	uint vis = texVis[pos];
@@ -51,17 +51,21 @@ VertexAttr ComputeVertexAttribute(in uint2 pos, out InstanceData OutInstance)
 	// barycentric type.
 	const uint kBaryCalcType = 1;
 
+	float2 fpos = float2(pos) + 0.5;
+	if (vrsType & VRS_2x1) fpos.x += 0.5;
+	if (vrsType & VRS_1x2) fpos.y += 0.5;
+	
 	VertexAttr attr;
 	if (kBaryCalcType == 0)
 	{
 		attr = GetVertexAttrFromRay(
-			rVertexBuffer, inData, smData, vertexIndices, (float2)pos,
+			rVertexBuffer, inData, smData, vertexIndices, fpos,
 			cbScene.mtxWorldToProj, cbScene.screenSize, cbScene.eyePosition);
 	}
 	else if(kBaryCalcType == 1)
 	{
 		attr = GetVertexAttrPerspectiveCorrect(
-			rVertexBuffer, inData, smData, vertexIndices, (float2)pos + 0.5,
+			rVertexBuffer, inData, smData, vertexIndices, fpos,
 			cbScene.mtxWorldToProj, cbScene.screenSize);
 	}
 
@@ -126,7 +130,7 @@ void StandardCS(uint dtid : SV_DispatchThreadID)
 
 	// compute vertex attributes.
 	InstanceData inData;
-	VertexAttr attr = ComputeVertexAttribute(pixelPos, inData);
+	VertexAttr attr = ComputeVertexAttribute(pixelPos, vrsType, inData);
 
 	// feedback maplevel.
 	FeedbackMiplevel(pixelPos, attr, matIndex);
@@ -189,7 +193,7 @@ void TriplanarCS(uint dtid : SV_DispatchThreadID)
 
 	// compute vertex attributes.
 	InstanceData inData;
-	VertexAttr attr = ComputeVertexAttribute(pixelPos, inData);
+	VertexAttr attr = ComputeVertexAttribute(pixelPos, vrsType, inData);
 
 	float3 bc = float3(0.5, 0.5, 0.5);
 	float3 orm = float3(1.0, 0.5, 0.0);
