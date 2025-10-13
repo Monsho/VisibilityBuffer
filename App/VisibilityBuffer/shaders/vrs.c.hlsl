@@ -50,64 +50,56 @@ float3 ScreenPosToViewPos(float2 uv, float depth)
 }
 
 groupshared uint2 shPixelVRS_XY[VRS_TILE_X * VRS_TILE_Y];
+groupshared float shIntensity[(VRS_TILE_X + 2) * (VRS_TILE_Y + 2)];
+groupshared int shMaterialID[(VRS_TILE_X + 2) * (VRS_TILE_Y + 2)];
 
 [numthreads(VRS_TILE_X, VRS_TILE_Y, 1)]
-void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadID)
+void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gtid : SV_GroupThreadID, uint2 gid : SV_GroupID)
 {
     int2 srcPixelPos = dtid;
 
-    int sharedIndex = gid.x + gid.y * VRS_TILE_X;
+    const int kTileWidth = VRS_TILE_X + 2;
+    const int kTileHeight = VRS_TILE_Y + 2;
+    const int kLoadCount = kTileWidth * kTileHeight;
+    const int2 kLeftTop = int2(gid) * int2(VRS_TILE_X, VRS_TILE_Y) - int2(1, 1);
+    for (int i = gtid.y * VRS_TILE_X + gtid.x; i < kLoadCount; i += (VRS_TILE_X * VRS_TILE_Y))
+    {
+        int y = i / kTileWidth;
+        int x = i % kTileHeight;
+        int2 pos = kLeftTop + int2(x, y);
+        shIntensity[i] = GetIntensity(texInput[pos]);
+        shMaterialID[i] = GetMaterialID(texVis[pos], texDepth[pos]);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    int sharedIndex = gtid.x + gtid.y * VRS_TILE_X;
     if (any(srcPixelPos >= cbGen.screenSize))
     {
         shPixelVRS_XY[sharedIndex] = 0;
         return;
     }
 
-    // from intensity.
-#if 0 // 3x3
-    const int2 kOffsets[8] = {
-        int2(-1, -1), int2(0, -1), int2(1, -1),
-        int2(-1, 0), int2(1, 0),
-        int2(-1, 1), int2(0, 1), int2(1, 1)
+    const int2 kTileLeftTop = int2(gtid);
+    const int kIndex[9] = {
+        (kTileLeftTop.y + 0) * kTileWidth + (kTileLeftTop.x + 0),
+        (kTileLeftTop.y + 0) * kTileWidth + (kTileLeftTop.x + 1),
+        (kTileLeftTop.y + 0) * kTileWidth + (kTileLeftTop.x + 2),
+        (kTileLeftTop.y + 1) * kTileWidth + (kTileLeftTop.x + 0),
+        (kTileLeftTop.y + 1) * kTileWidth + (kTileLeftTop.x + 1),
+        (kTileLeftTop.y + 1) * kTileWidth + (kTileLeftTop.x + 2),
+        (kTileLeftTop.y + 2) * kTileWidth + (kTileLeftTop.x + 0),
+        (kTileLeftTop.y + 2) * kTileWidth + (kTileLeftTop.x + 1),
+        (kTileLeftTop.y + 2) * kTileWidth + (kTileLeftTop.x + 2),
     };
-    float intensity[8];
-    for (int i = 0; i < 8; i++)
-    {
-        int2 offset = kOffsets[i];
-        intensity[i] = GetIntensity(texInput[srcPixelPos + offset]);
-    }
-    float dIX = abs(intensity[0] + intensity[3] * 2.0 + intensity[5] - intensity[2] - intensity[4] * 2.0 - intensity[7]);
-    float dIY = abs(intensity[0] + intensity[1] * 2.0 + intensity[2] - intensity[5] - intensity[6] * 2.0 - intensity[7]);
-#else // 上下左右
-    const int2 kOffsets[4] = {
-        int2(0, -1),
-        int2(-1, 0), int2(1, 0),
-        int2(0, 1)
-    };
-    float intensity[4];
-    for (int i = 0; i < 4; i++)
-    {
-        int2 offset = kOffsets[i];
-        intensity[i] = GetIntensity(texInput[srcPixelPos + offset]);
-    }
-    float dIX = abs(intensity[1] - intensity[2]);
-    float dIY = abs(intensity[0] - intensity[3]);
-#endif
+    float dIX = abs(shIntensity[kIndex[0]] + shIntensity[kIndex[3]] * 2.0 + shIntensity[kIndex[6]] - shIntensity[kIndex[2]] - shIntensity[kIndex[5]] * 2.0 - shIntensity[kIndex[8]]);
+    float dIY = abs(shIntensity[kIndex[0]] + shIntensity[kIndex[1]] * 2.0 + shIntensity[kIndex[2]] - shIntensity[kIndex[6]] - shIntensity[kIndex[7]] * 2.0 - shIntensity[kIndex[8]]);
     float threshold = cbGen.intensityThreshold;
     shPixelVRS_XY[sharedIndex] = uint2(
             dIX > threshold ? 0 : VRS_2x1,
             dIY > threshold ? 0 : VRS_1x2);
-    
-    // from visibility.
-    int matIDs[5] = {
-        GetMaterialID(texVis[srcPixelPos + int2(0, 0)], texDepth[srcPixelPos + int2(0, 0)]),
-        GetMaterialID(texVis[srcPixelPos + int2(-1, 0)], texDepth[srcPixelPos + int2(-1, 0)]),
-        GetMaterialID(texVis[srcPixelPos + int2(0, -1)], texDepth[srcPixelPos + int2(0, -1)]),
-        GetMaterialID(texVis[srcPixelPos + int2(1, 0)], texDepth[srcPixelPos + int2(1, 0)]),
-        GetMaterialID(texVis[srcPixelPos + int2(0, 1)], texDepth[srcPixelPos + int2(0, 1)])
-    };
-    bool bSameXMat = matIDs[0] == matIDs[1] && matIDs[0] == matIDs[3];
-    bool bSameYMat = matIDs[0] == matIDs[2] && matIDs[0] == matIDs[4];
+
+    bool bSameXMat = shMaterialID[4] == shMaterialID[3] && shMaterialID[4] == shMaterialID[5];
+    bool bSameYMat = shMaterialID[4] == shMaterialID[1] && shMaterialID[4] == shMaterialID[7];
     shPixelVRS_XY[sharedIndex].x = min(shPixelVRS_XY[sharedIndex].x, bSameXMat ? VRS_2x1 : 0);
     shPixelVRS_XY[sharedIndex].y = min(shPixelVRS_XY[sharedIndex].y, bSameYMat ? VRS_1x2 : 0);
     
@@ -116,7 +108,7 @@ void GenerateVrsCS(uint2 dtid : SV_DispatchThreadID, uint2 gid : SV_GroupThreadI
     if ((srcPixelPos.x & 0x1) == 0 && (srcPixelPos.y & 0x1) == 0)
     {
         uint2 vrs = min(shPixelVRS_XY[sharedIndex], min(shPixelVRS_XY[sharedIndex + 1], min(shPixelVRS_XY[sharedIndex + VRS_TILE_X], shPixelVRS_XY[sharedIndex + VRS_TILE_X + 1])));
-        texOutput[dtid / 2] = vrs.x | vrs.y;
+        texOutput[srcPixelPos / 2] = vrs.x | vrs.y;
     }
 }
 
