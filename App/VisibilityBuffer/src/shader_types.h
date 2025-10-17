@@ -66,6 +66,8 @@ enum ShaderName
 	ClearVrsC,
 	ReprojectVrsC,
 	MakeIrradianceC,
+	MeshXluVV,
+	MeshXluP,
 	DebugP,
 
 	MAX
@@ -136,6 +138,8 @@ static const char* kShaderFileAndEntry[] = {
 	"vrs.c.hlsl",						"ClearCS",
 	"vrs.c.hlsl",						"ReprojectionCS",
 	"make_irradiance.c.hlsl",			"main",
+	"mesh_xlu.vv.hlsl",					"main",
+	"mesh_xlu.p.hlsl",					"main",
 	"debug.p.hlsl",						"main",
 };
 

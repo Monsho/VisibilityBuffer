@@ -35,7 +35,7 @@ struct LightCB
 	float3		directionalVec;
 	float		ambientIntensity;
 	float3		directionalColor;
-	int			pad2;
+	int			pad;
 };
 
 struct ShadowCB

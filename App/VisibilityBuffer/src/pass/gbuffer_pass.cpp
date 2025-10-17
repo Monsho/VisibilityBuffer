@@ -835,4 +835,230 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	}
 }
 
+
+//----------------
+XluPass::XluPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoMesh_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoMeshDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::MeshXluVV), pRenderSys->GetShader(ShaderName::MeshXluP), nullptr, nullptr, nullptr);
+
+	// init pipeline state.
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::MeshXluVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::MeshXluP);
+
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].isBlendEnable = true;
+		desc.blend.rtDesc[0].blendOpColor = D3D12_BLEND_OP_ADD;
+		desc.blend.rtDesc[0].blendOpAlpha = D3D12_BLEND_OP_ADD;
+		desc.blend.rtDesc[0].srcBlendColor = D3D12_BLEND_SRC_ALPHA;
+		desc.blend.rtDesc[0].dstBlendColor = D3D12_BLEND_INV_SRC_ALPHA;
+		desc.blend.rtDesc[0].srcBlendAlpha = D3D12_BLEND_ONE;
+		desc.blend.rtDesc[0].dstBlendAlpha = D3D12_BLEND_ZERO;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+
+		desc.depthStencil.isDepthEnable = true;
+		desc.depthStencil.isDepthWriteEnable = true;
+		desc.depthStencil.depthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+
+		D3D12_INPUT_ELEMENT_DESC input_elems[] = {
+			{"POSITION", 0, sl12::ResourceItemMesh::GetPositionFormat(), 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"NORMAL",   0, sl12::ResourceItemMesh::GetNormalFormat(),   1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TANGENT",  0, sl12::ResourceItemMesh::GetTangentFormat(),  2, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{"TEXCOORD", 0, sl12::ResourceItemMesh::GetTexcoordFormat(), 3, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		};
+		desc.inputLayout.numElements = ARRAYSIZE(input_elems);
+		desc.inputLayout.pElements = input_elems;
+
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 0;
+		desc.rtvFormats[desc.numRTVs++] = kLightAccumFormat;
+		desc.dsvFormat = kDepthFormat;
+		desc.multisampleCount = 1;
+
+		if (!psoMesh_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init mesh xlu pso.");
+		}
+
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		
+		if (!psoMeshDS_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init mesh xlu doublesided pso.");
+		}
+	}
+}
+
+XluPass::~XluPass()
+{
+	psoMesh_.Reset();
+	psoMeshDS_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> XluPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	return ret;
+}
+
+std::vector<sl12::TransientResource> XluPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::RenderTarget);
+	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+	accum.desc.bIsTexture = true;
+	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
+	depth.desc.bIsTexture = true;
+	depth.desc.textureDesc.Initialize2D(kDepthFormat, width, height, 1, 1, 0);
+	depth.desc.historyFrame = 1;
+
+	ret.push_back(accum);
+	ret.push_back(depth);
+	
+	return ret;
+}
+
+void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "XluPass");
+
+	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
+	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
+	
+	// set render targets.
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
+		pAccumRTV->GetDescInfo().cpuHandle,
+	};
+	D3D12_CPU_DESCRIPTOR_HANDLE dsv = pDepthDSV->GetDescInfo().cpuHandle;
+	pCmdList->GetLatestCommandList()->OMSetRenderTargets(ARRAYSIZE(rtvs), rtvs, false, &dsv);
+
+	// set viewport.
+	D3D12_VIEWPORT vp;
+	vp.TopLeftX = vp.TopLeftY = 0.0f;
+	vp.Width = (float)pScene_->GetScreenWidth();
+	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.MinDepth = 0.0f;
+	vp.MaxDepth = 1.0f;
+	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+
+	// set scissor rect.
+	D3D12_RECT rect;
+	rect.left = rect.top = 0;
+	rect.right = pScene_->GetScreenWidth();
+	rect.bottom = pScene_->GetScreenHeight();
+	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	
+	// set descriptors.
+	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetVsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(4, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(1, pRenderSystem_->GetEnvSampler()->GetDescInfo().cpuHandle);
+
+	sl12::GraphicsPipelineState* NowPSO = nullptr;
+
+	// draw meshes.
+	auto pMR = pScene_->GetMeshletResource();
+	auto&& instances = pMR->GetMeshInstanceInfos();
+	auto&& materials = pMR->GetWorldMaterials();
+	sl12::u32 meshIndex = 0;
+	for (auto&& instance : instances)
+	{
+		auto resMesh = instance.meshInstance.lock()->GetParentResource();
+		auto resInfo = pMR->GetMeshResInfo(resMesh);
+		
+		// set mesh constant.
+		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
+
+		// set vertex buffer.
+		const D3D12_VERTEX_BUFFER_VIEW vbvs[] = {
+			sl12::MeshManager::CreateVertexView(resMesh->GetPositionHandle(), 0, 0, sl12::ResourceItemMesh::GetPositionStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetNormalHandle(), 0, 0, sl12::ResourceItemMesh::GetNormalStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTangentHandle(), 0, 0, sl12::ResourceItemMesh::GetTangentStride()),
+			sl12::MeshManager::CreateVertexView(resMesh->GetTexcoordHandle(), 0, 0, sl12::ResourceItemMesh::GetTexcoordStride()),
+		};
+		pCmdList->GetLatestCommandList()->IASetVertexBuffers(0, ARRAYSIZE(vbvs), vbvs);
+
+		// set index buffer.
+		auto ibv = sl12::MeshManager::CreateIndexView(resMesh->GetIndexHandle(), 0, 0, sl12::ResourceItemMesh::GetIndexStride());
+		pCmdList->GetLatestCommandList()->IASetIndexBuffer(&ibv);
+
+		auto&& submeshes = resMesh->GetSubmeshes();
+		for (auto submeshIndex : resInfo->xluSubmeshIndices)
+		{
+			auto&& submesh = submeshes[submeshIndex];
+			auto&& material = &resMesh->GetMaterials()[submesh.materialIndex];
+			sl12::u32 meshletCnt = (sl12::u32)submesh.meshlets.size();
+
+			// select pso.
+			sl12::GraphicsPipelineState* pso = nullptr;
+			if (material->cullMode == sl12::ResourceMeshMaterialCullMode::Back)
+			{
+				pso = &psoMesh_;
+			}
+			else
+			{
+				pso = &psoMeshDS_;
+			}
+
+			if (NowPSO != pso)
+			{
+				// set pipeline.
+				pCmdList->GetLatestCommandList()->SetPipelineState(pso->GetPSO());
+				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				NowPSO = pso;
+			}
+
+			auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+			auto nm_tex_view = GetTextureView(material->normalTex, pDevice_->GetDummyTextureView(sl12::DummyTex::FlatNormal));
+			auto orm_tex_view = GetTextureView(material->ormTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+			auto emm_tex_view = GetTextureView(material->emissiveTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
+
+			descSet.SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetPsSrv(1, nm_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetPsSrv(2, orm_tex_view->GetDescInfo().cpuHandle);
+			descSet.SetPsSrv(3, emm_tex_view->GetDescInfo().cpuHandle);
+
+			pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+			UINT StartIndexLocation = (UINT)(submesh.indexOffsetBytes / sl12::ResourceItemMesh::GetIndexStride());
+			int BaseVertexLocation = (int)(submesh.positionOffsetBytes / sl12::ResourceItemMesh::GetPositionStride());
+			for (auto&& meshlet : submesh.meshlets)
+			{
+				pCmdList->GetLatestCommandList()->DrawIndexedInstanced(
+					meshlet.indexCount, 1, StartIndexLocation + meshlet.indexOffset, BaseVertexLocation, 0);
+			}
+		}
+
+		meshIndex++;
+	}
+}
+
 //	EOF

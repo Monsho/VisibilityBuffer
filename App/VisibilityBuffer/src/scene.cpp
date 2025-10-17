@@ -616,6 +616,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<XluPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::Xlu] = renderGraph_->AddPass(sl12::RenderPassID("Xlu"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -705,7 +710,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		.AddChild(passNodes_[AppPassType::ShadowMap])
 		.AddChild(passNodes_[AppPassType::Lighting])
 		.AddChild(passNodes_[AppPassType::HiZ])
-		.AddChild(passNodes_[AppPassType::IndirectLight]);
+		.AddChild(passNodes_[AppPassType::IndirectLight])
+		.AddChild(passNodes_[AppPassType::Xlu]);
 	if (bEnableVRS)
 	{
 		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);
