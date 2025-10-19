@@ -978,14 +978,14 @@ void DebugPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	auto pSwapRes = pResManager->GetRenderGraphResource(kSwapchainID);
 	auto pSourceSRV = pResManager->CreateOrGetTextureView(pSourceRes);
 	auto pSwapRTV = pResManager->CreateOrGetRenderTargetView(pSwapRes);
-	
+
 	// set render targets.
 	auto&& rtv = pSwapRTV->GetDescInfo().cpuHandle;
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
-	
+
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;

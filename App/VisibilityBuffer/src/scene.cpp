@@ -717,7 +717,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
-	if (!(desc.debugMode == 0 || (desc.debugMode == 8 && !bEnableVRS)))
+	if (desc.debugMode != 0)
 	{
 		node = node.AddChild(passNodes_[AppPassType::Debug]);
 	}
@@ -791,13 +791,13 @@ void Scene::ExecuteRenderGraphCommand()
 void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
 {
 	const sl12::u32 kIrradianceWidth = 1024;
-	
+
 	// 初回のみ
 	if (irradianceMap_.IsValid())
 	{
 		return;
 	}
-	
+
 	auto hdriTex = hHDRI_.GetItem<sl12::ResourceItemTexture>();
 	sl12::u32 width = hdriTex->GetTexture().GetTextureDesc().width;
 	sl12::u32 height = hdriTex->GetTexture().GetTextureDesc().height;
@@ -806,7 +806,7 @@ void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
 	width = kIrradianceWidth;
 	height = (sl12::u32)((float)height / scale);
 	float mipLevel = std::log2f(scale);
-	
+
 	sl12::TextureDesc desc;
 	desc.Initialize2D(DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1, 1, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
 	irradianceMap_ = sl12::MakeUnique<sl12::Texture>(pDevice_);
