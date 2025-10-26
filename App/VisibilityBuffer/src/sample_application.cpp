@@ -23,7 +23,7 @@
 namespace
 {
 	static const float kFovY = 90.0f;
-	
+
 	static const char* kResourceDir = "resources";
 	static const char* kShaderDir = "VisibilityBuffer/shaders";
 	static const char* kShaderIncludeDir = "../SampleLib12/SampleLib12/shaders/include";
@@ -162,7 +162,7 @@ bool SampleApplication::Initialize()
 
 	// create scene meshes.
 	scene_->CreateSceneMeshes(meshType_);
-	
+
 	// create meshlet bounds buffers.
 	scene_->CreateMeshletBounds(&utilCmdList);
 
@@ -263,7 +263,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 	}
 	{
 		LightCB cbLight;
-		
+
 		cbLight.ambientIntensity = ambientIntensity_;
 
 		auto dir = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -453,7 +453,7 @@ bool SampleApplication::Execute()
 			{
 				if (ImGui::Checkbox("Mesh Shader for VisRender", &bEnableMeshShader_))
 				{}
-				
+
 				static const char* kVisToGBTypes[] = {
 					"Depth & Tile",
 					"Compute Pixel",
@@ -571,7 +571,7 @@ bool SampleApplication::Execute()
 				{
 					if (!mat.pResMaterial->baseColorTex.IsValid())
 						continue;
-					
+
 					auto TexBase = mat.pResMaterial->baseColorTex.GetItem<sl12::ResourceItemTextureBase>();
 					if (TexBase->IsSameSubType(sl12::ResourceItemStreamingTexture::kSubType))
 					{
@@ -658,10 +658,10 @@ bool SampleApplication::Execute()
 	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
-	
+
 	auto meshMan = renderSys_->GetMeshManager();
 	auto cbvMan = renderSys_->GetCbvManager();
-	
+
 	pTimestamp->Reset();
 	pTimestamp->Query(pFrameStartCmdList);
 	device_.LoadRenderCommands(pFrameStartCmdList);
@@ -690,7 +690,7 @@ bool SampleApplication::Execute()
 
 	// load render graph command.
 	scene_->LoadRenderGraphCommand();
-	
+
 	// draw GUI.
 	pTimestamp->Query(pFrameEndCmdList);
 	{
@@ -756,7 +756,7 @@ bool SampleApplication::Execute()
 		}
 
 	}
-	
+
 	// barrier swapchain.
 	pFrameEndCmdList->TransitionBarrier(device_.GetSwapchain().GetCurrentTexture(kSwapchainBufferOffset), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
@@ -771,6 +771,9 @@ bool SampleApplication::Execute()
 
 	// present swapchain.
 	device_.Present(1);
+
+	// execute queue commands.
+	device_.ExecuteQueueCommands();
 
 	// execute current frame render.
 	frameStartCmdlist_->Execute();
@@ -888,7 +891,7 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 
 	auto&& neededMiplevels = scene_->GetNeededMiplevels();
 	auto&& materials = scene_->GetMeshletResource()->GetWorldMaterials();
-	
+
 	// process needed levels.
 	if (!miplevels.empty())
 	{
@@ -896,7 +899,7 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 		for (auto&& s : neededMiplevels)
 		{
 			auto currLevel = materials[index].GetCurrentMiplevel();
-			
+
 			s.latestLevel = std::min(*p++, 0xffu);
 			sl12::u32 minL = std::min(s.latestLevel, s.minLevel);
 
@@ -927,7 +930,7 @@ void SampleApplication::ManageTextureStream(const std::vector<sl12::u32>& miplev
 			s.latestLevel = 0xff;
 			s.time = 0;
 		}
-		
+
 		// if 30 frames elapsed.
 		if (s.time >= 30)
 		{

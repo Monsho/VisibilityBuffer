@@ -648,7 +648,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bEnableVRS = desc.bUseVRS;
 
 	sl12::RenderGraph::Node node;
-	
+
 	renderGraph_->ClearAllGraphEdges();
 	// graphics queue.
 	// node = node.AddChild(passNodes_[AppPassType::PrefixSumTest]); // TEST: Prefux Sum Test Pass.
