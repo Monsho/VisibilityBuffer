@@ -41,6 +41,7 @@ enum class AppPassType
 	ReprojectVRS,
 	PrefixSumTest,
 	Xlu,
+	BuildBvh,
 	Debug,
 	Invalid
 };

@@ -658,6 +658,7 @@ bool SampleApplication::Execute()
 	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
+	scene_->GatherRenderCommands();
 
 	auto meshMan = renderSys_->GetMeshManager();
 	auto cbvMan = renderSys_->GetCbvManager();

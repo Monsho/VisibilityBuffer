@@ -1774,9 +1774,9 @@ MaterialComputeGBufferPass::MaterialComputeGBufferPass(sl12::Device* pDev, Rende
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
-		desc.pCS = pRenderSys->GetShader(ShaderName::MatGBStandardC);
+		desc.pCS = pRenderSys->GetShader(ShaderName::MatGBTriplanarC);
 
-		if (!psoStandard_->Initialize(pDevice_, desc))
+		if (!psoTriplanar_->Initialize(pDevice_, desc))
 		{
 			sl12::ConsolePrint("Error: failed to gbuffer standard pso.");
 		}

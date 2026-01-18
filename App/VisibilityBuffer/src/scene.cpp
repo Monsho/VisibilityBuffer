@@ -9,6 +9,7 @@
 #include "pass/utility_pass.h"
 #include "pass/indirect_light_pass.h"
 #include "pass/visibility_pass.h"
+#include "pass/raytracing_pass.h"
 
 #define NOMINMAX
 #include <windowsx.h>
@@ -17,6 +18,7 @@
 
 #define USE_IN_CPP
 #include "../shaders/cbuffer.hlsli"
+#include "pass/raytracing_pass.h"
 #include "pass/render_resource_settings.h"
 
 namespace
@@ -91,7 +93,7 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NONE;
 		envSampler_->Initialize(pDev, desc);
 	}
-	
+
 	// compile shaders.
 	std::vector<std::string> Args;
 	Args.push_back("-O3");
@@ -132,6 +134,19 @@ void RenderSystem::WaitLoadAndCompile()
 
 
 //----------------
+namespace
+{
+	sl12::CbvHandle CreateMeshBuffer(sl12::SceneMesh* pMesh, sl12::CbvManager* cbvMan)
+	{
+		MeshCB cbMesh;
+		cbMesh.mtxBoxTransform = pMesh->GetParentResource()->GetMtxBoxToLocal();
+		cbMesh.mtxLocalToWorld = pMesh->GetMtxLocalToWorld();
+		cbMesh.mtxPrevLocalToWorld = pMesh->GetMtxPrevLocalToWorld();
+		return cbvMan->GetTemporal(&cbMesh, sizeof(cbMesh));
+	}
+
+}
+
 //----
 Scene::Scene()
 {}
@@ -173,7 +188,9 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 	hHDRI_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/citrus_orchard_road_puresky_4k.exr");
 
 	meshletResource_ = sl12::MakeUnique<MeshletResource>(nullptr);
-	
+
+	sl12::MeshRenderCommand::SetCreateCbvFn(CreateMeshBuffer);
+
 	return true;
 }
 
@@ -187,6 +204,8 @@ void Scene::Finalize()
 	miplevelUAV_.Reset();
 	miplevelReadbacks_[0].Reset();
 	miplevelReadbacks_[1].Reset();
+
+	bvhManager_.Reset();
 }
 
 //----
@@ -199,6 +218,8 @@ void Scene::SetViewportResolution(sl12::u32 width, sl12::u32 height)
 //----
 bool Scene::CreateSceneMeshes(int meshType)
 {
+	sceneRoot_ = sl12::MakeUnique<sl12::SceneRoot>(pDevice_);
+	
 	if (meshType == 0)
 	{
 		static const int kMeshWidth = 32;
@@ -225,6 +246,7 @@ bool Scene::CreateSceneMeshes(int meshType)
 				mesh->SetMtxLocalToWorld(mat);
 
 				sceneMeshes_.push_back(mesh);
+				sceneRoot_->AttachNode(mesh);
 			}
 		}
 	}
@@ -242,6 +264,7 @@ bool Scene::CreateSceneMeshes(int meshType)
 			mesh->SetMtxLocalToWorld(mat);
 
 			sceneMeshes_.push_back(mesh);
+			sceneRoot_->AttachNode(mesh);
 		}
 		// sphere
 		{
@@ -255,6 +278,7 @@ bool Scene::CreateSceneMeshes(int meshType)
 			mesh->SetMtxLocalToWorld(mat);
 
 			sceneMeshes_.push_back(mesh);
+			sceneRoot_->AttachNode(mesh);
 		}
 	}
 	else if (meshType == 2)
@@ -271,6 +295,7 @@ bool Scene::CreateSceneMeshes(int meshType)
 			mesh->SetMtxLocalToWorld(mat);
 
 			sceneMeshes_.push_back(mesh);
+			sceneRoot_->AttachNode(mesh);
 		}
 		// curtain
 		{
@@ -284,6 +309,7 @@ bool Scene::CreateSceneMeshes(int meshType)
 			mesh->SetMtxLocalToWorld(mat);
 
 			sceneMeshes_.push_back(mesh);
+			sceneRoot_->AttachNode(mesh);
 		}
 	}
 	else if (meshType == 3)
@@ -300,7 +326,15 @@ bool Scene::CreateSceneMeshes(int meshType)
 			mesh->SetMtxLocalToWorld(mat);
 
 			sceneMeshes_.push_back(mesh);
+			sceneRoot_->AttachNode(mesh);
 		}
+	}
+
+	// create BVH manager.
+	bvhManager_ = sl12::MakeUnique<sl12::BvhManager>(pDevice_, pDevice_);
+	for (auto&& mesh : sceneMeshes_)
+	{
+		bvhManager_->AddGeometry(mesh->GetParentResource());
 	}
 
 	ComputeSceneAABB();
@@ -621,6 +655,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<BuildBvhPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::BuildBvh] = renderGraph_->AddPass(sl12::RenderPassID("BuildBvh"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -628,7 +667,7 @@ bool Scene::InitRenderPass()
 
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
-	
+
 	return true;
 }
 
@@ -723,10 +762,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	}
 
 	// compute queue.
+	node = sl12::RenderGraph::Node();
 	if (bEnableMeshletCulling)
 	{
-		node = sl12::RenderGraph::Node()
-			.AddChild(passNodes_[AppPassType::MeshletArgCopy])
+		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy])
 			.AddChild(passNodes_[AppPassType::MeshletCulling]);
 		if (bDirectGBufferRender)
 		{
@@ -737,6 +776,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			node = node.AddChild(passNodes_[AppPassType::VisibilityVs]);
 		}
 	}
+	node.AddChild(passNodes_[AppPassType::BuildBvh]);
+
 	{
 		// ssao.
 		node = sl12::RenderGraph::Node()
@@ -861,6 +902,20 @@ void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
 void Scene::CreateMeshletResource()
 {
 	meshletResource_->CreateResources(pDevice_, sceneMeshes_);
+}
+
+void Scene::GatherRenderCommands()
+{
+	sceneRoot_->GatherRenderCommands(pRenderSystem_->GetCbvManager(), sceneRenderCommands_);
+}
+
+void Scene::UpdateBVH(sl12::CommandList* pCmdList)
+{
+	bvhManager_->BuildGeometry(pCmdList);
+
+	sl12::RenderCommandsTempList tmpRenderCmds;
+	bvhScene_ = bvhManager_->BuildScene(pCmdList, sceneRenderCommands_, 1, tmpRenderCmds);
+	bvhManager_->CopyCompactionInfoOnGraphicsQueue(pCmdList);
 }
 
 

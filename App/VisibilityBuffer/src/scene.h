@@ -6,6 +6,7 @@
 
 #include "app_pass_base.h"
 #include "meshlet_resource.h"
+#include "sl12/bvh_manager.h"
 
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
@@ -220,6 +221,9 @@ public:
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 	void CreateIrradianceMap(sl12::CommandList* pCmdList);
 
+	void GatherRenderCommands();
+	void UpdateBVH(sl12::CommandList* pCmdList);
+
 	bool InitRenderPass();
 	void SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc);
 	void LoadRenderGraphCommand();
@@ -355,8 +359,10 @@ private:
 	std::map<sl12::u64, UniqueHandle<sl12::BufferView>>	meshletBoundsSRVs_;
 
 	// scene meshes.
+	UniqueHandle<sl12::SceneRoot>					sceneRoot_;
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
-	DirectX::XMFLOAT3		sceneAABBMax_, sceneAABBMin_;
+	DirectX::XMFLOAT3								sceneAABBMax_, sceneAABBMin_;
+	sl12::RenderCommandsList						sceneRenderCommands_;
 
 	// miplevel feedback resources.
 	UniqueHandle<sl12::Buffer>				miplevelBuffer_, miplevelCopySrc_;
@@ -376,6 +382,10 @@ private:
 	std::vector<std::unique_ptr<AppPassBase>>			passes_;
 	std::map<AppPassType, sl12::RenderGraph::Node>		passNodes_;
 	RenderPassSetupDesc									lastRenderPassDesc_;
+
+	// ray tracing.
+	UniqueHandle<sl12::BvhManager>			bvhManager_;
+	sl12::BvhScene*							bvhScene_ = nullptr;
 };	// class Scene
 
 //	EOF
