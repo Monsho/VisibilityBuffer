@@ -99,7 +99,7 @@ float3 Lighting(uint2 pixelPos, float depth)
 	float shadow = Shadow(shadowClipPos);
 
 	// apply light.
-	float3 viewDirInWS = cbScene.eyePosition.xyz - worldPos.xyz;
+	float3 viewDirInWS = normalize(cbScene.eyePosition.xyz - worldPos.xyz);
 	float3 diffuseColor = color.rgb * (1 - orm.b);
 	float3 specularColor = 0.04 * (1 - orm.b) + color.rgb * orm.b;
 	float3 directColor = BrdfGGX(diffuseColor, specularColor, roughness, normal, cbLight.directionalVec, viewDirInWS) * cbLight.directionalColor;

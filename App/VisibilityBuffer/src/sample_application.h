@@ -190,6 +190,11 @@ private:
 	float					vrsIntensityThreshold_ = 0.02f;
 	float					vrsDepthThreshold_ = 1.0f;
 
+	// raytracing parameters.
+	bool					bUseRaytracing_ = false;
+	int						raytracingTech_ = 0;
+	bool					bDebugDdgi_ = false;
+
 	// debug parameters.
 	int						displayMode_ = 0;
 	bool					bIsTexStreaming_ = true;
@@ -197,10 +202,10 @@ private:
 	float					totalTime_ = 0;
 	float					totalTimeSum_ = 0;
 	int						totalTimeSumCount_ = 0;
-	
+
 	int	displayWidth_, displayHeight_;
 	int meshType_;
-	sl12::u64	frameIndex_ = 0;
+	//sl12::u64	frameIndex_ = 0;
 
 	std::string				captureFileName_;
 };	// class SampleApplication

@@ -27,6 +27,8 @@ namespace
 	static const char* kResourceDir = "resources";
 	static const char* kShaderDir = "VisibilityBuffer/shaders";
 	static const char* kShaderIncludeDir = "../SampleLib12/SampleLib12/shaders/include";
+	static const char* kThirdPartyDir = "../SampleLib12/ThirdParty";
+	static const char* kRtxgiShaderDir = "../SampleLib12/ThirdParty/RTXGI-DDGI/rtxgi-sdk/shaders/ddgi";
 	static const char* kShaderPDBDir = "ShaderPDB/";
 
 	static const sl12::u32 kShadowMapSize = 1024;
@@ -91,6 +93,7 @@ bool SampleApplication::Initialize()
 	ShaderInitDesc shaderDesc{};
 	shaderDesc.baseDir = sl12::JoinPath(homeDir_, appShaderDir_);
 	shaderDesc.includeDirs.push_back(sl12::JoinPath(homeDir_, sysShaderInclDir_));
+	shaderDesc.includeDirs.push_back(sl12::JoinPath(homeDir_, kThirdPartyDir));
 	shaderDesc.pdbDir = sl12::JoinPath(homeDir_, kShaderPDBDir);
 	shaderDesc.pdbType = sl12::ShaderPDB::None;
 #if 1 // if 1, output shader debug files
@@ -163,6 +166,9 @@ bool SampleApplication::Initialize()
 	// create scene meshes.
 	scene_->CreateSceneMeshes(meshType_);
 
+	// create RTXGI component.
+	scene_->CreateRtxgiComponent(sl12::JoinPath(homeDir_, kRtxgiShaderDir));
+
 	// create meshlet bounds buffers.
 	scene_->CreateMeshletBounds(&utilCmdList);
 
@@ -222,7 +228,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToWorld, mtxClipToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxViewToWorld, mtxViewToWorld);
 		DirectX::XMStoreFloat4x4(&cbScene.mtxProjToView, mtxClipToView);
-		if (frameIndex_ == 0)
+		if (scene_->GetFrameIndex() == 0)
 		{
 			// first frame.
 			auto U = DirectX::XMMatrixIdentity();
@@ -248,8 +254,8 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbScene.invScreenSize.y = 1.0f / (float)displayHeight_;
 		cbScene.nearFar.x = Zn;
 		cbScene.nearFar.y = 0.0f;
-		cbScene.feedbackIndex.x = (frameIndex_ % 16) % 4;
-		cbScene.feedbackIndex.y = (frameIndex_ % 16) / 4;
+		cbScene.feedbackIndex.x = (scene_->GetFrameIndex() % 16) % 4;
+		cbScene.feedbackIndex.y = (scene_->GetFrameIndex() % 16) / 4;
 
 		OutCBs.hSceneCB = cbvMan->GetTemporal(&cbScene, sizeof(cbScene));
 
@@ -275,6 +281,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbLight.directionalColor.x = directionalColor_[0] * directionalIntensity_;
 		cbLight.directionalColor.y = directionalColor_[1] * directionalIntensity_;
 		cbLight.directionalColor.z = directionalColor_[2] * directionalIntensity_;
+		cbLight.indirectAmbient = (bUseRaytracing_ && raytracingTech_ == 0) ? 0.0f : 1.0f;
 
 		OutCBs.hLightCB = cbvMan->GetTemporal(&cbLight, sizeof(cbLight));
 
@@ -384,7 +391,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbAO.sliceCount = ssaoSliceCount_;
 		cbAO.stepCount = ssaoStepCount_;
 		cbAO.tangentBias = ssaoTangentBias_;
-		cbAO.temporalIndex = (sl12::u32)(frameIndex_ & 0xff);
+		cbAO.temporalIndex = (sl12::u32)(scene_->GetFrameIndex() & 0xff);
 		cbAO.maxPixelRadius = ssaoMaxPixel_;
 		cbAO.worldSpaceRadius = ssaoWorldRadius_;
 		cbAO.baseVecType = ssaoBaseVecType_;
@@ -548,6 +555,20 @@ bool SampleApplication::Execute()
 			}
 		}
 
+		// raytracing settings.
+		if (ImGui::CollapsingHeader("RayTracing", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Checkbox("Use RayTracing", &bUseRaytracing_);
+			if (bUseRaytracing_)
+			{
+				static const char* kRayTracingModes[] = {
+					"DDGI",
+				};
+				ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes));
+				ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);
+			}
+		}
+
 		// debug settings.
 		if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
 		{
@@ -656,6 +677,9 @@ bool SampleApplication::Execute()
 	setupDesc.bUseVRS = bUseVRS_;
 	setupDesc.vrsIntensityThreshold = vrsIntensityThreshold_;
 	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
+	setupDesc.bUseRaytracing = bUseRaytracing_;
+	setupDesc.raytracingTech = raytracingTech_;
+	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();
@@ -781,7 +805,7 @@ bool SampleApplication::Execute()
 	scene_->ExecuteRenderGraphCommand();
 	frameEndCmdList_->Execute();
 
-	frameIndex_++;
+	scene_->UpdateFrameIndex();
 
 	TempCB.Clear();
 

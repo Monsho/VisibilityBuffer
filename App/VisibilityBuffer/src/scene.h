@@ -6,7 +6,6 @@
 
 #include "app_pass_base.h"
 #include "meshlet_resource.h"
-#include "sl12/bvh_manager.h"
 
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
@@ -19,6 +18,10 @@
 #include "sl12/render_graph_deprecated.h"
 #include "sl12/indirect_executer.h"
 #include "sl12/sampler.h"
+#include "sl12/bvh_manager.h"
+#include "sl12/rtxgi_component.h"
+#include "rtxgi/ddgi/DDGIVolume.h"
+#include "rtxgi/ddgi/gfx/DDGIVolume_D3D12.h"
 
 #include "sl12/resource_streaming_texture.h"
 #include "sl12/scene_mesh.h"
@@ -185,6 +188,9 @@ struct RenderPassSetupDesc
 	bool bUseVRS = false;
 	float vrsIntensityThreshold = 1.0f;
 	float vrsDepthThreshold = 1.0f;
+	bool bUseRaytracing = false;
+	int raytracingTech = 0;
+	bool bDebugDdgi = false;
 	int debugMode = 0;
 	
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -197,6 +203,9 @@ struct RenderPassSetupDesc
 			&& (bUseVRS == rhs.bUseVRS)
 			&& (vrsIntensityThreshold == rhs.vrsIntensityThreshold)
 			&& (vrsDepthThreshold == rhs.vrsDepthThreshold)
+			&& (bUseRaytracing == rhs.bUseRaytracing)
+			&& (raytracingTech == rhs.raytracingTech)
+			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
@@ -209,6 +218,28 @@ struct RenderPassSetupDesc
 class Scene
 {
 public:
+	struct RTTableSource
+	{
+		const sl12::SceneMesh* pSceneMesh;
+		const sl12::ResourceItemMesh* pResMesh;
+
+		RTTableSource()
+			: pSceneMesh(nullptr), pResMesh(nullptr)
+		{}
+		RTTableSource(const sl12::SceneMesh* s, const sl12::ResourceItemMesh* r)
+			: pSceneMesh(s), pResMesh(r)
+		{}
+		bool operator==(const RTTableSource& rhs) const
+		{
+			return pSceneMesh == rhs.pSceneMesh && pResMesh == rhs.pResMesh;
+		}
+		bool operator!=(const RTTableSource& rhs) const
+		{
+			return !operator==(rhs);
+		}
+	};
+
+public:
 	Scene();
 	~Scene();
 
@@ -220,9 +251,12 @@ public:
 	void CreateMiplevelFeedback();
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 	void CreateIrradianceMap(sl12::CommandList* pCmdList);
+	bool CreateRtxgiComponent(const std::string& rtxgiShaderDir);
 
 	void GatherRenderCommands();
 	void UpdateBVH(sl12::CommandList* pCmdList);
+	void RequestClearProbes();
+	void ClearProbes(sl12::CommandList* pCmdList);
 
 	bool InitRenderPass();
 	void SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc);
@@ -258,6 +292,10 @@ public:
 	sl12::ResourceHandle GetSphereMeshHandle()
 	{
 		return hSphereMesh_;
+	}
+	sl12::ResourceHandle GetDebugSphereMeshHandle()
+	{
+		return hDebugSphereMesh_;
 	}
 	sl12::ResourceHandle GetDetailTexHandle()
 	{
@@ -325,6 +363,36 @@ public:
 		return &irradianceMapSRV_;
 	}
 
+	sl12::BvhScene* GetBvhScene()
+	{
+		return bvhScene_;
+	}
+	sl12::RtxgiComponent* GetRtxgiComponent()
+	{
+		return &rtxgiComponent_;
+	}
+	bool IsRTTableDirty() const
+	{
+		return bRTTableDirty_;
+	}
+	const std::vector<RTTableSource>& GetRTTableSources() const
+	{
+		return rtTableSources_;
+	}
+	const std::map<const sl12::ResourceItemMesh*, std::vector<sl12::CbvHandle>>& GetMeshOffsetCBs() const
+	{
+		return rtMeshOffsetCBs_;
+	}
+
+	sl12::u64 GetFrameIndex() const
+	{
+		return frameIndex_;
+	}
+	void UpdateFrameIndex()
+	{
+		frameIndex_++;
+	}
+
 private:
 	void ComputeSceneAABB();
 	void SetupRenderPassGraph(const RenderPassSetupDesc& desc);
@@ -343,13 +411,14 @@ private:
 	sl12::u32		screenWidth_, screenHeight_;
 
 	UniqueHandle<MeshletResource>	meshletResource_;
-	
+
 	// resource handles.
 	sl12::ResourceHandle	hSuzanneMesh_;
 	sl12::ResourceHandle	hSponzaMesh_;
 	sl12::ResourceHandle	hCurtainMesh_;
 	sl12::ResourceHandle	hSphereMesh_;
 	sl12::ResourceHandle	hBistroMesh_;
+	sl12::ResourceHandle	hDebugSphereMesh_;
 	sl12::ResourceHandle	hDetailTex_;
 	sl12::ResourceHandle	hDotTex_;
 	sl12::ResourceHandle	hHDRI_;
@@ -385,7 +454,14 @@ private:
 
 	// ray tracing.
 	UniqueHandle<sl12::BvhManager>			bvhManager_;
+	UniqueHandle<sl12::RtxgiComponent>		rtxgiComponent_;
 	sl12::BvhScene*							bvhScene_ = nullptr;
+	std::vector<RTTableSource>				rtTableSources_;
+	std::map<const sl12::ResourceItemMesh*, std::vector<sl12::CbvHandle>>	rtMeshOffsetCBs_;
+	bool									bRTTableDirty_ = false;
+	bool									bResetProbes_ = false;
+
+	sl12::u64		frameIndex_ = 0;
 };	// class Scene
 
 //	EOF

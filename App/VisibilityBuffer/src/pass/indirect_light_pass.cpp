@@ -417,7 +417,7 @@ IndirectLightPass::IndirectLightPass(sl12::Device* pDev, RenderSystem* pRenderSy
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::IndirectC));
 

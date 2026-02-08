@@ -183,6 +183,7 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 	{
 		hBistroMesh_ = resLoader->LoadRequest<sl12::ResourceItemMesh>("mesh/Bistro/BistroExterior.rmesh");
 	}
+	hDebugSphereMesh_ = resLoader->LoadRequest<sl12::ResourceItemMesh>("mesh/sphere/sphere.rmesh");
 	hDetailTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/detail_normal.dds");
 	hDotTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
 	hHDRI_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/citrus_orchard_road_puresky_4k.exr");
@@ -206,6 +207,7 @@ void Scene::Finalize()
 	miplevelReadbacks_[1].Reset();
 
 	bvhManager_.Reset();
+	rtxgiComponent_.Reset();
 }
 
 //----
@@ -219,7 +221,7 @@ void Scene::SetViewportResolution(sl12::u32 width, sl12::u32 height)
 bool Scene::CreateSceneMeshes(int meshType)
 {
 	sceneRoot_ = sl12::MakeUnique<sl12::SceneRoot>(pDevice_);
-	
+
 	if (meshType == 0)
 	{
 		static const int kMeshWidth = 32;
@@ -660,8 +662,38 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<TestRayTracingPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::TestRayTracing] = renderGraph_->AddPass(sl12::RenderPassID("TestRaytracing"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<ReadyRtxgiPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::ReadyRtxgi] = renderGraph_->AddPass(sl12::RenderPassID("ReadyRtxgi"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<ProbeTracePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::ProbeTrace] = renderGraph_->AddPass(sl12::RenderPassID("ProbeTrace"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<UpdateRtxgiPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::UpdateRtxgi] = renderGraph_->AddPass(sl12::RenderPassID("UpdateRtxgi"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<RaytracingGIPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::RaytracingGI] = renderGraph_->AddPass(sl12::RenderPassID("RaytracingGI"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<DebugDdgiPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::DebugDDGI] = renderGraph_->AddPass(sl12::RenderPassID("DebugDDGI"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
 
@@ -685,6 +717,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || !desc.bUseMeshShader;
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
 	bool bEnableVRS = desc.bUseVRS;
+	bool bEnableRaytracing = desc.bUseRaytracing;
+	bool bEnableDDGI = bEnableRaytracing && desc.raytracingTech == 0;
 
 	sl12::RenderGraph::Node node;
 
@@ -695,7 +729,13 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
 	}
+
 	node = node.AddChild(passNodes_[AppPassType::ClearMiplevel]);
+	if (bEnableDDGI)
+	{
+		node = node.AddChild(passNodes_[AppPassType::ReadyRtxgi]);
+	}
+
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
@@ -748,12 +788,22 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	node = node.AddChild(passNodes_[AppPassType::FeedbackMiplevel])
 		.AddChild(passNodes_[AppPassType::ShadowMap])
 		.AddChild(passNodes_[AppPassType::Lighting])
-		.AddChild(passNodes_[AppPassType::HiZ])
-		.AddChild(passNodes_[AppPassType::IndirectLight])
+		.AddChild(passNodes_[AppPassType::HiZ]);
+	if (bEnableDDGI)
+	{
+		node = node.AddChild(passNodes_[AppPassType::UpdateRtxgi])
+			.AddChild(passNodes_[AppPassType::Denoise])
+			.AddChild(passNodes_[AppPassType::RaytracingGI]);
+	}
+	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
 	if (bEnableVRS)
 	{
 		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);
+	}
+	if (bEnableDDGI && desc.bDebugDdgi)
+	{
+		node = node.AddChild(passNodes_[AppPassType::DebugDDGI]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
 	if (desc.debugMode != 0)
@@ -776,7 +826,21 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			node = node.AddChild(passNodes_[AppPassType::VisibilityVs]);
 		}
 	}
-	node.AddChild(passNodes_[AppPassType::BuildBvh]);
+	if (bEnableRaytracing)
+	{
+		// Raytracing
+		node = sl12::RenderGraph::Node();
+		if (bEnableDDGI)
+		{
+			node = node.AddChild(passNodes_[AppPassType::ReadyRtxgi]);
+		}
+		node = node.AddChild(passNodes_[AppPassType::BuildBvh]);
+		if (bEnableDDGI)
+		{
+			node = node.AddChild(passNodes_[AppPassType::ProbeTrace])
+				.AddChild(passNodes_[AppPassType::UpdateRtxgi]);
+		}
+	}
 
 	{
 		// ssao.
@@ -916,6 +980,119 @@ void Scene::UpdateBVH(sl12::CommandList* pCmdList)
 	sl12::RenderCommandsTempList tmpRenderCmds;
 	bvhScene_ = bvhManager_->BuildScene(pCmdList, sceneRenderCommands_, 1, tmpRenderCmds);
 	bvhManager_->CopyCompactionInfoOnGraphicsQueue(pCmdList);
+
+	// gather mesh and resource.
+	std::vector<RTTableSource> tableSource;
+	for (auto&& cmd : tmpRenderCmds)
+	{
+		if (cmd->GetType() == sl12::RenderCommandType::Mesh)
+		{
+			// count materials.
+			auto mcmd = static_cast<sl12::MeshRenderCommand*>(cmd);
+			auto pSceneMesh = mcmd->GetParentMesh();
+			auto pMeshRes = pSceneMesh->GetParentResource();
+			tableSource.push_back(RTTableSource(pSceneMesh, pMeshRes));
+		}
+	}
+
+	// if not same table resources, recreate shader table.
+	if (tableSource.size() == rtTableSources_.size())
+	{
+		bool bSame = true;
+		for (size_t i = 0; i < rtTableSources_.size(); i++)
+		{
+			if (tableSource[i] != rtTableSources_[i])
+			{
+				bSame = false;
+				break;
+			}
+		}
+		if (bSame)
+		{
+			bRTTableDirty_ = false;
+			return;
+		}
+	}
+	rtTableSources_ = tableSource;
+	bRTTableDirty_ = true;
+
+	// create CBs.
+	rtMeshOffsetCBs_.clear();
+	auto cbvMan = pRenderSystem_->GetCbvManager();
+	sl12::u32 totalMaterialCount = 0;
+	for (auto mesh : tableSource)
+	{
+		// count materials.
+		auto res = mesh.pResMesh;
+		totalMaterialCount += (sl12::u32)res->GetSubmeshes().size();
+
+		// create offset cbv.
+		if (rtMeshOffsetCBs_.find(res) == rtMeshOffsetCBs_.end())
+		{
+			rtMeshOffsetCBs_[res].resize(res->GetSubmeshes().size());
+
+			auto&& v = rtMeshOffsetCBs_[res];
+			int idx = 0;
+			for (auto&& submesh : res->GetSubmeshes())
+			{
+				SubmeshOffsetCB cb;
+				cb.position = (UINT)(res->GetPositionHandle().offset + submesh.positionOffsetBytes);
+				cb.normal = (UINT)(res->GetNormalHandle().offset + submesh.normalOffsetBytes);
+				cb.tangent = (UINT)(res->GetTangentHandle().offset + submesh.tangentOffsetBytes);
+				cb.texcoord = (UINT)(res->GetTexcoordHandle().offset + submesh.texcoordOffsetBytes);
+				cb.index = (UINT)(res->GetIndexHandle().offset + submesh.indexOffsetBytes);
+
+				auto h = cbvMan->GetResident(sizeof(cb));
+				cbvMan->RequestResidentCopy(h, &cb, sizeof(cb));
+				v[idx] = std::move(h);
+				idx++;
+			}
+		}
+	}
+	cbvMan->ExecuteCopy(pCmdList, false);
+}
+
+bool Scene::CreateRtxgiComponent(const std::string& rtxgiShaderDir)
+{
+	// initialize.
+	rtxgiComponent_ = sl12::MakeUnique<sl12::RtxgiComponent>(nullptr, pDevice_, rtxgiShaderDir);
+
+	const float kProbeSpace = 200.0f;
+	DirectX::XMVECTOR aabbMax = DirectX::XMLoadFloat3(&sceneAABBMax_), aabbMin = DirectX::XMLoadFloat3(&sceneAABBMin_);
+	DirectX::XMVECTOR origin = DirectX::XMVectorScale(DirectX::XMVectorAdd(aabbMin, aabbMax), 0.5f);
+	DirectX::XMFLOAT3 size;
+	DirectX::XMStoreFloat3(&size, DirectX::XMVectorSubtract(aabbMax, aabbMin));
+
+	sl12::RtxgiVolumeDesc volumeDescs[1];
+	volumeDescs[0] = sl12::RtxgiVolumeDesc();
+	volumeDescs[0].name = "MainVolume";
+	DirectX::XMStoreFloat3(&volumeDescs[0].origin, origin);
+	volumeDescs[0].probeSpacing = DirectX::XMFLOAT3(kProbeSpace, kProbeSpace, kProbeSpace);
+	volumeDescs[0].probeCount = DirectX::XMINT3((int)std::ceilf(size.x / kProbeSpace), (int)std::ceilf(size.y / kProbeSpace), (int)std::ceilf(size.z / kProbeSpace));
+	volumeDescs[0].maxRayDistance = 5000.0f;
+	volumeDescs[0].numRays = 288;
+	if (!rtxgiComponent_->Initialize(pRenderSystem_->GetShaderManager(), volumeDescs, 1))
+	{
+		return false;
+	}
+
+	RequestClearProbes();
+
+	return true;
+}
+
+void Scene::RequestClearProbes()
+{
+	bResetProbes_ = true;
+}
+
+void Scene::ClearProbes(sl12::CommandList* pCmdList)
+{
+	if (bResetProbes_)
+	{
+		rtxgiComponent_->ClearProbes(pCmdList);
+		bResetProbes_ = false;
+	}
 }
 
 

@@ -35,7 +35,7 @@ struct LightCB
 	float3		directionalVec;
 	float		ambientIntensity;
 	float3		directionalColor;
-	int			pad;
+	float		indirectAmbient;
 };
 
 struct ShadowCB
@@ -169,6 +169,15 @@ struct MaterialData
 	uint	emissiveTexIndex;
 	uint	shaderIndex;
 	uint	pad[3];
+};
+
+struct SubmeshOffsetCB
+{
+	uint	position;
+	uint	normal;
+	uint	tangent;
+	uint	texcoord;
+	uint	index;
 };
 
 #define SHADOW_TYPE 0

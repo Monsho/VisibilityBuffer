@@ -30,9 +30,9 @@ float3 IndirectLightingOnly(uint2 pixelPos)
 	float3 gi = texGI[pixelPos];
 
 	// apply light.
-	float3 ambient = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(normal), 0).rgb * cbLight.ambientIntensity;
+	float3 ambient = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(normal), 0).rgb * cbLight.ambientIntensity * cbLight.indirectAmbient;
 
-	return (ambient * ao + gi);
+	return (ambient + gi) * ao;
 }
 
 float3 IndirectLighting(uint2 pixelPos)

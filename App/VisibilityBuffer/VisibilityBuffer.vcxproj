@@ -103,6 +103,12 @@
     <None Include="shaders\debug.p.hlsl" />
     <None Include="shaders\mesh_xlu.p.hlsl" />
     <None Include="shaders\mesh_xlu.vv.hlsl" />
+    <None Include="shaders\rt_material.lib.hlsl" />
+    <None Include="shaders\rt_test.lib.hlsl" />
+    <None Include="shaders\rt_probe_trace.lib.hlsl" />
+    <None Include="shaders\apply_ddgi.c.hlsl" />
+    <None Include="shaders\ddgi_debug.p.hlsl" />
+    <None Include="shaders\ddgi_debug.vv.hlsl" />
     <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\raytracing_pass.cpp" />
@@ -158,6 +164,7 @@
     <None Include="shaders\visibility_mesh_pixel_shader.hlsli" />
     <None Include="shaders\vrs.hlsli" />
     <None Include="shaders\mesh.p.hlsli" />
+    <None Include="shaders\payload.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
     <ClInclude Include="src\meshlet_resource.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />

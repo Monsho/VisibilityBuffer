@@ -5,7 +5,7 @@
   <PropertyGroup />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)\..\..\SampleLib12\ThirdParty\RTXGI\rtxgi-sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)\..\..\SampleLib12\ThirdParty\RTXGI-DDGI\rtxgi-sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RTXGI_COORDINATE_SYSTEM=2;RTXGI_GFX_NAME_OBJECTS;RTXGI_DDGI_RESOURCE_MANAGEMENT=0;RTXGI_DDGI_USE_SHADER_CONFIG_FILE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>

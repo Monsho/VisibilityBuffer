@@ -42,6 +42,12 @@ enum class AppPassType
 	PrefixSumTest,
 	Xlu,
 	BuildBvh,
+	ReadyRtxgi,
+	ProbeTrace,
+	UpdateRtxgi,
+	RaytracingGI,
+	DebugDDGI,
+	TestRayTracing,
 	Debug,
 	Invalid
 };

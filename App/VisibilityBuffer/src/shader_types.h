@@ -68,7 +68,13 @@ enum ShaderName
 	MakeIrradianceC,
 	MeshXluVV,
 	MeshXluP,
+	RTTestLib,
+	RTProbeTraceLib,
+	RTMaterialLib,
+	ApplyDDGI,
 	DebugP,
+	DDGIDebugVV,
+	DDGIDebugP,
 
 	MAX
 };
@@ -140,7 +146,13 @@ static const char* kShaderFileAndEntry[] = {
 	"make_irradiance.c.hlsl",			"main",
 	"mesh_xlu.vv.hlsl",					"main",
 	"mesh_xlu.p.hlsl",					"main",
+	"rt_test.lib.hlsl",					"main",
+	"rt_probe_trace.lib.hlsl",			"main",
+	"rt_material.lib.hlsl",				"main",
+	"apply_ddgi.c.hlsl",				"main",
 	"debug.p.hlsl",						"main",
+	"ddgi_debug.vv.hlsl",				"main",
+	"ddgi_debug.p.hlsl",				"main",
 };
 
 //	EOF

@@ -15,10 +15,15 @@ void DecodeVisibility(in uint Visibility, out uint DrawCallIndex, out uint PrimI
 	PrimID = Visibility & 0xff;
 }
 
+uint3 GetVertexIndices(in ByteAddressBuffer rIndexBuffer, in uint indexOffset, in uint triIndex)
+{
+	uint address = indexOffset + triIndex * 3 * 4;
+	return rIndexBuffer.Load3(address);
+}
+
 uint3 GetVertexIndices(in ByteAddressBuffer rIndexBuffer, in MeshletData mlData, in uint triIndex)
 {
-	uint address = mlData.indexOffset + triIndex * 3 * 4;
-	return rIndexBuffer.Load3(address);
+	return GetVertexIndices(rIndexBuffer, mlData.indexOffset, triIndex);
 }
 
 float SNormToFloat(int v, float scale)
@@ -39,10 +44,10 @@ float4 SNorm8ToFloat32_Vector(uint v)
 	return ret;
 }
 
-float3 GetVertexPosition(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
+float3 GetVertexPosition(in ByteAddressBuffer rVertexBuffer, in uint posOffset, in uint index)
 {
 	const float kScale = 1.0 / 32767.0;
-	uint address = smData.posOffset + index * 8;
+	uint address = posOffset + index * 8;
 	uint2 up = rVertexBuffer.Load2(address);
 	float3 ret = float3(
 		SNormToFloat(asint(up.x << 16) >> 16, kScale),
@@ -52,29 +57,49 @@ float3 GetVertexPosition(in ByteAddressBuffer rVertexBuffer, in SubmeshData smDa
 	return ret;
 }
 
-float3 GetVertexNormal(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
+float3 GetVertexPosition(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.normalOffset + index * 4;
+	return GetVertexPosition(rVertexBuffer, smData.posOffset, index);
+}
+
+float3 GetVertexNormal(in ByteAddressBuffer rVertexBuffer, in uint normalOffset, in uint index)
+{
+	uint address = normalOffset + index * 4;
 	uint up = rVertexBuffer.Load(address);
 	return SNorm8ToFloat32_Vector(up).xyz;
 }
 
-float4 GetVertexTangent(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
+float3 GetVertexNormal(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.tangentOffset + index * 4;
+	return GetVertexNormal(rVertexBuffer, smData.normalOffset, index);
+}
+
+float4 GetVertexTangent(in ByteAddressBuffer rVertexBuffer, in uint tangentOffset, in uint index)
+{
+	uint address = tangentOffset + index * 4;
 	uint up = rVertexBuffer.Load(address);
 	return SNorm8ToFloat32_Vector(up);
 }
 
-float2 GetVertexTexcoord(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
+float4 GetVertexTangent(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
 {
-	uint address = smData.uvOffset + index * 4;
+	return GetVertexTangent(rVertexBuffer, smData.tangentOffset, index);
+}
+
+float2 GetVertexTexcoord(in ByteAddressBuffer rVertexBuffer, in uint uvOffset, in uint index)
+{
+	uint address = uvOffset + index * 4;
 	uint up = rVertexBuffer.Load(address);
 	float2 ret = float2(
 		f16tof32(up),
 		f16tof32(up >> 16)
 		);
 	return ret;
+}
+
+float2 GetVertexTexcoord(in ByteAddressBuffer rVertexBuffer, in SubmeshData smData, in uint index)
+{
+	return GetVertexTexcoord(rVertexBuffer, smData.uvOffset, index);
 }
 
 // perspective correct attribute interpolation using partial derivatives.
