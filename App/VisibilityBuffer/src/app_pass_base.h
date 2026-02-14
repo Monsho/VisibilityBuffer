@@ -12,6 +12,7 @@ enum class AppPassType
 	FeedbackMiplevel,
 	DepthPre,
 	GBuffer,
+	MotionVector,
 	VisibilityVs,
 	VisibilityMs1st,
 	VisibilityMs2nd,

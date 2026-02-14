@@ -105,7 +105,6 @@ void ProbeTraceRGS()
 		shadowRay.TMax = volume.probeMaxRayDistance;
 
 		MaterialPayload shadowPayload = (MaterialPayload)0;
-		shadowPayload.hitT = 100.0;
 		TraceRay(TLAS, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER, ~0, 0, 1, 0, shadowRay, shadowPayload);
 		ShadowFactor = shadowPayload.hitT < 0.0 ? 1.0 : 0.0;
 	}

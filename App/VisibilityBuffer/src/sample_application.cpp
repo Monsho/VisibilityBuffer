@@ -581,6 +581,7 @@ bool SampleApplication::Execute()
 				"AO",
 				"GI",
 				"Indirect Light",
+				"Motion Vector",
 				"VRS",
 			};
 			ImGui::Combo("Display Mode", &displayMode_, kDisplayModes, ARRAYSIZE(kDisplayModes));

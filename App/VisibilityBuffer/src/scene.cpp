@@ -529,6 +529,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<MotionVectorPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MotionVector] = renderGraph_->AddPass(kMotionVectorPass, pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<ShadowMapPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::ShadowMap] = renderGraph_->AddPass(kShadowMapPass, pass.get());
 		passes_.push_back(std::move(pass));
@@ -739,7 +744,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	if (bDirectGBufferRender)
 	{
 	 	// direct gbuffer redering.
-		node = node.AddChild(passNodes_[AppPassType::DepthPre]).AddChild(passNodes_[AppPassType::GBuffer]);
+		node = node.AddChild(passNodes_[AppPassType::DepthPre])
+			.AddChild(passNodes_[AppPassType::GBuffer]);
 	}
 	else
 	{
@@ -786,6 +792,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		}
 	}
 	node = node.AddChild(passNodes_[AppPassType::FeedbackMiplevel])
+		.AddChild(passNodes_[AppPassType::MotionVector])
 		.AddChild(passNodes_[AppPassType::ShadowMap])
 		.AddChild(passNodes_[AppPassType::Lighting])
 		.AddChild(passNodes_[AppPassType::HiZ]);

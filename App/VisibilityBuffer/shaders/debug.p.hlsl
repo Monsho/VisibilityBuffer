@@ -31,7 +31,7 @@ PSOutput main(PSInput In)
 		color = texSource.SampleLevel(samLinear, In.uv, 0).bbb; break;
 	case 5: // AO
 		color = texSource.SampleLevel(samLinear, In.uv, 0).xxx; break;
-	case 8: // VRS
+	case 9: // VRS
 		{
 			int vrs = texVRS.SampleLevel(samLinear, In.uv, 0);
 			if (vrs == VRS_1x2)

@@ -837,6 +837,78 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 
 
 //----------------
+MotionVectorPass::MotionVectorPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	// init root signature.
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::MotionVectorC));
+
+	// init pipeline state.
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::MotionVectorC);
+
+		if (!pso_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init motion vector pso.");
+		}
+	}
+}
+
+MotionVectorPass::~MotionVectorPass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> MotionVectorPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> MotionVectorPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource mv(kMotionVectorID, sl12::TransientState::UnorderedAccess);
+	mv.desc.bIsTexture = true;
+	mv.desc.textureDesc.Initialize2D(kMotionVectorFormat, pScene_->GetScreenWidth(), pScene_->GetScreenHeight(), 1, 1, 0);
+	ret.push_back(mv);
+
+	return ret;
+}
+
+void MotionVectorPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "MotionVectorPass");
+
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pMvRes = pResManager->GetRenderGraphResource(kMotionVectorID);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pMvUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMvRes);
+
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pMvUAV->GetDescInfo().cpuHandle);
+
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
+	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
+
+//----------------
 XluPass::XluPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
@@ -894,7 +966,7 @@ XluPass::XluPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 		}
 
 		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
-		
+
 		if (!psoMeshDS_->Initialize(pDev, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init mesh xlu doublesided pso.");
@@ -933,7 +1005,7 @@ std::vector<sl12::TransientResource> XluPass::GetOutputResources(const sl12::Ren
 
 	ret.push_back(accum);
 	ret.push_back(depth);
-	
+
 	return ret;
 }
 
@@ -945,7 +1017,7 @@ void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
 	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
-	
+
 	// set render targets.
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
 		pAccumRTV->GetDescInfo().cpuHandle,
@@ -970,7 +1042,7 @@ void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
-	
+
 	// set descriptors.
 	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 	sl12::DescriptorSet descSet;
@@ -993,7 +1065,7 @@ void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	{
 		auto resMesh = instance.meshInstance.lock()->GetParentResource();
 		auto resInfo = pMR->GetMeshResInfo(resMesh);
-		
+
 		// set mesh constant.
 		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 

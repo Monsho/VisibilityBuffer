@@ -875,13 +875,32 @@ void PrefixSumTestPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 }
 
 
+namespace
+{
+	// debug pass input resource IDs
+	static const sl12::TransientResourceID kInputResIDs[] = {
+		kLightAccumID,
+		kGBufferAID,
+		kGBufferBID,
+		kGBufferBID,
+		kGBufferCID,
+		kDenoiseAOID,
+		kDenoiseGIID,
+		kLightAccumID,
+		kMotionVectorID,
+		kCurrVrsID,
+	};
+
+	static const int kDisplayVRSMode = 9;
+}
+
 //----------------
 DebugPass::DebugPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::FullscreenVV), pRenderSys->GetShader(ShaderName::DebugP), nullptr, nullptr, nullptr);
 
@@ -925,27 +944,16 @@ DebugPass::~DebugPass()
 
 std::vector<sl12::TransientResource> DebugPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
-	const sl12::TransientResourceID kIDs[] = {
-		kLightAccumID,
-		kGBufferAID,
-		kGBufferBID,
-		kGBufferBID,
-		kGBufferCID,
-		kDenoiseAOID,
-		kDenoiseGIID,
-		kLightAccumID,
-		kCurrVrsID,
-	};
-	
 	std::vector<sl12::TransientResource> ret;
-	if (debugMode_ == 8)
+	if (debugMode_ == kDisplayVRSMode)
 	{
+		// VRS
 		ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
 		ret.push_back(sl12::TransientResource(kCurrVrsID, sl12::TransientState::ShaderResource));
 	}
 	else
 	{
-		ret.push_back(sl12::TransientResource(kIDs[debugMode_], sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kInputResIDs[debugMode_], sl12::TransientState::ShaderResource));
 	}
 	return ret;
 }
@@ -961,19 +969,7 @@ void DebugPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 {
 	GPU_MARKER(pCmdList, 1, "DebugPass");
 
-	const sl12::TransientResourceID kIDs[] = {
-		kLightAccumID,
-		kGBufferAID,
-		kGBufferBID,
-		kGBufferBID,
-		kGBufferCID,
-		kDenoiseAOID,
-		kDenoiseGIID,
-		kLightAccumID,
-		kCurrVrsID,
-	};
-
-	auto pSourceRes = pResManager->GetRenderGraphResource(debugMode_ != 8 ? kIDs[debugMode_] : kLightAccumID);
+	auto pSourceRes = pResManager->GetRenderGraphResource(debugMode_ != kDisplayVRSMode ? kInputResIDs[debugMode_] : kLightAccumID);
 	auto pVrsRes = pResManager->GetRenderGraphResource(kCurrVrsID);
 	auto pSwapRes = pResManager->GetRenderGraphResource(kSwapchainID);
 	auto pSourceSRV = pResManager->CreateOrGetTextureView(pSourceRes);

@@ -487,7 +487,7 @@ void IndirectLightPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pAoSRV = pResManager->CreateOrGetTextureView(pAoRes);
 	auto pGiSRV = pResManager->CreateOrGetTextureView(pGiRes);
 	auto pAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pAccumRes);
-	
+
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
