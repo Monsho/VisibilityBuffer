@@ -1,3 +1,4 @@
+#include "common.hlsli"
 #include "cbuffer.hlsli"
 
 struct Reservoir
