@@ -11,6 +11,7 @@
 // global
 ConstantBuffer<SceneCB>				cbScene			: REG(b0);
 ConstantBuffer<LightCB>				cbLight			: REG(b1);
+ConstantBuffer<RestirCB>			cbRestir		: REG(b2);
 
 RaytracingAccelerationStructure		TLAS			: REG(t0);
 Texture2D<float4>					texGBufferC		: REG(t1);
@@ -21,7 +22,6 @@ Texture2D<float>					texPrevDepth	: REG(t5);
 StructuredBuffer<Reservoir>			prevReservoirs	: REG(t6);
 
 RWStructuredBuffer<Reservoir>		rwReservoirs	: REG(u0);
-RWTexture2D<float3>				rwGi			: REG(u1);
 
 SamplerState	samLinear			: REG(s0);
 
@@ -96,7 +96,7 @@ void InitialSampleRGS()
 		float3 DiffuseResult = DiffuseLambert(DiffuseColor);
 		float3 LightResult = DiffuseResult * NoL * cbLight.directionalColor * ShadowFactor + matParam.emissive;
 
-		reservoir.sampleRadiance = matParam.emissive + LightResult;
+		reservoir.sampleRadiance = LightResult;
 		reservoir.samplePosition = ray.Origin + ray.Direction * payload.hitT;
 		reservoir.sampleNormal = matParam.normal;
 		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
@@ -127,6 +127,7 @@ void InitialSampleRGS()
 	// This is intentionally minimal (good enough for a first temporal ReSTIR GI
 	// sample). You can improve robustness by using normals/roughness/material-id
 	// checks and by clamping history length.
+	if (!cbRestir.initialFrame)
 	{
 		float2 motionUV = texMotion[pixelPos];
 		float2 currUV = (float2(pixelPos) + 0.5) / (float2)dim;
@@ -158,7 +159,7 @@ void InitialSampleRGS()
 
 					Reservoir merged = (Reservoir)0;
 					// Use a single random number for sequential reservoir updates.
-					float rndScalar = Hash(pixelIndex * 4 + 0);
+					float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex);
 
 					// Candidate 0: current frame initial sample.
 					ReservoirUpdateCandidate(
@@ -195,7 +196,6 @@ void InitialSampleRGS()
 	}
 
 	rwReservoirs[pixelIndex] = reservoir;
-	rwGi[pixelPos] = reservoir.sampleRadiance * reservoir.ucw;
 }
 
 [shader("miss")]

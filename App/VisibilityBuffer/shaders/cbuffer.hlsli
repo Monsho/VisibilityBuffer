@@ -28,6 +28,7 @@ struct SceneCB
 	float2		invScreenSize;
 	float2		nearFar;
 	uint2		feedbackIndex;
+	uint		frameIndex;
 };
 
 struct LightCB
@@ -121,6 +122,11 @@ struct MeshletCullCB
 	uint	meshletStartIndex;
 	uint	meshletCount;
 	uint	localMeshletIndex;
+};
+
+struct RestirCB
+{
+	uint	initialFrame;
 };
 
 struct DebugCB

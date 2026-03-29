@@ -185,6 +185,11 @@ public:
 		return AppPassType::InitialSample;
 	}
 
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
+	{
+		bInitialFrame_ = true;
+	}
+
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -202,6 +207,8 @@ private:
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, InitialSampleRGSTable_, InitialSampleMSTable_;
 	UINT bvhShaderRecordSize_;
+
+	bool bInitialFrame_ = true;
 };
 
 class SpatialReusePass : public AppPassBase

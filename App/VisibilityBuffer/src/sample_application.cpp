@@ -256,6 +256,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbScene.nearFar.y = 0.0f;
 		cbScene.feedbackIndex.x = (scene_->GetFrameIndex() % 16) % 4;
 		cbScene.feedbackIndex.y = (scene_->GetFrameIndex() % 16) / 4;
+		cbScene.frameIndex = (sl12::u32)scene_->GetFrameIndex();
 
 		OutCBs.hSceneCB = cbvMan->GetTemporal(&cbScene, sizeof(cbScene));
 
@@ -563,7 +564,7 @@ bool SampleApplication::Execute()
 			{
 				static const char* kRayTracingModes[] = {
 					"DDGI",
-					"ReSTIR GI (Initial Sample)",
+					"ReSTIR GI",
 				};
 				ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes));
 				ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);

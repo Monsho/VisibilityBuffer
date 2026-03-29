@@ -814,14 +814,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		.AddChild(passNodes_[AppPassType::HiZ]);
 	if (bEnableDDGI)
 	{
-		node = node.AddChild(passNodes_[AppPassType::UpdateRtxgi])
-			.AddChild(passNodes_[AppPassType::Denoise])
-			.AddChild(passNodes_[AppPassType::RaytracingGI]);
-	}
-	if (bEnableReSTIR)
-	{
-		node = node.AddChild(passNodes_[AppPassType::ReSTIRResolve])
-			.AddChild(passNodes_[AppPassType::Denoise]);
+		// DDGIが有効な場合、DenoiseパスのあとにDDGI適用パスを実行する
+		// DenoiseGIバッファがDenoiseパスでクリアされてしまうため
+		node = node.AddChild(passNodes_[AppPassType::RaytracingGI]);
+		passNodes_[AppPassType::Denoise].AddChild(passNodes_[AppPassType::RaytracingGI]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
@@ -843,30 +839,29 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	node = sl12::RenderGraph::Node();
 	if (bEnableMeshletCulling)
 	{
-		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy])
-			.AddChild(passNodes_[AppPassType::MeshletCulling]);
+		node = node.AddChild(passNodes_[AppPassType::MeshletCulling]);
+		passNodes_[AppPassType::MeshletArgCopy].AddChild(node);
 		if (bDirectGBufferRender)
 		{
-			node = node.AddChild(passNodes_[AppPassType::DepthPre]);
+			node.AddChild(passNodes_[AppPassType::DepthPre]);
 		}
 		else
 		{
-			node = node.AddChild(passNodes_[AppPassType::VisibilityVs]);
+			node.AddChild(passNodes_[AppPassType::VisibilityVs]);
 		}
 	}
+
 	if (bEnableRaytracing)
 	{
 		// Raytracing
-		node = sl12::RenderGraph::Node();
-		if (bEnableDDGI)
-		{
-			node = node.AddChild(passNodes_[AppPassType::ReadyRtxgi]);
-		}
+		passNodes_[AppPassType::FeedbackMiplevel].AddChild(passNodes_[AppPassType::BuildBvh]);
 		node = node.AddChild(passNodes_[AppPassType::BuildBvh]);
 		if (bEnableDDGI)
 		{
-			node = node.AddChild(passNodes_[AppPassType::ProbeTrace])
-				.AddChild(passNodes_[AppPassType::UpdateRtxgi]);
+			node = node.AddChild(passNodes_[AppPassType::ProbeTrace]);
+
+			passNodes_[AppPassType::ReadyRtxgi].AddChild(passNodes_[AppPassType::BuildBvh]);
+			passNodes_[AppPassType::ProbeTrace].AddChild(passNodes_[AppPassType::UpdateRtxgi]);
 		}
 		else if (bEnableReSTIR)
 		{
@@ -878,18 +873,22 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 
 	{
 		// ssao.
-		node = sl12::RenderGraph::Node()
-			.AddChild(passNodes_[AppPassType::FeedbackMiplevel]);
+		std::vector<sl12::RenderGraph::Node*> ssaoNodes;
 		if (bNeedDeinterleave)
 		{
-			node.AddChild(passNodes_[AppPassType::Deinterleave]);
+			ssaoNodes.push_back(&passNodes_[AppPassType::Deinterleave]);
 		}
-		node = node.AddChild(passNodes_[AppPassType::SSAO]);
-		if (!bEnableReSTIR)
+		ssaoNodes.push_back(&passNodes_[AppPassType::SSAO]);
+		ssaoNodes.push_back(&passNodes_[AppPassType::Denoise]);
+
+		passNodes_[AppPassType::FeedbackMiplevel].AddChild(*ssaoNodes[0]);
+
+		for (auto ssaoNode : ssaoNodes)
 		{
-			node = node.AddChild(passNodes_[AppPassType::Denoise]);
+			node = node.AddChild(*ssaoNode);
 		}
-		node = node.AddChild(passNodes_[AppPassType::IndirectLight]);
+
+		node.AddChild(passNodes_[AppPassType::IndirectLight]);
 	}
 
 	// copy queue.

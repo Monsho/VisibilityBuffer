@@ -86,7 +86,7 @@ public:
 	~RenderSystem();
 
 	void WaitLoadAndCompile();
-	
+
 	sl12::ResourceLoader* GetResourceLoader()
 	{
 		return &resLoader_;
@@ -192,7 +192,7 @@ struct RenderPassSetupDesc
 	int raytracingTech = 0;
 	bool bDebugDdgi = false;
 	int debugMode = 0;
-	
+
 	bool operator==(const RenderPassSetupDesc& rhs) const
 	{
 		return (bUseVisibilityBuffer == rhs.bUseVisibilityBuffer)

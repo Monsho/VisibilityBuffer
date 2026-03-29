@@ -13,8 +13,6 @@ namespace
 	static const sl12::TransientResourceID	kBuildBvhDummy("BuildBvhDummy");
 	static const sl12::TransientResourceID	kReadyRtxgiDummy("ReadyRtxgiDummy");
 	static const sl12::TransientResourceID	kProbeTraceDummy("ProbeTraceDummy");
-	static const sl12::TransientResourceID	kInitialSampleDummy("InitialSampleDummy");
-	static const sl12::TransientResourceID	kInitialSampleGiScratch("InitialSampleGiScratch");
 }
 
 //----------------
@@ -83,7 +81,7 @@ namespace TestPass
 namespace InitialSample
 {
 	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
-		2,	// cbv
+		3,	// cbv
 		6,	// srv
 		2,	// uav
 		1,	// sampler
@@ -1136,19 +1134,6 @@ std::vector<sl12::TransientResource> InitialSamplePass::GetOutputResources(const
 	}
 	ret.push_back(reservoir);
 
-	sl12::TransientResource gi(kInitialSampleGiScratch, sl12::TransientState::UnorderedAccess);
-	{
-		sl12::u32 width = pScene_->GetScreenWidth();
-		sl12::u32 height = pScene_->GetScreenHeight();
-		gi.desc.bIsTexture = true;
-		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-	}
-	ret.push_back(gi);
-
-	sl12::TransientResource dummy(kInitialSampleDummy, sl12::TransientState::UnorderedAccess);
-	dummy.desc.bIsTexture = true;
-	dummy.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8_UNORM, 1, 1, 1, 1, 0);
-	ret.push_back(dummy);
 	return ret;
 }
 
@@ -1312,7 +1297,6 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pPrevDepth = pResManager->GetRenderGraphResource(kDepthHistoryID);
 	auto pPrevReservoir = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kInitialSampleReservoirID, 1));
 	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirRawID);
-	auto pGi = pResManager->GetRenderGraphResource(kInitialSampleGiScratch);
 
 	auto pGbCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
@@ -1324,13 +1308,17 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	}
 	auto pPrevReservoirSrv = pResManager->CreateOrGetBufferView(pPrevReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pReservoir, 0, 0, 0, 0);
-	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGi);
+
+	RestirCB cb;
+	cb.initialFrame = bInitialFrame_ ? 1 : 0;
+	auto hRestirCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(2, hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pGbCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
@@ -1338,7 +1326,6 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.SetCsSrv(5, pPrevDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(6, pPrevReservoirSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pReservoirUav->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(1, pGiUav->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = { pScene_->GetBvhScene()->GetGPUAddress() };
@@ -1355,6 +1342,8 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	desc.height = pScene_->GetScreenHeight();
 	desc.depth = 1;
 	pCmdList->DispatchRays(desc);
+
+	bInitialFrame_ = false;
 }
 
 

@@ -112,6 +112,7 @@
     <None Include="shaders\ddgi_debug.vv.hlsl" />
     <None Include="shaders\rt_restir_gi.lib.hlsl" />
     <None Include="shaders\motion_vector.c.hlsl" />
+    <None Include="shaders\rt_resolve_gi.c.hlsl" />
     <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\raytracing_pass.cpp" />
@@ -168,6 +169,7 @@
     <None Include="shaders\vrs.hlsli" />
     <None Include="shaders\mesh.p.hlsli" />
     <None Include="shaders\payload.hlsli" />
+    <None Include="shaders\restir.hlsli" />
     <ClInclude Include="src\app_pass_base.h" />
     <ClInclude Include="src\meshlet_resource.h" />
     <ClInclude Include="src\pass\gbuffer_pass.h" />
