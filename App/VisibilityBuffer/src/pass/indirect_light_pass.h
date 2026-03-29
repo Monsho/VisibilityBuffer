@@ -80,21 +80,25 @@ public:
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
 	{
 		type_ = desc.ssaoType;
+		bUseReSTIR_ = desc.bUseRaytracing && desc.raytracingTech == 1;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
 	{
-		return sl12::HardwareQueue::Compute;
+		return bUseReSTIR_ ? sl12::HardwareQueue::Graphics : sl12::HardwareQueue::Compute;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 	
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
+	sl12::UniqueHandle<sl12::RootSignature> rsCopyGI_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoAO_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoGI_;
+	sl12::UniqueHandle<sl12::ComputePipelineState> psoCopyGI_;
 	int type_ = 0;
+	bool bUseReSTIR_ = false;
 };
 
 //----

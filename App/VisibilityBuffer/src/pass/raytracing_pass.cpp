@@ -1405,16 +1405,6 @@ std::vector<sl12::TransientResource> SpatialReusePass::GetOutputResources(const 
 	}
 	ret.push_back(reservoir);
 
-	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
-	{
-		sl12::u32 width = pScene_->GetScreenWidth();
-		sl12::u32 height = pScene_->GetScreenHeight();
-		gi.desc.bIsTexture = true;
-		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-		gi.desc.historyFrame = 1;
-	}
-	ret.push_back(gi);
-
 	return ret;
 }
 
@@ -1426,13 +1416,11 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pDepth = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pInputReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirRawID);
 	auto pOutputReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirID);
-	auto pGi = pResManager->GetRenderGraphResource(kDenoiseGIID);
 
 	auto pGBufferCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
 	auto pInputReservoirSrv = pResManager->CreateOrGetBufferView(pInputReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pOutputReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pOutputReservoir, 0, 0, 0, 0);
-	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGi);
 
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -1441,7 +1429,76 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pInputReservoirSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pOutputReservoirUav->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(1, pGiUav->GetDescInfo().cpuHandle);
+
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
+	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
+//----------------
+ReSTIRResolvePass::ReSTIRResolvePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTResolveGIC));
+
+	sl12::ComputePipelineStateDesc desc{};
+	desc.pRootSignature = &rs_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::RTResolveGIC);
+	if (!pso_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init ReSTIR resolve pso.");
+	}
+}
+
+ReSTIRResolvePass::~ReSTIRResolvePass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> ReSTIRResolvePass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kInitialSampleReservoirID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> ReSTIRResolvePass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource gi(kReSTIRGIID, sl12::TransientState::UnorderedAccess);
+	{
+		sl12::u32 width = pScene_->GetScreenWidth();
+		sl12::u32 height = pScene_->GetScreenHeight();
+		gi.desc.bIsTexture = true;
+		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+	}
+	ret.push_back(gi);
+
+	return ret;
+}
+
+void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "ReSTIRResolvePass");
+
+	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirID);
+	auto pGi = pResManager->GetRenderGraphResource(kReSTIRGIID);
+	auto pReservoirSrv = pResManager->CreateOrGetBufferView(pReservoir, 0, 0, sizeof(InitialSample::Reservoir));
+	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGi);
+
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pReservoirSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pGiUav->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);

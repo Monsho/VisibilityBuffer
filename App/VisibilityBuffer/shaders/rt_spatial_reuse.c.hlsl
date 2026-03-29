@@ -7,7 +7,6 @@ Texture2D<float4>					texGBufferC		: REG(t0);
 Texture2D<float>					texDepth		: REG(t1);
 StructuredBuffer<Reservoir>			inputReservoirs	: REG(t2);
 RWStructuredBuffer<Reservoir>		outputReservoirs	: REG(u0);
-RWTexture2D<float3>				rwGi			: REG(u1);
 
 static const float SPATIAL_DEPTH_EPS = 0.02;
 static const float SPATIAL_NORMAL_COS = 0.75;
@@ -38,7 +37,6 @@ void main(
 	if (depth <= 0.0 || center.isValid == 0)
 	{
 		outputReservoirs[pixelIndex] = center;
-		rwGi[pixelPos] = 0.0;
 		return;
 	}
 
@@ -107,7 +105,6 @@ void main(
 	}
 
 	outputReservoirs[pixelIndex] = merged;
-	rwGi[pixelPos] = merged.sampleRadiance * merged.ucw;
 }
 
 // EOF

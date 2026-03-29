@@ -282,11 +282,14 @@ DenoisePass::DenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	rsCopyGI_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoAO_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	psoGI_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	psoCopyGI_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DenoiseC));
+	rsCopyGI_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTCopyGIC));
 
 	// init pipeline state.
 	{
@@ -309,12 +312,24 @@ DenoisePass::DenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 			sl12::ConsolePrint("Error: failed to init ssgi denoise pso.");
 		}
 	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rsCopyGI_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::RTCopyGIC);
+
+		if (!psoCopyGI_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init ReSTIR GI copy pso.");
+		}
+	}
 }
 
 DenoisePass::~DenoisePass()
 {
+	psoCopyGI_.Reset();
 	psoAO_.Reset();
 	psoGI_.Reset();
+	rsCopyGI_.Reset();
 	rs_.Reset();
 }
 
@@ -325,8 +340,15 @@ std::vector<sl12::TransientResource> DenoisePass::GetInputResources(const sl12::
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSsaoID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kAOHistoryID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kSsgiID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
+	if (bUseReSTIR_)
+	{
+		ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
+	}
+	else
+	{
+		ret.push_back(sl12::TransientResource(kSsgiID, sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
+	}
 	return ret;
 }
 
@@ -359,13 +381,15 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pSsaoRes = pResManager->GetRenderGraphResource(kSsaoID);
-	auto pSsgiRes = pResManager->GetRenderGraphResource(kSsgiID);
+	auto pSsgiRes = bUseReSTIR_ ? nullptr : pResManager->GetRenderGraphResource(kSsgiID);
+	auto pRestirGiRes = bUseReSTIR_ ? pResManager->GetRenderGraphResource(kReSTIRGIID) : nullptr;
 	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
 	auto pPrevSsaoRes = pResManager->GetRenderGraphResource(kAOHistoryID);
-	auto pPrevSsgiRes = pResManager->GetRenderGraphResource(kGIHistoryID);
+	auto pPrevSsgiRes = bUseReSTIR_ ? nullptr : pResManager->GetRenderGraphResource(kGIHistoryID);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pSsaoSRV = pResManager->CreateOrGetTextureView(pSsaoRes);
-	auto pSsgiSRV = pResManager->CreateOrGetTextureView(pSsgiRes);
+	auto pSsgiSRV = pSsgiRes ? pResManager->CreateOrGetTextureView(pSsgiRes) : nullptr;
+	auto pRestirGiSRV = pRestirGiRes ? pResManager->CreateOrGetTextureView(pRestirGiRes) : nullptr;
 	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
 	auto pPrevSsaoSRV = pPrevSsaoRes ? pResManager->CreateOrGetTextureView(pPrevSsaoRes) : pSsaoSRV;
 	auto pPrevSsgiSRV = pPrevSsgiRes ? pResManager->CreateOrGetTextureView(pPrevSsgiRes) : pSsgiSRV;
@@ -384,7 +408,7 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	descSet.SetCsSrv(1, pSsaoSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pPrevDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pPrevSsaoSRV->GetDescInfo().cpuHandle);
-	if (type_ == 2)
+	if (!bUseReSTIR_ && type_ == 2)
 	{
 		descSet.SetCsSrv(4, pSsgiSRV->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(5, pPrevSsgiSRV->GetDescInfo().cpuHandle);
@@ -394,7 +418,7 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
-	if (type_ == 2)
+	if (!bUseReSTIR_ && type_ == 2)
 	{
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoGI_->GetPSO());
 	}
@@ -408,6 +432,19 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
 	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+	if (bUseReSTIR_)
+	{
+		sl12::DescriptorSet copyDescSet;
+		copyDescSet.Reset();
+		copyDescSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		copyDescSet.SetCsSrv(0, pRestirGiSRV->GetDescInfo().cpuHandle);
+		copyDescSet.SetCsUav(0, pDenoiseGIUAV->GetDescInfo().cpuHandle);
+
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoCopyGI_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsCopyGI_, &copyDescSet);
+		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+	}
 }
 
 
