@@ -50,7 +50,10 @@ void InitialSampleRGS()
 	worldPos.xyz /= worldPos.w;
 
 	// generate ray direction in world hemisphere.
-	float2 rndVec2 = float2(Hash(pixelIndex * 2 + 0), Hash(pixelIndex * 2 + 1));
+	uint temporalSeed = cbScene.frameIndex * 0x9e3779b9u;
+	float2 rndVec2 = float2(
+		Hash(pixelIndex * 2 + 0 + temporalSeed),
+		Hash(pixelIndex * 2 + 1 + temporalSeed));
 	float3 up = abs(normal.z) < 0.999 ? float3(0, 0, 1) : float3(0, 1, 0);
 	float3 tangent = normalize(cross(up, normal));
 	float3 bitangent = cross(normal, tangent);
@@ -147,7 +150,7 @@ void InitialSampleRGS()
 				Reservoir prevRes = prevReservoirs[prevIndex];
 
 				[branch]
-				if (prevRes.isValid != 0)
+				if (prevRes.isValid != 0 && isfinite(prevRes.weightSum) && prevRes.weightSum > 0.0)
 				{
 					// Evaluate the reused sample under the *current* shading point.
 					float3 dirPrev = normalize(prevRes.samplePosition - worldPos.xyz);
@@ -159,7 +162,7 @@ void InitialSampleRGS()
 
 					Reservoir merged = (Reservoir)0;
 					// Use a single random number for sequential reservoir updates.
-					float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex);
+					float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex * 31u + 17u);
 
 					// Candidate 0: current frame initial sample.
 					ReservoirUpdateCandidate(

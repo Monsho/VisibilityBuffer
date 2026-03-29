@@ -16,6 +16,8 @@ struct Reservoir
 };
 
 static const float kEpsPdf = 1e-6;
+static const float kMaxReservoirWeightSum = 1e6;
+static const uint  kMaxReservoirM = 64;
 
 float Hash(uint v)
 {
@@ -42,8 +44,11 @@ void ReservoirUpdateCandidate(
 	if (w <= 0.0 || m == 0 || targetPdf <= 0.0)
 		return;
 
-	r.weightSum += w;
-	r.M += m;
+	if (!isfinite(w))
+		return;
+
+	r.weightSum = min(r.weightSum + w, kMaxReservoirWeightSum);
+	r.M = min(r.M + m, kMaxReservoirM);
 	[branch]
 	if (rnd < (w / max(r.weightSum, kEpsPdf)))
 	{
@@ -64,7 +69,13 @@ void ReservoirFinalize(inout Reservoir r)
 		return;
 	}
 
-	r.ucw = r.weightSum / ((float)r.M * max(r.targetPdf, kEpsPdf));
+	float denom = (float)r.M * max(r.targetPdf, kEpsPdf);
+	r.ucw = min(r.weightSum / max(denom, kEpsPdf), kMaxReservoirWeightSum);
+	if (!isfinite(r.ucw))
+	{
+		r.ucw = 0.0;
+		r.isValid = 0;
+	}
 }
 
 #endif // RESTIR_HLSLI
