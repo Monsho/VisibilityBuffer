@@ -48,7 +48,7 @@ void main(
 	worldPos.xyz /= worldPos.w;
 
 	Reservoir merged = (Reservoir)0;
-	float rnd = Hash(pixelIndex * 13 + 7);
+	float rnd = Hash(pixelIndex * 13 + cbScene.frameIndex * 31u + 7u);
 
 	ReservoirUpdateCandidate(
 		merged,
@@ -76,7 +76,7 @@ void main(
 		uint nIndex = (uint)npos.x + (uint)npos.y * dim.x;
 		Reservoir nRes = inputReservoirs[nIndex];
 		[branch]
-		if (nRes.isValid == 0)
+		if (nRes.isValid == 0 || !isfinite(nRes.weightSum) || nRes.weightSum <= 0.0)
 			continue;
 
 		[branch]
