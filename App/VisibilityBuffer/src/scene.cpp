@@ -697,6 +697,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<SpatialReusePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::SpatialReuse] = renderGraph_->AddPass(sl12::RenderPassID("SpatialReuse"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -855,7 +860,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		}
 		else if (bEnableReSTIR)
 		{
-			node = node.AddChild(passNodes_[AppPassType::InitialSample]);
+			node = node.AddChild(passNodes_[AppPassType::InitialSample])
+				.AddChild(passNodes_[AppPassType::SpatialReuse]);
 		}
 	}
 
