@@ -820,7 +820,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	}
 	if (bEnableReSTIR)
 	{
-		node = node.AddChild(passNodes_[AppPassType::Denoise]);
+		node = node.AddChild(passNodes_[AppPassType::ReSTIRResolve])
+			.AddChild(passNodes_[AppPassType::Denoise]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
