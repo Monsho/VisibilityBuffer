@@ -692,6 +692,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<InitialSamplePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::InitialSample] = renderGraph_->AddPass(sl12::RenderPassID("InitialSample"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -724,6 +729,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bEnableVRS = desc.bUseVRS;
 	bool bEnableRaytracing = desc.bUseRaytracing;
 	bool bEnableDDGI = bEnableRaytracing && desc.raytracingTech == 0;
+	bool bEnableInitialSample = bEnableRaytracing && desc.raytracingTech == 1;
 
 	sl12::RenderGraph::Node node;
 
@@ -846,6 +852,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		{
 			node = node.AddChild(passNodes_[AppPassType::ProbeTrace])
 				.AddChild(passNodes_[AppPassType::UpdateRtxgi]);
+		}
+		else if (bEnableInitialSample)
+		{
+			node = node.AddChild(passNodes_[AppPassType::InitialSample]);
 		}
 	}
 

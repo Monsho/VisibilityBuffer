@@ -174,4 +174,34 @@ private:
 	UniqueHandle<sl12::GraphicsPipelineState> pso_;
 };
 
+class InitialSamplePass : public AppPassBase
+{
+public:
+	InitialSamplePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~InitialSamplePass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::InitialSample;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Compute;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+
+private:
+	void CreateShaderTable();
+
+private:
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoInitialSampleRT_;
+	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
+	UniqueHandle<sl12::Buffer> MaterialHGTable_, InitialSampleRGSTable_, InitialSampleMSTable_;
+	UINT bvhShaderRecordSize_;
+};
+
 //	EOF

@@ -47,6 +47,7 @@ enum class AppPassType
 	ProbeTrace,
 	UpdateRtxgi,
 	RaytracingGI,
+	InitialSample,
 	DebugDDGI,
 	TestRayTracing,
 	Debug,

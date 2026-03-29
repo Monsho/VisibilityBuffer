@@ -34,6 +34,7 @@ Texture2D<float>					texPrevDepth	: REG(t5);
 StructuredBuffer<Reservoir>			prevReservoirs	: REG(t6);
 
 RWStructuredBuffer<Reservoir>		rwReservoirs	: REG(u0);
+RWTexture2D<float3>				rwGi			: REG(u1);
 
 SamplerState	samLinear			: REG(s0);
 
@@ -261,6 +262,7 @@ void InitialSampleRGS()
 	}
 
 	rwReservoirs[pixelIndex] = reservoir;
+	rwGi[pixelPos] = reservoir.sampleRadiance * reservoir.ucw;
 }
 
 [shader("miss")]
