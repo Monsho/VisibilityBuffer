@@ -204,4 +204,28 @@ private:
 	UINT bvhShaderRecordSize_;
 };
 
+class SpatialReusePass : public AppPassBase
+{
+public:
+	SpatialReusePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~SpatialReusePass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::SpatialReuse;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Compute;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+
+private:
+	UniqueHandle<sl12::RootSignature> rs_;
+	UniqueHandle<sl12::ComputePipelineState> pso_;
+};
+
 //	EOF

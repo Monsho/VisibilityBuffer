@@ -14,6 +14,7 @@ namespace
 	static const sl12::TransientResourceID	kReadyRtxgiDummy("ReadyRtxgiDummy");
 	static const sl12::TransientResourceID	kProbeTraceDummy("ProbeTraceDummy");
 	static const sl12::TransientResourceID	kInitialSampleDummy("InitialSampleDummy");
+	static const sl12::TransientResourceID	kInitialSampleGiScratch("InitialSampleGiScratch");
 }
 
 //----------------
@@ -1126,23 +1127,21 @@ std::vector<sl12::TransientResource> InitialSamplePass::GetOutputResources(const
 {
 	std::vector<sl12::TransientResource> ret;
 
-	sl12::TransientResource reservoir(kInitialSampleReservoirID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource reservoir(kInitialSampleReservoirRawID, sl12::TransientState::UnorderedAccess);
 	{
 		const sl12::u32 width = pScene_->GetScreenWidth();
 		const sl12::u32 height = pScene_->GetScreenHeight();
 		reservoir.desc.bIsTexture = false;
 		reservoir.desc.bufferDesc.InitializeStructured(sizeof(InitialSample::Reservoir), width * height, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
-		reservoir.desc.historyFrame = 1;
 	}
 	ret.push_back(reservoir);
 
-	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource gi(kInitialSampleGiScratch, sl12::TransientState::UnorderedAccess);
 	{
 		sl12::u32 width = pScene_->GetScreenWidth();
 		sl12::u32 height = pScene_->GetScreenHeight();
 		gi.desc.bIsTexture = true;
 		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-		gi.desc.historyFrame = 1;
 	}
 	ret.push_back(gi);
 
@@ -1312,8 +1311,8 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pMotion = pResManager->GetRenderGraphResource(kMotionVectorID);
 	auto pPrevDepth = pResManager->GetRenderGraphResource(kDepthHistoryID);
 	auto pPrevReservoir = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kInitialSampleReservoirID, 1));
-	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirID);
-	auto pGi = pResManager->GetRenderGraphResource(kDenoiseGIID);
+	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirRawID);
+	auto pGi = pResManager->GetRenderGraphResource(kInitialSampleGiScratch);
 
 	auto pGbCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
@@ -1356,6 +1355,100 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	desc.height = pScene_->GetScreenHeight();
 	desc.depth = 1;
 	pCmdList->DispatchRays(desc);
+}
+
+
+//----------------
+SpatialReusePass::SpatialReusePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTSpatialReuseC));
+
+	sl12::ComputePipelineStateDesc desc{};
+	desc.pRootSignature = &rs_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::RTSpatialReuseC);
+	if (!pso_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init spatial reuse pso.");
+	}
+}
+
+SpatialReusePass::~SpatialReusePass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> SpatialReusePass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kInitialSampleReservoirRawID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> SpatialReusePass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource reservoir(kInitialSampleReservoirID, sl12::TransientState::UnorderedAccess);
+	{
+		const sl12::u32 width = pScene_->GetScreenWidth();
+		const sl12::u32 height = pScene_->GetScreenHeight();
+		reservoir.desc.bIsTexture = false;
+		reservoir.desc.bufferDesc.InitializeStructured(sizeof(InitialSample::Reservoir), width * height, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
+		reservoir.desc.historyFrame = 1;
+	}
+	ret.push_back(reservoir);
+
+	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
+	{
+		sl12::u32 width = pScene_->GetScreenWidth();
+		sl12::u32 height = pScene_->GetScreenHeight();
+		gi.desc.bIsTexture = true;
+		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+		gi.desc.historyFrame = 1;
+	}
+	ret.push_back(gi);
+
+	return ret;
+}
+
+void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "SpatialReusePass");
+
+	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pDepth = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pInputReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirRawID);
+	auto pOutputReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirID);
+	auto pGi = pResManager->GetRenderGraphResource(kDenoiseGIID);
+
+	auto pGBufferCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
+	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
+	auto pInputReservoirSrv = pResManager->CreateOrGetBufferView(pInputReservoir, 0, 0, sizeof(InitialSample::Reservoir));
+	auto pOutputReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pOutputReservoir, 0, 0, 0, 0);
+	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGi);
+
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pGBufferCSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pInputReservoirSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pOutputReservoirUav->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pGiUav->GetDescInfo().cpuHandle);
+
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
+	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
 

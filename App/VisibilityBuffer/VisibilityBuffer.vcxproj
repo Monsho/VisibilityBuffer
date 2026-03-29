@@ -106,6 +106,7 @@
     <None Include="shaders\rt_material.lib.hlsl" />
     <None Include="shaders\rt_test.lib.hlsl" />
     <None Include="shaders\rt_probe_trace.lib.hlsl" />
+    <None Include="shaders\rt_spatial_reuse.c.hlsl" />
     <None Include="shaders\apply_ddgi.c.hlsl" />
     <None Include="shaders\ddgi_debug.p.hlsl" />
     <None Include="shaders\ddgi_debug.vv.hlsl" />

@@ -48,6 +48,7 @@ enum class AppPassType
 	UpdateRtxgi,
 	RaytracingGI,
 	InitialSample,
+	SpatialReuse,
 	DebugDDGI,
 	TestRayTracing,
 	Debug,
