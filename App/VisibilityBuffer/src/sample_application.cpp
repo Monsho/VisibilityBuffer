@@ -281,7 +281,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbLight.directionalColor.x = directionalColor_[0] * directionalIntensity_;
 		cbLight.directionalColor.y = directionalColor_[1] * directionalIntensity_;
 		cbLight.directionalColor.z = directionalColor_[2] * directionalIntensity_;
-		cbLight.indirectAmbient = (bUseRaytracing_ && raytracingTech_ == 0) ? 0.0f : 1.0f;
+		cbLight.indirectAmbient = bUseRaytracing_ ? 0.0f : 1.0f;
 
 		OutCBs.hLightCB = cbvMan->GetTemporal(&cbLight, sizeof(cbLight));
 
@@ -563,6 +563,7 @@ bool SampleApplication::Execute()
 			{
 				static const char* kRayTracingModes[] = {
 					"DDGI",
+					"ReSTIR GI (Initial Sample)",
 				};
 				ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes));
 				ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);
