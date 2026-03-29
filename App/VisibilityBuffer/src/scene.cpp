@@ -729,7 +729,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bEnableVRS = desc.bUseVRS;
 	bool bEnableRaytracing = desc.bUseRaytracing;
 	bool bEnableDDGI = bEnableRaytracing && desc.raytracingTech == 0;
-	bool bEnableInitialSample = bEnableRaytracing && desc.raytracingTech == 1;
+	bool bEnableReSTIR = bEnableRaytracing && desc.raytracingTech == 1;
 
 	sl12::RenderGraph::Node node;
 
@@ -853,7 +853,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			node = node.AddChild(passNodes_[AppPassType::ProbeTrace])
 				.AddChild(passNodes_[AppPassType::UpdateRtxgi]);
 		}
-		else if (bEnableInitialSample)
+		else if (bEnableReSTIR)
 		{
 			node = node.AddChild(passNodes_[AppPassType::InitialSample]);
 		}

@@ -1332,12 +1332,12 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.Reset();
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(0, pGbCSrv->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(2, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(3, pMotionSrv->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(4, pPrevDepthSrv->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(5, pPrevReservoirSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pGbCSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pDepthSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pMotionSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pPrevDepthSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(6, pPrevReservoirSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pReservoirUav->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pGiUav->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
