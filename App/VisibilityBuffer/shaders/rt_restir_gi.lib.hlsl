@@ -99,10 +99,10 @@ void InitialSampleRGS()
 		float3 DiffuseResult = DiffuseLambert(DiffuseColor);
 		float3 LightResult = DiffuseResult * NoL * cbLight.directionalColor * ShadowFactor + matParam.emissive;
 
-		reservoir.sampleRadiance = LightResult;
+		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
+		reservoir.sampleRadiance = LightResult * reservoir.targetPdf;
 		reservoir.samplePosition = ray.Origin + ray.Direction * payload.hitT;
 		reservoir.sampleNormal = matParam.normal;
-		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
 		reservoir.weightSum = reservoir.targetPdf > 0.0 ? rcp(reservoir.targetPdf) : 0.0;
 		reservoir.ucw = reservoir.weightSum;
 		reservoir.M = 1;
@@ -113,10 +113,10 @@ void InitialSampleRGS()
 		// miss, and compute skylight.
 		float3 skyIrradiance = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(rayDir), 0).rgb * cbLight.ambientIntensity;
 
-		reservoir.sampleRadiance = skyIrradiance;
+		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
+		reservoir.sampleRadiance = skyIrradiance * reservoir.targetPdf;
 		reservoir.samplePosition = ray.Direction * RayTMax;
 		reservoir.sampleNormal = ray.Direction;
-		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
 		reservoir.weightSum = reservoir.targetPdf > 0.0 ? rcp(reservoir.targetPdf) : 0.0;
 		reservoir.ucw = reservoir.weightSum;
 		reservoir.M = 1;

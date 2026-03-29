@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "math.hlsli"
 #include "cbuffer.hlsli"
 #include "restir.hlsli"
 
@@ -84,7 +85,7 @@ void main(
 			continue;
 
 		float3 dirN = normalize(nRes.samplePosition - worldPos.xyz);
-		float targetPdfN = max(dot(normal, dirN), 0.0) * (1.0 / 3.14159265);
+		float targetPdfN = max(dot(normal, dirN), 0.0) * (1.0 / PI);
 		float wN = nRes.weightSum * (targetPdfN / max(nRes.targetPdf, kEpsPdf));
 
 		ReservoirUpdateCandidate(
