@@ -702,6 +702,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<ReSTIRResolvePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::ReSTIRResolve] = renderGraph_->AddPass(sl12::RenderPassID("ReSTIRResolve"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<DebugPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Debug] = renderGraph_->AddPass(sl12::RenderPassID("Debug"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -813,6 +818,11 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			.AddChild(passNodes_[AppPassType::Denoise])
 			.AddChild(passNodes_[AppPassType::RaytracingGI]);
 	}
+	if (bEnableReSTIR)
+	{
+		node = node.AddChild(passNodes_[AppPassType::ReSTIRResolve])
+			.AddChild(passNodes_[AppPassType::Denoise]);
+	}
 	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
 	if (bEnableVRS)
@@ -861,7 +871,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		else if (bEnableReSTIR)
 		{
 			node = node.AddChild(passNodes_[AppPassType::InitialSample])
-				.AddChild(passNodes_[AppPassType::SpatialReuse]);
+				.AddChild(passNodes_[AppPassType::SpatialReuse])
+				.AddChild(passNodes_[AppPassType::ReSTIRResolve]);
 		}
 	}
 
@@ -873,9 +884,12 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		{
 			node.AddChild(passNodes_[AppPassType::Deinterleave]);
 		}
-		node = node.AddChild(passNodes_[AppPassType::SSAO])
-			.AddChild(passNodes_[AppPassType::Denoise])
-			.AddChild(passNodes_[AppPassType::IndirectLight]);
+		node = node.AddChild(passNodes_[AppPassType::SSAO]);
+		if (!bEnableReSTIR)
+		{
+			node = node.AddChild(passNodes_[AppPassType::Denoise]);
+		}
+		node = node.AddChild(passNodes_[AppPassType::IndirectLight]);
 	}
 
 	// copy queue.

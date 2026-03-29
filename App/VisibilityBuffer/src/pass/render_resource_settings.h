@@ -35,6 +35,7 @@ static const sl12::TransientResourceID  kTestRTResultID("TestRTResult");
 static const sl12::TransientResourceID  kRTDummyResultID("RTDummyResult");
 static const sl12::TransientResourceID  kInitialSampleReservoirRawID("InitialSampleReservoirRaw");
 static const sl12::TransientResourceID  kInitialSampleReservoirID("InitialSampleReservoir");
+static const sl12::TransientResourceID  kReSTIRGIID("ReSTIRGI");
 
 static const sl12::TransientResourceID	kInstanceBufferID("InstanceBuffer");
 static const sl12::TransientResourceID	kSubmeshBufferID("SubmeshBuffer");
