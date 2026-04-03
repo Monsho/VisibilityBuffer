@@ -35,7 +35,7 @@ void main(
 	float depth = texDepth[pixelPos];
 	Reservoir center = inputReservoirs[pixelIndex];
 
-	if (depth <= 0.0 || center.isValid == 0)
+	if (depth <= 0.0 || !IsReservoirValid(center))
 	{
 		outputReservoirs[pixelIndex] = center;
 		return;
@@ -51,15 +51,9 @@ void main(
 	Reservoir merged = (Reservoir)0;
 	float rnd = Hash(pixelIndex * 13 + cbScene.frameIndex * 31u + 7u);
 
-	ReservoirUpdateCandidate(
-		merged,
-		center.sampleRadiance,
-		center.samplePosition,
-		center.sampleNormal,
-		center.targetPdf,
-		center.weightSum,
-		center.M,
-		rnd);
+	float3 dirL = normalize(center.samplePosition - worldPos.xyz);
+	float selectedPdf = ReservoirGetGIPdf(center.sampleRadiance, max(dot(normal, dirL), 0.0));
+	ReservoirCombine(merged, center, selectedPdf, 0.5);
 
 	[unroll]
 	for (int i = 0; i < 8; ++i)
@@ -77,7 +71,8 @@ void main(
 		uint nIndex = (uint)npos.x + (uint)npos.y * dim.x;
 		Reservoir nRes = inputReservoirs[nIndex];
 		[branch]
-		if (nRes.isValid == 0 || !isfinite(nRes.weightSum) || nRes.weightSum <= 0.0)
+		// if (nRes.isValid == 0 || !isfinite(nRes.weightSum) || nRes.weightSum <= 0.0)
+		if (!IsReservoirValid(nRes))
 			continue;
 
 		[branch]
@@ -85,22 +80,19 @@ void main(
 			continue;
 
 		float3 dirN = normalize(nRes.samplePosition - worldPos.xyz);
-		float targetPdfN = max(dot(normal, dirN), 0.0) * (1.0 / PI);
-		float wN = nRes.weightSum * (targetPdfN / max(nRes.targetPdf, kEpsPdf));
+		float targetPdfN = ReservoirGetGIPdf(nRes.sampleRadiance, max(dot(normal, dirN), 0.0));
 
-		ReservoirUpdateCandidate(
-			merged,
-			nRes.sampleRadiance,
-			nRes.samplePosition,
-			nRes.sampleNormal,
-			targetPdfN,
-			wN,
-			nRes.M,
-			rnd);
+		bool IsNSelection = ReservoirCombine(merged, nRes, targetPdfN, rnd);
+		if (IsNSelection)
+		{
+			selectedPdf = targetPdfN;
+		}
 	}
 
-	ReservoirFinalize(merged);
-	if (merged.isValid == 0)
+	float normalizeN = 1.0;
+	float normalizeD = merged.M * selectedPdf;
+	ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
+	if (IsReservoirValid(merged))
 	{
 		merged = center;
 	}

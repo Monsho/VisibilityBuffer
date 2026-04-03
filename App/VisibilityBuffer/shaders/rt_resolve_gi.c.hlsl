@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "math.hlsli"
 #include "cbuffer.hlsli"
 #include "restir.hlsli"
 
@@ -18,13 +19,14 @@ void main(uint3 did : SV_DispatchThreadID)
 
 	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
 	Reservoir reservoir = reservoirs[pixelIndex];
-	if (reservoir.isValid == 0)
+	if (!IsReservoirValid(reservoir))
 	{
 		rwGi[pixelPos] = 0.0;
 		return;
 	}
 
-	rwGi[pixelPos] = reservoir.sampleRadiance * reservoir.ucw;
+	float3 radiance = reservoir.sampleRadiance * reservoir.weightSum;
+	rwGi[pixelPos] = radiance * (1.0 / PI);
 }
 
 // EOF

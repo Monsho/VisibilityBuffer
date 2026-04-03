@@ -32,7 +32,7 @@ void InitialSampleRGS()
 	uint2 dim = DispatchRaysDimensions().xy;
 	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
 
-	Reservoir reservoir = (Reservoir)0;
+	Reservoir reservoir = ReservoirEmpty();
 
 	float depth = texDepth[pixelPos];
 	if (depth <= 0.0)
@@ -73,17 +73,20 @@ void InitialSampleRGS()
 	MaterialPayload payload = (MaterialPayload)0;
 	TraceRay(TLAS, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
 
+	float primaryNoL = saturate(dot(normal, rayDir));
+	float selectedPdf = 0.0;
+
 	[branch]
 	if (payload.hitT >= 0.0)
 	{
 		// hit material.
 		MaterialParam matParam;
 		DecodeMaterialPayload(payload, matParam);
-		float NoL = saturate(dot(matParam.normal, cbLight.directionalVec));
+		float sampledNoL = saturate(dot(matParam.normal, cbLight.directionalVec));
 		float ShadowFactor = 1.0;
 
 		[branch]
-		if (NoL > 0.0)
+		if (sampledNoL > 0.0)
 		{
 			RayDesc shadowRay;
 			shadowRay.Origin = ray.Origin + ray.Direction * payload.hitT + matParam.normal * 0.01;
@@ -97,30 +100,26 @@ void InitialSampleRGS()
 		}
 		float3 DiffuseColor = matParam.baseColor.rgb * (1 - matParam.metallic) * (matParam.baseColor.a < 0.33 ? 0 : 1);
 		float3 DiffuseResult = DiffuseLambert(DiffuseColor);
-		float3 LightResult = DiffuseResult * NoL * cbLight.directionalColor * ShadowFactor + matParam.emissive;
+		float3 LightResult = DiffuseResult * sampledNoL * cbLight.directionalColor * ShadowFactor + matParam.emissive;
 
-		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
-		reservoir.sampleRadiance = LightResult * reservoir.targetPdf;
-		reservoir.samplePosition = ray.Origin + ray.Direction * payload.hitT;
-		reservoir.sampleNormal = matParam.normal;
-		reservoir.weightSum = reservoir.targetPdf > 0.0 ? rcp(reservoir.targetPdf) : 0.0;
-		reservoir.ucw = reservoir.weightSum;
-		reservoir.M = 1;
-		reservoir.isValid = 1;
+		selectedPdf = ReservoirGetGIPdf(LightResult, primaryNoL);
+		ReservoirMake(reservoir,
+			LightResult,
+			ray.Origin + ray.Direction * payload.hitT,
+			matParam.normal,
+			selectedPdf);
 	}
 	else
 	{
 		// miss, and compute skylight.
 		float3 skyIrradiance = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(rayDir), 0).rgb * cbLight.ambientIntensity;
 
-		reservoir.targetPdf = max(dot(normal, rayDir), 0.0) * (1.0 / PI);
-		reservoir.sampleRadiance = skyIrradiance * reservoir.targetPdf;
-		reservoir.samplePosition = ray.Direction * RayTMax;
-		reservoir.sampleNormal = ray.Direction;
-		reservoir.weightSum = reservoir.targetPdf > 0.0 ? rcp(reservoir.targetPdf) : 0.0;
-		reservoir.ucw = reservoir.weightSum;
-		reservoir.M = 1;
-		reservoir.isValid = 1;
+		selectedPdf = ReservoirGetGIPdf(skyIrradiance, primaryNoL);
+		ReservoirMake(reservoir,
+			skyIrradiance,
+			rayDir * RayTMax,
+			rayDir,
+			selectedPdf);
 	}
 
 	// -------------------------------------------------------------------------
@@ -150,46 +149,37 @@ void InitialSampleRGS()
 				Reservoir prevRes = prevReservoirs[prevIndex];
 
 				[branch]
-				if (prevRes.isValid != 0 && isfinite(prevRes.weightSum) && prevRes.weightSum > 0.0)
+				if (IsReservoirValid(prevRes) && prevRes.age < kMaxReservoirAge)
 				{
+					// Increment history age.
+					prevRes.M = min(prevRes.M, kMaxReservoirM);
+					prevRes.age++;
+
 					// Evaluate the reused sample under the *current* shading point.
 					float3 dirPrev = normalize(prevRes.samplePosition - worldPos.xyz);
-					float targetPdfPrev = max(dot(normal, dirPrev), 0.0) * (1.0 / PI);
+					float targetPdfPrev = ReservoirGetGIPdf(prevRes.sampleRadiance, max(dot(normal, dirPrev), 0.0));
 
-					// Convert previous reservoir's accumulated weight to current target.
-					// (Very common ReSTIR trick: scale by p_hat_current / p_hat_previous).
-					float wPrev = prevRes.weightSum * (targetPdfPrev / max(prevRes.targetPdf, kEpsPdf));
-
-					Reservoir merged = (Reservoir)0;
+					Reservoir merged = ReservoirEmpty();
 					// Use a single random number for sequential reservoir updates.
 					float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex * 31u + 17u);
 
 					// Candidate 0: current frame initial sample.
-					ReservoirUpdateCandidate(
-						merged,
-						reservoir.sampleRadiance,
-						reservoir.samplePosition,
-						reservoir.sampleNormal,
-						reservoir.targetPdf,
-						reservoir.weightSum,
-						reservoir.M,
-						rndScalar);
+					ReservoirCombine(merged, reservoir, selectedPdf, 0.5);
 
 					// Candidate 1: reprojected previous-frame reservoir.
-					ReservoirUpdateCandidate(
-						merged,
-						prevRes.sampleRadiance,
-						prevRes.samplePosition,
-						prevRes.sampleNormal,
-						targetPdfPrev,
-						wPrev,
-						prevRes.M,
-						rndScalar);
+					bool IsPreviousSelection = ReservoirCombine(merged, prevRes, targetPdfPrev, rndScalar);
+					if (IsPreviousSelection)
+					{
+						selectedPdf = targetPdfPrev;
+					}
 
-					ReservoirFinalize(merged);
+					// normalize weightSum.
+					float normalizeN = 1.0;
+					float normalizeD = selectedPdf * merged.M;
+					ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
 
 					[branch]
-					if (merged.isValid != 0)
+					if (IsReservoirValid(merged))
 					{
 						reservoir = merged;
 					}

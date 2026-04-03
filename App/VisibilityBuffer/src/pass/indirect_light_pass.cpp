@@ -11,7 +11,7 @@ DeinterleavePass::DeinterleavePass(sl12::Device* pDev, RenderSystem* pRenderSys,
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DeinterleaveC));
 
@@ -85,7 +85,7 @@ void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pDiDepthUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiDepthRes);
 	auto pDiNormalUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiNormalRes);
 	auto pDiAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiAccumRes);
-	
+
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -117,7 +117,7 @@ ScreenSpaceAOPass::ScreenSpaceAOPass(sl12::Device* pDev, RenderSystem* pRenderSy
 	psoBitmask_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	psoSsgi_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	psoSsgiDi_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SsaoHbaoC));
 
@@ -225,7 +225,7 @@ void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	GPU_MARKER(pCmdList, 1, "SSAO Pass");
 
 	bool bDeinterleave = bNeedDeinterleave_ && type_ == 2;
-	
+
 	auto pNormalRes = pResManager->GetRenderGraphResource(bDeinterleave ? kDeinterleaveNormalID : kGBufferCID);
 	auto pDepthRes = pResManager->GetRenderGraphResource(bDeinterleave ? kDeinterleaveDepthID : kDepthBufferID);
 	auto pSsaoRes = pResManager->GetRenderGraphResource(kSsaoID);
@@ -234,7 +234,7 @@ void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pSsaoUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pSsaoRes);
 	auto pSsgiUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pSsgiRes);
-	
+
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
