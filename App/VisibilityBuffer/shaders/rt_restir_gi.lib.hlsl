@@ -44,10 +44,7 @@ void InitialSampleRGS()
 	float3 normal = normalize(texGBufferC[pixelPos].xyz * 2.0 - 1.0);
 
 	// reconstruct world position.
-	float2 screenPos = ((float2)pixelPos + 0.5) / cbScene.screenSize;
-	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
-	float4 worldPos = mul(cbScene.mtxProjToWorld, float4(clipSpacePos, depth, 1));
-	worldPos.xyz /= worldPos.w;
+	float3 worldPos = GetWorldPos(pixelPos, depth, cbScene.screenSize, cbScene.mtxProjToWorld);
 
 	// generate ray direction in world hemisphere.
 	uint temporalSeed = cbScene.frameIndex * 0x9e3779b9u;
@@ -122,13 +119,16 @@ void InitialSampleRGS()
 			selectedPdf);
 	}
 
-	// -------------------------------------------------------------------------
-	// Temporal reuse (reservoir update in time)
-	// -------------------------------------------------------------------------
-	// Reproject current pixel to previous frame and merge with previous reservoir.
-	// This is intentionally minimal (good enough for a first temporal ReSTIR GI
-	// sample). You can improve robustness by using normals/roughness/material-id
-	// checks and by clamping history length.
+	// Select initial sample.
+	Reservoir merged = ReservoirEmpty();
+	ReservoirCombine(merged, reservoir, selectedPdf, 0.5);
+
+	// Temporal reuse.
+	bool IsPreviousFounded = false;
+	Reservoir prevRes = ReservoirEmpty();
+	float3 prevWorldPos = 0;
+
+	[branch]
 	if (!cbRestir.initialFrame)
 	{
 		float2 motionUV = texMotion[pixelPos];
@@ -137,58 +137,61 @@ void InitialSampleRGS()
 		float2 prevPixF = prevUV * (float2)dim - 0.5;
 		uint2 prevPixelPos = (uint2)round(prevPixF);
 
-		[branch]
 		if (all(prevPixelPos >= 0) && all(prevPixelPos < dim))
 		{
 			float prevDepth = texPrevDepth[prevPixelPos];
 			// Simple disocclusion rejection using depth.
-			[branch]
 			if (abs(prevDepth - depth) <= TEMPORAL_DEPTH_EPS)
 			{
 				uint prevIndex = prevPixelPos.x + prevPixelPos.y * dim.x;
-				Reservoir prevRes = prevReservoirs[prevIndex];
-
-				[branch]
-				if (IsReservoirValid(prevRes) && prevRes.age < kMaxReservoirAge)
-				{
-					// Increment history age.
-					prevRes.M = min(prevRes.M, kMaxReservoirM);
-					prevRes.age++;
-
-					// Evaluate the reused sample under the *current* shading point.
-					float3 dirPrev = normalize(prevRes.samplePosition - worldPos.xyz);
-					float targetPdfPrev = ReservoirGetGIPdf(prevRes.sampleRadiance, max(dot(normal, dirPrev), 0.0));
-
-					Reservoir merged = ReservoirEmpty();
-					// Use a single random number for sequential reservoir updates.
-					float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex * 31u + 17u);
-
-					// Candidate 0: current frame initial sample.
-					ReservoirCombine(merged, reservoir, selectedPdf, 0.5);
-
-					// Candidate 1: reprojected previous-frame reservoir.
-					bool IsPreviousSelection = ReservoirCombine(merged, prevRes, targetPdfPrev, rndScalar);
-					if (IsPreviousSelection)
-					{
-						selectedPdf = targetPdfPrev;
-					}
-
-					// normalize weightSum.
-					float normalizeN = 1.0;
-					float normalizeD = selectedPdf * merged.M;
-					ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
-
-					[branch]
-					if (IsReservoirValid(merged))
-					{
-						reservoir = merged;
-					}
-				}
+				prevRes = prevReservoirs[prevIndex];
+				IsPreviousFounded = IsReservoirValid(prevRes);
+				prevWorldPos = GetWorldPos(prevPixelPos, prevDepth, cbScene.screenSize, mul(cbScene.mtxProjToWorld, cbScene.mtxPrevProjToProj));
 			}
 		}
 	}
 
-	rwReservoirs[pixelIndex] = reservoir;
+	[branch]
+	if (IsPreviousFounded)
+	{
+		float Jacobian = ComputeJacobian(worldPos, prevWorldPos, prevRes.samplePosition, prevRes.sampleNormal);
+		if (!IsValidateJacobian(Jacobian))
+			IsPreviousFounded = false;
+
+		prevRes.weightSum *= Jacobian;
+
+		// Increment history age.
+		prevRes.M = min(prevRes.M, kMaxReservoirM);
+		prevRes.age++;
+
+		if (prevRes.age < kMaxReservoirAge)
+			IsPreviousFounded = false;
+	}
+
+	[branch]
+	if (IsPreviousFounded)
+	{
+		// Evaluate the reused sample under the *current* shading point.
+		float3 dirPrev = normalize(prevRes.samplePosition - worldPos.xyz);
+		float targetPdfPrev = ReservoirGetGIPdf(prevRes.sampleRadiance, max(dot(normal, dirPrev), 0.0));
+
+		// Use a single random number for sequential reservoir updates.
+		float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex * 31u + 17u);
+
+		// Candidate 1: reprojected previous-frame reservoir.
+		bool IsPreviousSelection = ReservoirCombine(merged, prevRes, targetPdfPrev, rndScalar);
+		if (IsPreviousSelection)
+		{
+			selectedPdf = targetPdfPrev;
+		}
+	}
+
+	// normalize weightSum.
+	float normalizeN = 1.0;
+	float normalizeD = selectedPdf * merged.M;
+	ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
+
+	rwReservoirs[pixelIndex] = merged;
 }
 
 [shader("miss")]

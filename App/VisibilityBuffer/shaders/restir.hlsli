@@ -89,4 +89,49 @@ void ReservoirFinalizeResampling(inout Reservoir r, float normalizeN, float norm
 	r.weightSum = (normalizeD == 0.0) ? 0.0 : (r.weightSum * normalizeN) / normalizeD;
 }
 
+void ComputeJacobian_Partial(in float3 RecieverPos, in float3 SampledPos, in float3 SampledNormal,
+	out float DistToSurfaceSqr, out float CosAngle)
+{
+	const float3 Vec = RecieverPos - SampledPos;
+
+	DistToSurfaceSqr = dot(Vec, Vec);
+	CosAngle = saturate(dot(SampledNormal, Vec * rsqrt(DistToSurfaceSqr)));
+}
+
+// Equation 11 from ReSTIR GI paper.
+float ComputeJacobian(float3 basePos, float3 neighborPos, float3 sampledPos, float3 sampledNormal)
+{
+	float OrigDistSqr = 0.0, OrigCos = 0.0;
+	float NewDistSqr = 0.0, NewCos = 0.0;
+	ComputeJacobian_Partial(basePos, sampledPos, sampledNormal, NewDistSqr, NewCos);
+	ComputeJacobian_Partial(neighborPos, sampledPos, sampledNormal, OrigDistSqr, OrigCos);
+
+	float Jacobian = (NewCos * OrigDistSqr) / (OrigCos * NewDistSqr);
+
+	if (isinf(Jacobian) || isnan(Jacobian))
+		Jacobian = 0;
+
+	return Jacobian;
+}
+
+bool IsValidateJacobian(inout float jacobian)
+{
+	if (jacobian > 10.0 || jacobian < 1 / 10.0)
+	{
+		return false;
+	}
+
+	jacobian = clamp(jacobian, 1 / 3.0, 3.0);
+
+	return true;
+}
+
+float3 GetWorldPos(uint2 pixelPos, float depth, float2 screenSize, float4x4 mtxProjToWorld)
+{
+	float2 screenPos = ((float2)pixelPos + 0.5) / screenSize;
+	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
+	float4 worldPos = mul(mtxProjToWorld, float4(clipSpacePos, depth, 1));
+	return worldPos.xyz /= worldPos.w;
+}
+
 #endif // RESTIR_HLSLI

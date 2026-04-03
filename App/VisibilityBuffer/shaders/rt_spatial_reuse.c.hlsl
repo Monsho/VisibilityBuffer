@@ -55,7 +55,7 @@ void main(
 	float selectedPdf = ReservoirGetGIPdf(center.sampleRadiance, max(dot(normal, dirL), 0.0));
 	ReservoirCombine(merged, center, selectedPdf, 0.5);
 
-	[unroll]
+	[loop]
 	for (int i = 0; i < 8; ++i)
 	{
 		int2 npos = (int2)pixelPos + kSpatialOffsets[i];
@@ -64,25 +64,28 @@ void main(
 			continue;
 
 		float nDepth = texDepth[npos];
+		float3 nNormal = normalize(texGBufferC[npos].xyz * 2.0 - 1.0);
+		bool IsDepthValid = abs(nDepth - depth) <= SPATIAL_DEPTH_EPS;
+		bool IsNormalValid = dot(nNormal, normal) >= SPATIAL_NORMAL_COS;
 		[branch]
-		if (abs(nDepth - depth) > SPATIAL_DEPTH_EPS)
+		if (!IsDepthValid || !IsNormalValid)
 			continue;
 
 		uint nIndex = (uint)npos.x + (uint)npos.y * dim.x;
 		Reservoir nRes = inputReservoirs[nIndex];
 		[branch]
-		// if (nRes.isValid == 0 || !isfinite(nRes.weightSum) || nRes.weightSum <= 0.0)
 		if (!IsReservoirValid(nRes))
 			continue;
 
-		[branch]
-		if (dot(normalize(nRes.sampleNormal), normal) < SPATIAL_NORMAL_COS)
+		float3 nWorldPos = GetWorldPos(npos, nDepth, cbScene.screenSize, cbScene.mtxProjToWorld);
+		float Jacobian = ComputeJacobian(worldPos, nWorldPos, nRes.samplePosition, nRes.sampleNormal);
+		if (!IsValidateJacobian(Jacobian))
 			continue;
 
 		float3 dirN = normalize(nRes.samplePosition - worldPos.xyz);
 		float targetPdfN = ReservoirGetGIPdf(nRes.sampleRadiance, max(dot(normal, dirN), 0.0));
 
-		bool IsNSelection = ReservoirCombine(merged, nRes, targetPdfN, rnd);
+		bool IsNSelection = ReservoirCombine(merged, nRes, targetPdfN * Jacobian, rnd);
 		if (IsNSelection)
 		{
 			selectedPdf = targetPdfN;
