@@ -71,7 +71,7 @@ void InitialSampleRGS()
 	TraceRay(TLAS, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
 
 	float primaryNoL = saturate(dot(normal, rayDir));
-	float selectedPdf = 0.0;
+	float samplePDF = primaryNoL / PI;
 
 	[branch]
 	if (payload.hitT >= 0.0)
@@ -99,24 +99,29 @@ void InitialSampleRGS()
 		float3 DiffuseResult = DiffuseLambert(DiffuseColor);
 		float3 LightResult = DiffuseResult * sampledNoL * cbLight.directionalColor * ShadowFactor + matParam.emissive;
 
-		selectedPdf = ReservoirGetGIPdf(LightResult, primaryNoL);
 		ReservoirMake(reservoir,
 			LightResult,
 			ray.Origin + ray.Direction * payload.hitT,
 			matParam.normal,
-			selectedPdf);
+			samplePDF);
 	}
 	else
 	{
 		// miss, and compute skylight.
 		float3 skyIrradiance = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(rayDir), 0).rgb * cbLight.ambientIntensity;
 
-		selectedPdf = ReservoirGetGIPdf(skyIrradiance, primaryNoL);
 		ReservoirMake(reservoir,
 			skyIrradiance,
 			rayDir * RayTMax,
 			rayDir,
-			selectedPdf);
+			samplePDF);
+	}
+	float selectedPdf = ReservoirGetGIPdf(reservoir.sampleRadiance, primaryNoL);
+
+	if (MATH_VERIFY_MODE)
+	{
+		rwReservoirs[pixelIndex] = reservoir;
+		return;
 	}
 
 	// Select initial sample.

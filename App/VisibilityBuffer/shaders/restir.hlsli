@@ -1,6 +1,8 @@
 #ifndef RESTIR_HLSLI
 #define RESTIR_HLSLI
 
+#define MATH_VERIFY_MODE 0	// 数式確認モード
+
 struct Reservoir
 {
 	float3	sampleRadiance;

@@ -87,9 +87,14 @@ void main(
 
 	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
 	float depth = texDepth[pixelPos];
-	float cDL = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
+	float cVD = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
 	Reservoir center = inputReservoirs[pixelIndex];
 
+	if (MATH_VERIFY_MODE)
+	{
+		outputReservoirs[pixelIndex] = center;
+		return;
+	}
 	if (depth <= 0.0 || !IsReservoirValid(center))
 	{
 		outputReservoirs[pixelIndex] = center;
@@ -122,9 +127,9 @@ void main(
 			continue;
 
 		float nDepth = texDepth[npos];
-		float nDL = ClipDepthToViewDepth(nDepth, cbScene.mtxViewToProj);
+		float nVD = ClipDepthToViewDepth(nDepth, cbScene.mtxViewToProj);
 		float3 nNormal = normalize(texGBufferC[npos].xyz * 2.0 - 1.0);
-		bool IsDepthValid = (nDepth > 0.0) && (abs(nDL - cDL) <= cbRestir.spatialDepthEps);
+		bool IsDepthValid = (nDepth > 0.0) && (abs(nVD - cVD) <= cbRestir.spatialDepthEps);
 		bool IsNormalValid = dot(nNormal, normal) >= cbRestir.spatialNormalCos;
 		[branch]
 		if (!IsDepthValid || !IsNormalValid)
