@@ -4,9 +4,12 @@
 #include "restir.hlsli"
 
 ConstantBuffer<SceneCB>				cbScene			: REG(b0);
+ConstantBuffer<RestirCB>			cbRestir		: REG(b1);
+
 Texture2D<float4>					texGBufferC		: REG(t0);
 Texture2D<float>					texDepth		: REG(t1);
 StructuredBuffer<Reservoir>			inputReservoirs	: REG(t2);
+
 RWStructuredBuffer<Reservoir>		outputReservoirs	: REG(u0);
 
 static const float SPATIAL_DEPTH_EPS = 0.02;
@@ -17,6 +20,57 @@ static const int2 kSpatialOffsets[8] = {
 	int2(-1,  0),               int2(1,  0),
 	int2(-1,  1), int2(0,  1), int2(1,  1),
 };
+
+float Halton(int i, int b)
+{
+	float f = 1.0;
+	float r = 0.0;
+	while (i > 0)
+	{
+		f = f / float(b);
+		r = r + f * float(i % b);
+		i = i / b;
+	}
+	return r;
+}
+
+// Halton<2, 3> 16
+float2 Jitter(uint2 fragCoord, uint frame)
+{
+	int num = 8;
+	return (float2(
+		Halton(frame % num + int(fragCoord.x) % num + 1, 2),
+		Halton(frame % num + int(fragCoord.y) % num + 1, 3)) - 0.5);
+}
+
+float2 MapToDisk(uint2 fragCoord, uint frame, float radius)
+{
+	float2 uv = Jitter(fragCoord, frame);
+
+	if (uv.x == 0.0f && uv.y == 0.0f)
+	{
+		return float2(0, 0);
+	}
+
+	float phi, r;
+	if (abs(uv.x) > abs(uv.y))
+	{
+		r = uv.x;
+		phi = (PI / 4.0f) * (uv.y / uv.x);
+	}
+	else
+	{
+		r = uv.y;
+		phi = (PI / 2.0f) - (PI / 4.0f) * (uv.x / uv.y);
+	}
+
+	return r * radius * float2(cos(phi), sin(phi));
+}
+
+float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
+{
+	return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
+}
 
 [numthreads(8, 8, 1)]
 void main(
@@ -33,6 +87,7 @@ void main(
 
 	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
 	float depth = texDepth[pixelPos];
+	float cDL = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
 	Reservoir center = inputReservoirs[pixelIndex];
 
 	if (depth <= 0.0 || !IsReservoirValid(center))
@@ -55,18 +110,22 @@ void main(
 	float selectedPdf = ReservoirGetGIPdf(center.sampleRadiance, max(dot(normal, dirL), 0.0));
 	ReservoirCombine(merged, center, selectedPdf, 0.5);
 
+	const int numSamples = 8;
 	[loop]
-	for (int i = 0; i < 8; ++i)
+	for (int i = 0; i < numSamples; ++i)
 	{
-		int2 npos = (int2)pixelPos + kSpatialOffsets[i];
+		//int2 pixelOffset = kSpatialOffsets[i];
+		int2 pixelOffset = int2(MapToDisk(pixelPos, cbScene.frameIndex * numSamples * i, cbRestir.spatialRadius));
+		int2 npos = (int2)pixelPos + pixelOffset;
 		[branch]
 		if (any(npos < 0) || any((uint2)npos >= dim))
 			continue;
 
 		float nDepth = texDepth[npos];
+		float nDL = ClipDepthToViewDepth(nDepth, cbScene.mtxViewToProj);
 		float3 nNormal = normalize(texGBufferC[npos].xyz * 2.0 - 1.0);
-		bool IsDepthValid = abs(nDepth - depth) <= SPATIAL_DEPTH_EPS;
-		bool IsNormalValid = dot(nNormal, normal) >= SPATIAL_NORMAL_COS;
+		bool IsDepthValid = (nDepth > 0.0) && (abs(nDL - cDL) <= cbRestir.spatialDepthEps);
+		bool IsNormalValid = dot(nNormal, normal) >= cbRestir.spatialNormalCos;
 		[branch]
 		if (!IsDepthValid || !IsNormalValid)
 			continue;

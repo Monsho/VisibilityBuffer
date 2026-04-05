@@ -79,8 +79,7 @@ public:
 
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
 	{
-		type_ = desc.ssaoType;
-		bUseReSTIR_ = desc.bUseRaytracing && desc.raytracingTech == 1;
+		bDenoiseGI_ = desc.ssaoType == 2 && desc.bUseRaytracing;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
@@ -96,8 +95,7 @@ private:
 	sl12::UniqueHandle<sl12::RootSignature> rsCopyGI_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoAO_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoGI_;
-	int type_ = 0;
-	bool bUseReSTIR_ = false;
+	bool bDenoiseGI_ = false;
 };
 
 //----

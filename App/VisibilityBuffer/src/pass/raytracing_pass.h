@@ -126,15 +126,15 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 };
 
-class RaytracingGIPass : public AppPassBase
+class ApplyRtxgiPass : public AppPassBase
 {
 public:
-	RaytracingGIPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
-	virtual ~RaytracingGIPass();
+	ApplyRtxgiPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~ApplyRtxgiPass();
 
 	virtual AppPassType GetPassType() const override
 	{
-		return AppPassType::RaytracingGI;
+		return AppPassType::ApplyRtxgi;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
@@ -172,6 +172,36 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rs_;
 	UniqueHandle<sl12::GraphicsPipelineState> pso_;
+};
+
+class MonteCarloGIPass : public AppPassBase
+{
+public:
+	MonteCarloGIPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~MonteCarloGIPass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::MonteCarloGI;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Compute;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+
+private:
+	void CreateShaderTable();
+
+private:
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoMonteCarloRT_;
+	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
+	UniqueHandle<sl12::Buffer> MaterialHGTable_, MonteCarloRGSTable_, MonteCarloMSTable_;
+	UINT bvhShaderRecordSize_;
 };
 
 class InitialSamplePass : public AppPassBase
@@ -222,6 +252,39 @@ public:
 		return AppPassType::SpatialReuse;
 	}
 
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
+	{
+		spacialRadius_ = desc.spatialRadius;
+	}
+
+	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
+	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
+	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
+	{
+		return sl12::HardwareQueue::Compute;
+	}
+	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
+
+private:
+	UniqueHandle<sl12::RootSignature> rs_;
+	UniqueHandle<sl12::ComputePipelineState> pso_;
+
+	float spacialRadius_ = 8.0f;
+	float spacialDepthEps_ = 0.02f;
+	float spacialNormalCos_ = 0.75f;
+};
+
+class ReSTIRResolvePass : public AppPassBase
+{
+public:
+	ReSTIRResolvePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~ReSTIRResolvePass();
+
+	virtual AppPassType GetPassType() const override
+	{
+		return AppPassType::ReSTIRResolve;
+	}
+
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -235,15 +298,15 @@ private:
 	UniqueHandle<sl12::ComputePipelineState> pso_;
 };
 
-class ReSTIRResolvePass : public AppPassBase
+class RayTracingDenoisePass : public AppPassBase
 {
 public:
-	ReSTIRResolvePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
-	virtual ~ReSTIRResolvePass();
+	RayTracingDenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
+	virtual ~RayTracingDenoisePass();
 
 	virtual AppPassType GetPassType() const override
 	{
-		return AppPassType::ReSTIRResolve;
+		return AppPassType::RayTracingDenoise;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;

@@ -126,6 +126,9 @@ struct MeshletCullCB
 
 struct RestirCB
 {
+	float	spatialRadius;
+	float	spatialDepthEps;
+	float	spatialNormalCos;
 	uint	initialFrame;
 };
 

@@ -52,14 +52,8 @@ void BuildBvhPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 }
 
 
-namespace TestPass
+namespace RTCommon
 {
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
-		2,	// cbv
-		0,	// srv
-		1,	// uav
-		0,	// sampler
-	};
 	static const sl12::RaytracingDescriptorCount kRTDescriptorCountLocal = {
 		1,	// cbv
 		4,	// srv
@@ -69,13 +63,49 @@ namespace TestPass
 
 	static LPCWSTR kMaterialCHS = L"MaterialCHS";
 	static LPCWSTR kMaterialAHS = L"MaterialAHS";
-	static LPCWSTR kTestRGS = L"TestRGS";
-	static LPCWSTR kTestMS = L"TestMS";
 	static LPCWSTR kMaterialOpacityHG = L"MaterialOpacityHG";
 	static LPCWSTR kMaterialMaskedHG = L"MaterialMaskedHG";
 	static const int kPayloadSize = 32;
 	static const sl12::u32 kLocalSpaceId = 16;
+}
 
+namespace TestPass
+{
+	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
+		2,	// cbv
+		0,	// srv
+		1,	// uav
+		0,	// sampler
+	};
+
+	static LPCWSTR kTestRGS = L"TestRGS";
+	static LPCWSTR kTestMS = L"TestMS";
+}
+
+namespace ProbeTrace
+{
+	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
+		2,	// cbv
+		5,	// srv
+		1,	// uav
+		1,	// sampler
+	};
+
+	static LPCWSTR kProbeTraceRGS = L"ProbeTraceRGS";
+	static LPCWSTR kProbeTraceMS = L"ProbeTraceMS";
+}
+
+namespace MonteCarloGI
+{
+	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
+		2,	// cbv
+		4,	// srv
+		1,	// uav
+		1,	// sampler
+	};
+
+	static LPCWSTR kMonteCarloGIRGS = L"ModteCarloGIRGS";
+	static LPCWSTR kMonteCarloGIMS = L"MonteCarloGIMS";
 }
 
 namespace InitialSample
@@ -86,21 +116,9 @@ namespace InitialSample
 		2,	// uav
 		1,	// sampler
 	};
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCountLocal = {
-		1,	// cbv
-		4,	// srv
-		0,	// uav
-		1,	// sampler
-	};
 
-	static LPCWSTR kMaterialCHS = L"MaterialCHS";
-	static LPCWSTR kMaterialAHS = L"MaterialAHS";
 	static LPCWSTR kInitialSampleRGS = L"InitialSampleRGS";
 	static LPCWSTR kInitialSampleMS = L"InitialSampleMS";
-	static LPCWSTR kMaterialOpacityHG = L"MaterialOpacityHG";
-	static LPCWSTR kMaterialMaskedHG = L"MaterialMaskedHG";
-	static const int kPayloadSize = 32;
-	static const sl12::u32 kLocalSpaceId = 16;
 
 	struct Reservoir
 	{
@@ -127,8 +145,8 @@ TestRayTracingPass::TestRayTracingPass(sl12::Device* pDev, RenderSystem* pRender
 	if (!sl12::CreateRaytracingRootSignature(pDev,
 		1,		// AS count
 		TestPass::kRTDescriptorCountGlobal,
-		TestPass::kRTDescriptorCountLocal,
-		TestPass::kLocalSpaceId,
+		RTCommon::kRTDescriptorCountLocal,
+		RTCommon::kLocalSpaceId,
 		&rtGlobalRS_, &rtLocalRS_))
 	{
 		sl12::ConsolePrint("Error : Failed to create raytracint root signatures.\n");
@@ -143,17 +161,17 @@ TestRayTracingPass::TestRayTracingPass(sl12::Device* pDev, RenderSystem* pRender
 		// export shader from library.
 		auto shader = pRenderSys->GetShader(ShaderName::RTMaterialLib);
 		D3D12_EXPORT_DESC libExport[] = {
-			{ TestPass::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
-			{ TestPass::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
 		};
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
 
 		// hit group.
-		dxrDesc.AddHitGroup(TestPass::kMaterialOpacityHG, true, nullptr, TestPass::kMaterialCHS, nullptr);
-		dxrDesc.AddHitGroup(TestPass::kMaterialMaskedHG, true, TestPass::kMaterialAHS, TestPass::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialOpacityHG, true, nullptr, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialMaskedHG, true, RTCommon::kMaterialAHS, RTCommon::kMaterialCHS, nullptr);
 
 		// payload size and intersection attr size.
-		dxrDesc.AddShaderConfig(TestPass::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 
 		// global root signature.
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
@@ -184,7 +202,7 @@ TestRayTracingPass::TestRayTracingPass(sl12::Device* pDev, RenderSystem* pRender
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
 
 		// payload size and intersection attr size.
-		dxrDesc.AddShaderConfig(TestPass::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 
 		// global root signature.
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
@@ -250,7 +268,7 @@ void TestRayTracingPass::CreateShaderTable()
 		1,		// Render Count
 		1,		// AS Count
 		TestPass::kRTDescriptorCountGlobal,
-		TestPass::kRTDescriptorCountLocal,
+		RTCommon::kRTDescriptorCountLocal,
 		(sl12::u32)totalSubmeshCount))
 	{
 		sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
@@ -396,8 +414,8 @@ void TestRayTracingPass::CreateShaderTable()
 		{
 			ID3D12StateObjectProperties* prop;
 			psoTestRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			hg_identifier[0] = prop->GetShaderIdentifier(TestPass::kMaterialOpacityHG);
-			hg_identifier[1] = prop->GetShaderIdentifier(TestPass::kMaterialMaskedHG);
+			hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
+			hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
 			prop->Release();
 		}
 		std::vector<void*> hg_table;
@@ -515,32 +533,6 @@ void ReadyRtxgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 }
 
 
-namespace ProbeTrace
-{
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
-		2,	// cbv
-		5,	// srv
-		1,	// uav
-		1,	// sampler
-	};
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCountLocal = {
-		1,	// cbv
-		4,	// srv
-		0,	// uav
-		1,	// sampler
-	};
-
-	static LPCWSTR kMaterialCHS = L"MaterialCHS";
-	static LPCWSTR kMaterialAHS = L"MaterialAHS";
-	static LPCWSTR kProbeTraceRGS = L"ProbeTraceRGS";
-	static LPCWSTR kProbeTraceMS = L"ProbeTraceMS";
-	static LPCWSTR kMaterialOpacityHG = L"MaterialOpacityHG";
-	static LPCWSTR kMaterialMaskedHG = L"MaterialMaskedHG";
-	static const int kPayloadSize = 32;
-	static const sl12::u32 kLocalSpaceId = 16;
-
-}
-
 //----------------
 ProbeTracePass::ProbeTracePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
@@ -551,8 +543,8 @@ ProbeTracePass::ProbeTracePass(sl12::Device* pDev, RenderSystem* pRenderSys, Sce
 	if (!sl12::CreateRaytracingRootSignature(pDev,
 		1,		// AS count
 		ProbeTrace::kRTDescriptorCountGlobal,
-		ProbeTrace::kRTDescriptorCountLocal,
-		ProbeTrace::kLocalSpaceId,
+		RTCommon::kRTDescriptorCountLocal,
+		RTCommon::kLocalSpaceId,
 		&rtGlobalRS_, &rtLocalRS_))
 	{
 		sl12::ConsolePrint("Error : Failed to create raytracint root signatures.\n");
@@ -567,17 +559,17 @@ ProbeTracePass::ProbeTracePass(sl12::Device* pDev, RenderSystem* pRenderSys, Sce
 		// export shader from library.
 		auto shader = pRenderSys->GetShader(ShaderName::RTMaterialLib);
 		D3D12_EXPORT_DESC libExport[] = {
-			{ ProbeTrace::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
-			{ ProbeTrace::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
 		};
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
 
 		// hit group.
-		dxrDesc.AddHitGroup(ProbeTrace::kMaterialOpacityHG, true, nullptr, ProbeTrace::kMaterialCHS, nullptr);
-		dxrDesc.AddHitGroup(ProbeTrace::kMaterialMaskedHG, true, ProbeTrace::kMaterialAHS, ProbeTrace::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialOpacityHG, true, nullptr, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialMaskedHG, true, RTCommon::kMaterialAHS, RTCommon::kMaterialCHS, nullptr);
 
 		// payload size and intersection attr size.
-		dxrDesc.AddShaderConfig(ProbeTrace::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 
 		// global root signature.
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
@@ -608,7 +600,7 @@ ProbeTracePass::ProbeTracePass(sl12::Device* pDev, RenderSystem* pRenderSys, Sce
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
 
 		// payload size and intersection attr size.
-		dxrDesc.AddShaderConfig(ProbeTrace::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 
 		// global root signature.
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
@@ -674,7 +666,7 @@ void ProbeTracePass::CreateShaderTable()
 		1,		// Render Count
 		1,		// AS Count
 		ProbeTrace::kRTDescriptorCountGlobal,
-		ProbeTrace::kRTDescriptorCountLocal,
+		RTCommon::kRTDescriptorCountLocal,
 		(sl12::u32)totalSubmeshCount))
 	{
 		sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
@@ -820,8 +812,8 @@ void ProbeTracePass::CreateShaderTable()
 		{
 			ID3D12StateObjectProperties* prop;
 			psoProbeTraceRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			hg_identifier[0] = prop->GetShaderIdentifier(ProbeTrace::kMaterialOpacityHG);
-			hg_identifier[1] = prop->GetShaderIdentifier(ProbeTrace::kMaterialMaskedHG);
+			hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
+			hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
 			prop->Release();
 		}
 		std::vector<void*> hg_table;
@@ -941,7 +933,7 @@ void UpdateRtxgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 
 
 //----------------
-RaytracingGIPass::RaytracingGIPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+ApplyRtxgiPass::ApplyRtxgiPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
@@ -963,13 +955,13 @@ RaytracingGIPass::RaytracingGIPass(sl12::Device* pDev, RenderSystem* pRenderSys,
 	}
 }
 
-RaytracingGIPass::~RaytracingGIPass()
+ApplyRtxgiPass::~ApplyRtxgiPass()
 {
 	psoDDGI_.Reset();
 	rs_.Reset();
 }
 
-std::vector<sl12::TransientResource> RaytracingGIPass::GetInputResources(const sl12::RenderPassID& ID) const
+std::vector<sl12::TransientResource> ApplyRtxgiPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
@@ -978,7 +970,7 @@ std::vector<sl12::TransientResource> RaytracingGIPass::GetInputResources(const s
 	return ret;
 }
 
-std::vector<sl12::TransientResource> RaytracingGIPass::GetOutputResources(const sl12::RenderPassID& ID) const
+std::vector<sl12::TransientResource> ApplyRtxgiPass::GetOutputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
@@ -995,7 +987,7 @@ std::vector<sl12::TransientResource> RaytracingGIPass::GetOutputResources(const 
 	return ret;
 }
 
-void RaytracingGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+void ApplyRtxgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 1, "RaytracingGIPass");
 
@@ -1036,6 +1028,295 @@ void RaytracingGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 
 //----------------
+MonteCarloGIPass::MonteCarloGIPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	// global and local root signature.
+	rtGlobalRS_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	rtLocalRS_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	if (!sl12::CreateRaytracingRootSignature(pDev,
+		1,		// AS count
+		MonteCarloGI::kRTDescriptorCountGlobal,
+		RTCommon::kRTDescriptorCountLocal,
+		RTCommon::kLocalSpaceId,
+		&rtGlobalRS_, &rtLocalRS_))
+	{
+		sl12::ConsolePrint("Error : Failed to create initial sample root signatures.\n");
+		assert(false);
+	}
+
+	psoMaterialCollection_ = sl12::MakeUnique<sl12::DxrPipelineState>(pDev);
+	psoMonteCarloRT_ = sl12::MakeUnique<sl12::DxrPipelineState>(pDev);
+	{
+		sl12::DxrPipelineStateDesc dxrDesc;
+
+		auto shader = pRenderSys->GetShader(ShaderName::RTMaterialLib);
+		D3D12_EXPORT_DESC libExport[] = {
+			{ RTCommon::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+		};
+		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
+		dxrDesc.AddHitGroup(RTCommon::kMaterialOpacityHG, true, nullptr, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialMaskedHG, true, RTCommon::kMaterialAHS, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
+		dxrDesc.AddRaytracinConfig(2);
+		dxrDesc.AddLocalRootSignature(*(&rtLocalRS_), nullptr, 0);
+		if (!psoMaterialCollection_->Initialize(pDev, dxrDesc, D3D12_STATE_OBJECT_TYPE_COLLECTION))
+		{
+			sl12::ConsolePrint("Error : Failed to init initial sample material collection pso.\n");
+			assert(false);
+		}
+	}
+	{
+		sl12::DxrPipelineStateDesc dxrDesc;
+
+		auto shader = pRenderSys->GetShader(ShaderName::RTMonteCarloGILib);
+		D3D12_EXPORT_DESC libExport[] = {
+			{ MonteCarloGI::kMonteCarloGIRGS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ MonteCarloGI::kMonteCarloGIMS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+		};
+		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
+		dxrDesc.AddRaytracinConfig(2);
+		dxrDesc.AddExistingCollection(psoMaterialCollection_->GetPSO(), nullptr, 0);
+		if (!psoMonteCarloRT_->Initialize(pDev, dxrDesc))
+		{
+			sl12::ConsolePrint("Error : Failed to init initial sample RT pso.\n");
+			assert(false);
+		}
+	}
+}
+
+MonteCarloGIPass::~MonteCarloGIPass()
+{
+	MonteCarloMSTable_.Reset();
+	MonteCarloRGSTable_.Reset();
+	MaterialHGTable_.Reset();
+	rtDescMan_.Reset();
+	psoMonteCarloRT_.Reset();
+	psoMaterialCollection_.Reset();
+	rtGlobalRS_.Reset();
+	rtLocalRS_.Reset();
+}
+
+std::vector<sl12::TransientResource> MonteCarloGIPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kBuildBvhDummy, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> MonteCarloGIPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::TransientResource gi(kReSTIRGIID, sl12::TransientState::UnorderedAccess);
+	{
+		sl12::u32 width = pScene_->GetScreenWidth();
+		sl12::u32 height = pScene_->GetScreenHeight();
+		gi.desc.bIsTexture = true;
+		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+	}
+	ret.push_back(gi);
+
+	return ret;
+}
+
+void MonteCarloGIPass::CreateShaderTable()
+{
+	auto& rtTableSources = pScene_->GetRTTableSources();
+	auto& rtOffsetCBs = pScene_->GetMeshOffsetCBs();
+
+	size_t totalSubmeshCount = 0;
+	for (auto&& src : rtTableSources) totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
+
+	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
+	if (!rtDescMan_->Initialize(pDevice_, 1, 1, MonteCarloGI::kRTDescriptorCountGlobal, RTCommon::kRTDescriptorCountLocal, (sl12::u32)totalSubmeshCount))
+	{
+		sl12::ConsolePrint("Error : Failed to init initial sample descriptor.\n");
+		assert(false);
+	}
+
+	struct LocalTable { D3D12_GPU_DESCRIPTOR_HANDLE cbv, srv, sampler; };
+	std::vector<LocalTable> material_table;
+	std::vector<bool> opaque_table;
+	auto view_desc_size = rtDescMan_->GetViewDescSize();
+	auto sampler_desc_size = rtDescMan_->GetSamplerDescSize();
+	auto local_handle_start = rtDescMan_->IncrementLocalHandleStart();
+	auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
+	{
+		auto&& submeshes = pMeshItem->GetSubmeshes();
+		auto CBs = rtOffsetCBs.find(pMeshItem);
+		auto& CBL = CBs->second;
+		for (int i = 0; i < submeshes.size(); i++)
+		{
+			auto&& submesh = submeshes[i];
+			auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
+			auto bc_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
+			auto orm_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
+			if (material.baseColorTex.IsValid()) bc_srv = &const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
+			if (material.ormTex.IsValid()) orm_srv = &const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
+
+			opaque_table.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
+			LocalTable table{};
+
+			D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = { CBL[i].GetCBV()->GetDescInfo().cpuHandle };
+			sl12::u32 cbv_cnt = ARRAYSIZE(cbv);
+			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &cbv_cnt, cbv_cnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			table.cbv = local_handle_start.viewGpuHandle;
+			local_handle_start.viewCpuHandle.ptr += view_desc_size * cbv_cnt;
+			local_handle_start.viewGpuHandle.ptr += view_desc_size * cbv_cnt;
+
+			D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
+				pRenderSystem_->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
+				pRenderSystem_->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
+				bc_srv->GetDescInfo().cpuHandle,
+				orm_srv->GetDescInfo().cpuHandle,
+			};
+			sl12::u32 srv_cnt = ARRAYSIZE(srv);
+			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &srv_cnt, srv_cnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			table.srv = local_handle_start.viewGpuHandle;
+			local_handle_start.viewCpuHandle.ptr += view_desc_size * srv_cnt;
+			local_handle_start.viewGpuHandle.ptr += view_desc_size * srv_cnt;
+
+			D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = { pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle };
+			sl12::u32 sampler_cnt = ARRAYSIZE(sampler);
+			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.samplerCpuHandle, &sampler_cnt, sampler_cnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+			table.sampler = local_handle_start.samplerGpuHandle;
+			local_handle_start.samplerCpuHandle.ptr += sampler_desc_size * sampler_cnt;
+			local_handle_start.samplerGpuHandle.ptr += sampler_desc_size * sampler_cnt;
+
+			material_table.push_back(table);
+		}
+	};
+	for (auto&& s : rtTableSources) FillMeshTable(s.pResMesh);
+
+	auto Align = [](UINT size, UINT align) { return ((size + align - 1) / align) * align; };
+	UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+	UINT descHandleOffset = Align(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+	UINT shaderRecordSize = Align(descHandleOffset + sizeof(LocalTable), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+	bvhShaderRecordSize_ = shaderRecordSize;
+
+	auto GenShaderTable = [&](void* const* shaderIds, int tableCountPerMaterial, sl12::UniqueHandle<sl12::Buffer>& buffer, int materialCount)
+	{
+		buffer = sl12::MakeUnique<sl12::Buffer>(pDevice_);
+		materialCount = (materialCount < 0) ? (int)material_table.size() : materialCount;
+		sl12::BufferDesc desc{};
+		desc.heap = sl12::BufferHeap::Dynamic;
+		desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
+		desc.usage = sl12::ResourceUsage::ShaderResource;
+		desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
+		if (!buffer->Initialize(pDevice_, desc)) return false;
+		auto p = (char*)buffer->Map();
+		for (int i = 0; i < materialCount; ++i)
+		{
+			for (int id = 0; id < tableCountPerMaterial; ++id)
+			{
+				auto start = p;
+				memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
+				p += descHandleOffset;
+				memcpy(p, &material_table[i], sizeof(LocalTable));
+				p = start + shaderRecordSize;
+			}
+		}
+		buffer->Unmap();
+		return true;
+	};
+
+	{
+		void* hg_identifier[2];
+		ID3D12StateObjectProperties* prop;
+		if (FAILED(psoMonteCarloRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
+		{
+			sl12::ConsolePrint("Error : failed query interface in InitialSamplePass::CreateShaderTable()\n");
+			assert(false);
+		}
+		hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
+		hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
+		prop->Release();
+		std::vector<void*> hg_table;
+		for (auto&& o : opaque_table) hg_table.push_back(hg_identifier[o ? 0 : 1]);
+		if (!GenShaderTable(hg_table.data(), 1, MaterialHGTable_, -1))
+		{
+			sl12::ConsolePrint("Error : failed to create initial sample hitgroup table.\n");
+			assert(false);
+		}
+	}
+	{
+		void* rgs_identifier = nullptr;
+		void* ms_identifier = nullptr;
+		ID3D12StateObjectProperties* prop;
+		if (FAILED(psoMonteCarloRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
+		{
+			sl12::ConsolePrint("Error : failed query interface in MonteCarloGIPass::CreateShaderTable()\n");
+			assert(false);
+		}
+		rgs_identifier = prop->GetShaderIdentifier(MonteCarloGI::kMonteCarloGIRGS);
+		ms_identifier = prop->GetShaderIdentifier(MonteCarloGI::kMonteCarloGIMS);
+		prop->Release();
+		if (!GenShaderTable(&rgs_identifier, 1, MonteCarloRGSTable_, 1))
+		{
+			sl12::ConsolePrint("Error : failed to create monte carlo RGS table.\n");
+			assert(false);
+		}
+		if (!GenShaderTable(&ms_identifier, 1, MonteCarloMSTable_, 1))
+		{
+			sl12::ConsolePrint("Error : failed to create monte carlo MS table.\n");
+			assert(false);
+		}
+	}
+}
+
+void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "InitialSamplePass");
+
+	if (pScene_->IsRTTableDirty() || !rtDescMan_.IsValid())
+	{
+		CreateShaderTable();
+	}
+
+	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pDepth = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pGiRes = pResManager->GetRenderGraphResource(kReSTIRGIID);
+
+	auto pGbCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
+	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
+	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGiRes);
+
+	auto&& TempCB = pScene_->GetTemporalCBs();
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pGbCSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pDepthSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pGiUav->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+
+	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = { pScene_->GetBvhScene()->GetGPUAddress() };
+	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, &rtDescMan_, as_address, ARRAYSIZE(as_address));
+
+	sl12::DispatchRaysDesc desc{};
+	desc.pso = &psoMonteCarloRT_;
+	desc.hitGroupTable = &MaterialHGTable_;
+	desc.missTable = &MonteCarloMSTable_;
+	desc.rayGenTable = &MonteCarloRGSTable_;
+	desc.hitGroupRecordSize = bvhShaderRecordSize_;
+	desc.missRecordSize = bvhShaderRecordSize_;
+	desc.width = pScene_->GetScreenWidth();
+	desc.height = pScene_->GetScreenHeight();
+	desc.depth = 1;
+	pCmdList->DispatchRays(desc);
+}
+
+
+//----------------
 InitialSamplePass::InitialSamplePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
@@ -1045,8 +1326,8 @@ InitialSamplePass::InitialSamplePass(sl12::Device* pDev, RenderSystem* pRenderSy
 	if (!sl12::CreateRaytracingRootSignature(pDev,
 		1,		// AS count
 		InitialSample::kRTDescriptorCountGlobal,
-		InitialSample::kRTDescriptorCountLocal,
-		InitialSample::kLocalSpaceId,
+		RTCommon::kRTDescriptorCountLocal,
+		RTCommon::kLocalSpaceId,
 		&rtGlobalRS_, &rtLocalRS_))
 	{
 		sl12::ConsolePrint("Error : Failed to create initial sample root signatures.\n");
@@ -1060,13 +1341,13 @@ InitialSamplePass::InitialSamplePass(sl12::Device* pDev, RenderSystem* pRenderSy
 
 		auto shader = pRenderSys->GetShader(ShaderName::RTMaterialLib);
 		D3D12_EXPORT_DESC libExport[] = {
-			{ InitialSample::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
-			{ InitialSample::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialCHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
+			{ RTCommon::kMaterialAHS,	nullptr, D3D12_EXPORT_FLAG_NONE },
 		};
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
-		dxrDesc.AddHitGroup(InitialSample::kMaterialOpacityHG, true, nullptr, InitialSample::kMaterialCHS, nullptr);
-		dxrDesc.AddHitGroup(InitialSample::kMaterialMaskedHG, true, InitialSample::kMaterialAHS, InitialSample::kMaterialCHS, nullptr);
-		dxrDesc.AddShaderConfig(InitialSample::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialOpacityHG, true, nullptr, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddHitGroup(RTCommon::kMaterialMaskedHG, true, RTCommon::kMaterialAHS, RTCommon::kMaterialCHS, nullptr);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
 		dxrDesc.AddRaytracinConfig(2);
 		dxrDesc.AddLocalRootSignature(*(&rtLocalRS_), nullptr, 0);
@@ -1085,7 +1366,7 @@ InitialSamplePass::InitialSamplePass(sl12::Device* pDev, RenderSystem* pRenderSy
 			{ InitialSample::kInitialSampleMS,	nullptr, D3D12_EXPORT_FLAG_NONE },
 		};
 		dxrDesc.AddDxilLibrary(shader->GetData(), shader->GetSize(), libExport, ARRAYSIZE(libExport));
-		dxrDesc.AddShaderConfig(InitialSample::kPayloadSize, sizeof(float) * 2);
+		dxrDesc.AddShaderConfig(RTCommon::kPayloadSize, sizeof(float) * 2);
 		dxrDesc.AddGlobalRootSignature(*(&rtGlobalRS_));
 		dxrDesc.AddRaytracinConfig(2);
 		dxrDesc.AddExistingCollection(psoMaterialCollection_->GetPSO(), nullptr, 0);
@@ -1146,7 +1427,7 @@ void InitialSamplePass::CreateShaderTable()
 	for (auto&& src : rtTableSources) totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
 
 	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
-	if (!rtDescMan_->Initialize(pDevice_, 1, 1, InitialSample::kRTDescriptorCountGlobal, InitialSample::kRTDescriptorCountLocal, (sl12::u32)totalSubmeshCount))
+	if (!rtDescMan_->Initialize(pDevice_, 1, 1, InitialSample::kRTDescriptorCountGlobal, RTCommon::kRTDescriptorCountLocal, (sl12::u32)totalSubmeshCount))
 	{
 		sl12::ConsolePrint("Error : Failed to init initial sample descriptor.\n");
 		assert(false);
@@ -1246,8 +1527,8 @@ void InitialSamplePass::CreateShaderTable()
 			sl12::ConsolePrint("Error : failed query interface in InitialSamplePass::CreateShaderTable()\n");
 			assert(false);
 		}
-		hg_identifier[0] = prop->GetShaderIdentifier(InitialSample::kMaterialOpacityHG);
-		hg_identifier[1] = prop->GetShaderIdentifier(InitialSample::kMaterialMaskedHG);
+		hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
+		hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
 		prop->Release();
 		std::vector<void*> hg_table;
 		for (auto&& o : opaque_table) hg_table.push_back(hg_identifier[o ? 0 : 1]);
@@ -1411,9 +1692,17 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pInputReservoirSrv = pResManager->CreateOrGetBufferView(pInputReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pOutputReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pOutputReservoir, 0, 0, 0, 0);
 
+	RestirCB cb;
+	cb.initialFrame = false;
+	cb.spatialRadius = spacialRadius_;
+	cb.spatialDepthEps = spacialDepthEps_;
+	cb.spatialNormalCos = spacialNormalCos_;
+	auto hRestirCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
+
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pGBufferCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pInputReservoirSrv->GetDescInfo().cpuHandle);
@@ -1426,6 +1715,7 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
+
 
 //----------------
 ReSTIRResolvePass::ReSTIRResolvePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
@@ -1492,6 +1782,96 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
+	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
+	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
+
+//----------------
+RayTracingDenoisePass::RayTracingDenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTDenoise));
+
+	sl12::ComputePipelineStateDesc desc{};
+	desc.pRootSignature = &rs_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::RTDenoise);
+	if (!pso_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init raytracing denoise pso.");
+	}
+}
+
+RayTracingDenoisePass::~RayTracingDenoisePass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+
+	gi.desc.bIsTexture = true;
+	gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+	gi.desc.historyFrame = 1;
+
+	ret.push_back(gi);
+
+	return ret;
+}
+
+void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "RayTracingDenoisePass");
+
+	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pRestirGIRes = pResManager->GetRenderGraphResource(kReSTIRGIID);
+	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
+	auto pPrevGIRes = pResManager->GetRenderGraphResource(kGIHistoryID);
+	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pRestirGISRV = pResManager->CreateOrGetTextureView(pRestirGIRes);
+	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
+	auto pPrevGISRV = pPrevGIRes ? pResManager->CreateOrGetTextureView(pPrevGIRes) : pRestirGISRV;
+
+	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
+	auto pDenoiseGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseGIRes);
+
+	// set descriptors.
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pRestirGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pPrevGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pDenoiseGIUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+
+	// set pipeline.
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	// dispatch.
 	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
 	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);

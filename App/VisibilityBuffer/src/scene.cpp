@@ -687,8 +687,13 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
-		auto pass = std::make_unique<RaytracingGIPass>(pDevice_, pRenderSystem_, this);
-		passNodes_[AppPassType::RaytracingGI] = renderGraph_->AddPass(sl12::RenderPassID("RaytracingGI"), pass.get());
+		auto pass = std::make_unique<ApplyRtxgiPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::ApplyRtxgi] = renderGraph_->AddPass(sl12::RenderPassID("RaytracingGI"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<MonteCarloGIPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::MonteCarloGI] = renderGraph_->AddPass(sl12::RenderPassID("MonteCarloGI"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
@@ -704,6 +709,11 @@ bool Scene::InitRenderPass()
 	{
 		auto pass = std::make_unique<ReSTIRResolvePass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::ReSTIRResolve] = renderGraph_->AddPass(sl12::RenderPassID("ReSTIRResolve"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<RayTracingDenoisePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::RayTracingDenoise] = renderGraph_->AddPass(sl12::RenderPassID("RayTracingDenoise"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
@@ -739,7 +749,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	bool bEnableVRS = desc.bUseVRS;
 	bool bEnableRaytracing = desc.bUseRaytracing;
 	bool bEnableDDGI = bEnableRaytracing && desc.raytracingTech == 0;
-	bool bEnableReSTIR = bEnableRaytracing && desc.raytracingTech == 1;
+	bool bEnableMonteCarlo = bEnableRaytracing && desc.raytracingTech == 1;
+	bool bEnableReSTIR = bEnableRaytracing && desc.raytracingTech == 2;
 
 	sl12::RenderGraph::Node node;
 
@@ -816,8 +827,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		// DDGIが有効な場合、DenoiseパスのあとにDDGI適用パスを実行する
 		// DenoiseGIバッファがDenoiseパスでクリアされてしまうため
-		node = node.AddChild(passNodes_[AppPassType::RaytracingGI]);
-		passNodes_[AppPassType::Denoise].AddChild(passNodes_[AppPassType::RaytracingGI]);
+		node = node.AddChild(passNodes_[AppPassType::ApplyRtxgi]);
+		passNodes_[AppPassType::Denoise].AddChild(passNodes_[AppPassType::ApplyRtxgi]);
 	}
 	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
@@ -863,6 +874,10 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 			passNodes_[AppPassType::ReadyRtxgi].AddChild(passNodes_[AppPassType::BuildBvh]);
 			passNodes_[AppPassType::ProbeTrace].AddChild(passNodes_[AppPassType::UpdateRtxgi]);
 		}
+		else if (bEnableMonteCarlo)
+		{
+			node = node.AddChild(passNodes_[AppPassType::MonteCarloGI]);
+		}
 		else if (bEnableReSTIR)
 		{
 			node = node.AddChild(passNodes_[AppPassType::InitialSample])
@@ -887,9 +902,15 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		{
 			node = node.AddChild(*ssaoNode);
 		}
-
-		node.AddChild(passNodes_[AppPassType::IndirectLight]);
 	}
+
+	if (bEnableRaytracing && (bEnableMonteCarlo || bEnableReSTIR))
+	{
+		// ray tracing denoise.
+		node = node.AddChild(passNodes_[AppPassType::RayTracingDenoise]);
+	}
+
+	node.AddChild(passNodes_[AppPassType::IndirectLight]);
 
 	// copy queue.
 	if (!bDirectGBufferRender)

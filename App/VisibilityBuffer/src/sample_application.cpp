@@ -564,9 +564,15 @@ bool SampleApplication::Execute()
 			{
 				static const char* kRayTracingModes[] = {
 					"DDGI",
+					"Monte Carlo GI",
 					"ReSTIR GI",
 				};
 				ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes));
+				if (raytracingTech_ == 2)
+				{
+					// ReSTIR GI
+					ImGui::SliderFloat("Spatial Radius", &restirSpatialRadius_, 1.0f, 32.0f);
+				}
 				ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);
 			}
 		}

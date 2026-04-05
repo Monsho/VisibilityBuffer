@@ -190,6 +190,7 @@ struct RenderPassSetupDesc
 	float vrsDepthThreshold = 1.0f;
 	bool bUseRaytracing = false;
 	int raytracingTech = 0;
+	float spatialRadius = 8.0f;
 	bool bDebugDdgi = false;
 	int debugMode = 0;
 
@@ -205,6 +206,7 @@ struct RenderPassSetupDesc
 			&& (vrsDepthThreshold == rhs.vrsDepthThreshold)
 			&& (bUseRaytracing == rhs.bUseRaytracing)
 			&& (raytracingTech == rhs.raytracingTech)
+			&& (spatialRadius == rhs.spatialRadius)
 			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (debugMode == rhs.debugMode);
 	}

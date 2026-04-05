@@ -193,6 +193,7 @@ private:
 	// raytracing parameters.
 	bool					bUseRaytracing_ = false;
 	int						raytracingTech_ = 0;
+	float					restirSpatialRadius_ = 8.0f;
 	bool					bDebugDdgi_ = false;
 
 	// debug parameters.

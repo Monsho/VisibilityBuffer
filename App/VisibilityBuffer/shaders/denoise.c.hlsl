@@ -69,7 +69,7 @@ void main(uint3 did : SV_DispatchThreadID)
 #if DENOISE_WITH_GI == 1
 	gi = gi / totalWeight;
 #endif
-	
+
 	// sample prev.
 	float4 prevClipPos = mul(cbScene.mtxProjToPrevProj, clipPos);
 	prevClipPos.xyz *= (1 / prevClipPos.w);

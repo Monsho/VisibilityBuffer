@@ -328,15 +328,11 @@ std::vector<sl12::TransientResource> DenoisePass::GetInputResources(const sl12::
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSsaoID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kAOHistoryID, sl12::TransientState::ShaderResource));
-	if (bUseReSTIR_)
-	{
-		ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
-	}
-	else
+	if (bDenoiseGI_)
 	{
 		ret.push_back(sl12::TransientResource(kSsgiID, sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
 	}
-	ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -369,7 +365,7 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pSsaoRes = pResManager->GetRenderGraphResource(kSsaoID);
-	auto pSsgiRes = bUseReSTIR_ ? pResManager->GetRenderGraphResource(kReSTIRGIID) : pResManager->GetRenderGraphResource(kSsgiID);
+	auto pSsgiRes = pResManager->GetRenderGraphResource(kSsgiID);
 	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
 	auto pPrevSsaoRes = pResManager->GetRenderGraphResource(kAOHistoryID);
 	auto pPrevSsgiRes = pResManager->GetRenderGraphResource(kGIHistoryID);
@@ -385,8 +381,6 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	auto pDenoiseAOUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseAORes);
 	auto pDenoiseGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseGIRes);
 
-	bool bDenoiseGI = type_ == 2 || bUseReSTIR_;
-
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -396,7 +390,7 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	descSet.SetCsSrv(1, pSsaoSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pPrevDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pPrevSsaoSRV->GetDescInfo().cpuHandle);
-	if (bDenoiseGI)
+	if (bDenoiseGI_)
 	{
 		descSet.SetCsSrv(4, pSsgiSRV->GetDescInfo().cpuHandle);
 		descSet.SetCsSrv(5, pPrevSsgiSRV->GetDescInfo().cpuHandle);
@@ -406,7 +400,7 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState(bDenoiseGI ? psoGI_->GetPSO() : psoAO_->GetPSO());
+	pCmdList->GetLatestCommandList()->SetPipelineState(bDenoiseGI_ ? psoGI_->GetPSO() : psoAO_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
