@@ -1799,7 +1799,7 @@ RayTracingDenoisePass::RayTracingDenoisePass(sl12::Device* pDev, RenderSystem* p
 	psoAtrous_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 
 	rsTemporal_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFTemporal));
-	rsAtrous_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFAtrous));
+	rsAtrous_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFAtrous), 1);
 
 	sl12::ComputePipelineStateDesc desc{};
 	desc.pRootSignature = &rsTemporal_;

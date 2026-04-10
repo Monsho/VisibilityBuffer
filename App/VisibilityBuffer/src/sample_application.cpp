@@ -558,16 +558,19 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
 				ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
 			}
-			if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
+			if (bUseRaytracing_ && (raytracingTech_ == 1 || raytracingTech_ == 2))
 			{
-				ImGui::SliderFloat("Temporal Response", &svgfTemporalResponse_, 0.01f, 1.0f);
-				ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.01f, 5.0f);
-				ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, 0.0f, 1.0f);
-				ImGui::SliderFloat("Moment Alpha", &svgfMomentAlpha_, 0.01f, 1.0f);
-				ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
-				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
-				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
-				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
+				if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					ImGui::SliderFloat("Temporal Response", &svgfTemporalResponse_, 0.01f, 1.0f);
+					ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
+					ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, 0.0f, 1.0f);
+					ImGui::SliderFloat("Moment Alpha", &svgfMomentAlpha_, 0.01f, 1.0f);
+					ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
+					ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
+					ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
+					ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
+				}
 			}
 
 		// vrs settings.

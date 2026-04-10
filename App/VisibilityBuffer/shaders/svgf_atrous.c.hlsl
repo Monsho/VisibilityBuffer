@@ -4,7 +4,7 @@
 
 ConstantBuffer<SceneCB> cbScene : REG(b0);
 ConstantBuffer<SvgfCB>  cbSvgf  : REG(b1);
-ConstantBuffer<SvgfAtrousRootCB> cbAtrous : REG(b0, space1);
+ConstantBuffer<SvgfAtrousRootCB> cbAtrous : REG_SPACE(b0, 1);
 
 Texture2D<float3>       texInputGI : REG(t0);
 Texture2D<float2>       texMoments : REG(t1);
