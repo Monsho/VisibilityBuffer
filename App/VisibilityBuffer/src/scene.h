@@ -158,6 +158,7 @@ struct TemporalCBs
 	sl12::CbvHandle hDetailCB;
 	sl12::CbvHandle hBlurXCB, hBlurYCB;
 	sl12::CbvHandle hAmbOccCB;
+	sl12::CbvHandle hSvgfCB;
 	sl12::CbvHandle hTileCB;
 	sl12::CbvHandle hDebugCB;
 	std::vector<sl12::CbvHandle> hMeshCBs;
@@ -172,6 +173,7 @@ struct TemporalCBs
 		hBlurXCB.Reset();
 		hBlurYCB.Reset();
 		hAmbOccCB.Reset();
+		hSvgfCB.Reset();
 		hTileCB.Reset();
 		hDebugCB.Reset();
 		hMeshCBs.clear();

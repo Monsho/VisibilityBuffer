@@ -132,6 +132,23 @@ struct RestirCB
 	uint	initialFrame;
 };
 
+struct SvgfCB
+{
+	float	temporalResponse;
+	float	disocclusionDepth;
+	float	disocclusionNormal;
+	float	momentAlpha;
+	float	phiColor;
+	float	phiNormal;
+	float	phiDepth;
+	uint	atrousIterations;
+};
+
+struct SvgfAtrousRootCB
+{
+	uint	filterRadius;
+};
+
 struct DebugCB
 {
 	uint	displayMode;

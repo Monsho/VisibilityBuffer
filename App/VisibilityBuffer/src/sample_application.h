@@ -179,11 +179,19 @@ private:
 	float					ssaoTangentBias_ = 0.3f;
 	float					ssaoConstThickness_ = 1.0f;
 	float					ssaoViewBias_ = 1.0f;
-	int						ssaoBaseVecType_ = 0;
-	bool					bIsDeinterleave_ = false;
-	float					denoiseRadius_ = 2.0f;
-	float					denoiseBaseWeight_ = 0.85f;
-	float					denoiseDepthSigma_ = 1.0f;
+		int						ssaoBaseVecType_ = 0;
+		bool					bIsDeinterleave_ = false;
+		float					denoiseRadius_ = 2.0f;
+		float					denoiseBaseWeight_ = 0.85f;
+		float					denoiseDepthSigma_ = 1.0f;
+		float					svgfTemporalResponse_ = 0.15f;
+		float					svgfDisocclusionDepth_ = 0.5f;
+		float					svgfDisocclusionNormal_ = 0.6f;
+		float					svgfMomentAlpha_ = 0.2f;
+		float					svgfPhiColor_ = 10.0f;
+		float					svgfPhiNormal_ = 128.0f;
+		float					svgfPhiDepth_ = 2.0f;
+		int						svgfAtrousIterations_ = 4;
 
 	// vrs parameters.
 	bool					bUseVRS_ = false;

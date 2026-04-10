@@ -318,8 +318,10 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	UniqueHandle<sl12::RootSignature> rs_;
-	UniqueHandle<sl12::ComputePipelineState> pso_;
+	UniqueHandle<sl12::RootSignature> rsTemporal_;
+	UniqueHandle<sl12::ComputePipelineState> psoTemporal_;
+	UniqueHandle<sl12::RootSignature> rsAtrous_;
+	UniqueHandle<sl12::ComputePipelineState> psoAtrous_;
 };
 
 //	EOF

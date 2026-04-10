@@ -116,6 +116,9 @@
     <None Include="shaders\depth_reduction.p.hlsl" />
     <None Include="shaders\visibility_mesh_1st.a.hlsl" />
     <None Include="shaders\visibility_mesh_2nd.a.hlsl" />
+    <None Include="shaders\svgf_temporal.c.hlsl" />
+    <None Include="shaders\svgf_variance.c.hlsl" />
+    <None Include="shaders\svgf_atrous.c.hlsl" />
     <None Include="shaders\culling.hlsli" />
     <None Include="shaders\mesh_shader.hlsli" />
   </ItemGroup>
