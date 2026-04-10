@@ -564,7 +564,7 @@ bool SampleApplication::Execute()
 				{
 					ImGui::SliderFloat("Temporal Response", &svgfTemporalResponse_, 0.01f, 1.0f);
 					ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
-					ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, 0.0f, 1.0f);
+					ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, -1.0f, 1.0f);
 					ImGui::SliderFloat("Moment Alpha", &svgfMomentAlpha_, 0.01f, 1.0f);
 					ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
 					ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);

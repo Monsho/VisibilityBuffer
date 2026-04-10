@@ -58,11 +58,12 @@ void main(uint3 did : SV_DispatchThreadID)
     float currVD = ClipDepthToViewDepth(prevClipPos.z, cbScene.mtxPrevViewToProj);
     float depthDiff = abs(prevVD - currVD);
 
-    uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
-    float3 prevNormal = normalize(texGBufferC[prevPix].xyz * 2.0 - 1.0);
-    float normalCos = dot(normal, prevNormal);
+    // uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
+    // float3 prevNormal = normalize(texGBufferC[prevPix].xyz * 2.0 - 1.0);
+    // float normalCos = dot(normal, prevNormal);
 
-    bool validHistory = depthDiff < cbSvgf.disocclusionDepth && normalCos > cbSvgf.disocclusionNormal;
+    // bool validHistory = depthDiff < cbSvgf.disocclusionDepth && normalCos > cbSvgf.disocclusionNormal;
+    bool validHistory = depthDiff < cbSvgf.disocclusionDepth;
 
     float3 prevGI = texPrevGI.SampleLevel(samLinearClamp, prevUV, 0);
     float2 prevMoments = texPrevMoments.SampleLevel(samLinearClamp, prevUV, 0);
