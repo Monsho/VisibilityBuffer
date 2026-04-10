@@ -3,6 +3,7 @@
 #include "../shader_types.h"
 
 #include "sl12/descriptor_set.h"
+#include <algorithm>
 
 #define USE_IN_CPP
 #include "../../shaders/cbuffer.hlsli"
@@ -1792,24 +1793,36 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 RayTracingDenoisePass::RayTracingDenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
-	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	rsTemporal_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoTemporal_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	rsAtrous_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoAtrous_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTDenoise));
+	rsTemporal_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFTemporal));
+	rsAtrous_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFAtrous));
 
 	sl12::ComputePipelineStateDesc desc{};
-	desc.pRootSignature = &rs_;
-	desc.pCS = pRenderSys->GetShader(ShaderName::RTDenoise);
-	if (!pso_->Initialize(pDev, desc))
+	desc.pRootSignature = &rsTemporal_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::SVGFTemporal);
+	if (!psoTemporal_->Initialize(pDev, desc))
 	{
-		sl12::ConsolePrint("Error: failed to init raytracing denoise pso.");
+		sl12::ConsolePrint("Error: failed to init svgf temporal pso.");
+	}
+
+	desc.pRootSignature = &rsAtrous_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::SVGFAtrous);
+	if (!psoAtrous_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init svgf atrous pso.");
 	}
 }
 
 RayTracingDenoisePass::~RayTracingDenoisePass()
 {
-	pso_.Reset();
-	rs_.Reset();
+	psoAtrous_.Reset();
+	rsAtrous_.Reset();
+	psoTemporal_.Reset();
+	rsTemporal_.Reset();
 }
 
 std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(const sl12::RenderPassID& ID) const
@@ -1817,8 +1830,10 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(co
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSvgfMomentHistoryID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -1826,6 +1841,9 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource moments(kSvgfMomentID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource ping(kSvgfPingID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource pong(kSvgfPongID, sl12::TransientState::UnorderedAccess);
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
@@ -1833,8 +1851,18 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	gi.desc.bIsTexture = true;
 	gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 	gi.desc.historyFrame = 1;
+	moments.desc.bIsTexture = true;
+	moments.desc.textureDesc.Initialize2D(kSvgfMomentFormat, width, height, 1, 1, 0);
+	moments.desc.historyFrame = 1;
+	ping.desc.bIsTexture = true;
+	ping.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+	pong.desc.bIsTexture = true;
+	pong.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 
 	ret.push_back(gi);
+	ret.push_back(moments);
+	ret.push_back(ping);
+	ret.push_back(pong);
 
 	return ret;
 }
@@ -1844,37 +1872,72 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	GPU_MARKER(pCmdList, 0, "RayTracingDenoisePass");
 
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pNormalRes = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pRestirGIRes = pResManager->GetRenderGraphResource(kReSTIRGIID);
 	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
 	auto pPrevGIRes = pResManager->GetRenderGraphResource(kGIHistoryID);
+	auto pPrevMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentHistoryID);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
+	auto pNormalSRV = pResManager->CreateOrGetTextureView(pNormalRes);
 	auto pRestirGISRV = pResManager->CreateOrGetTextureView(pRestirGIRes);
 	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
 	auto pPrevGISRV = pPrevGIRes ? pResManager->CreateOrGetTextureView(pPrevGIRes) : pRestirGISRV;
+	auto pPrevMomentSRV = pPrevMomentRes ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : nullptr;
 
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
+	auto pMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentID);
+	auto pPingRes = pResManager->GetRenderGraphResource(kSvgfPingID);
+	auto pPongRes = pResManager->GetRenderGraphResource(kSvgfPongID);
 	auto pDenoiseGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseGIRes);
+	auto pMomentSRV = pResManager->CreateOrGetTextureView(pMomentRes);
+	auto pMomentUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMomentRes);
+	auto pPingSRV = pResManager->CreateOrGetTextureView(pPingRes);
+	auto pPingUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPingRes);
+	auto pPongSRV = pResManager->CreateOrGetTextureView(pPongRes);
+	auto pPongUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPongRes);
 
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hAmbOccCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(2, pRestirGISRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(3, pPrevGISRV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(0, pDenoiseGIUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pNormalSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pRestirGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pPrevGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pPrevMomentSRV ? pPrevMomentSRV->GetDescInfo().cpuHandle : pMomentSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pPingUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(1, pMomentUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
-	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+	pCmdList->GetLatestCommandList()->SetPipelineState(psoTemporal_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsTemporal_, &descSet);
 
 	// dispatch.
 	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
 	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+	const sl12::u32 iterations = 4;
+	for (sl12::u32 i = 0; i < iterations; ++i)
+	{
+		sl12::DescriptorSet atrousSet;
+		atrousSet.Reset();
+		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+		atrousSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(0, (i == 0 ? pPingSRV : ((i & 1) ? pPongSRV : pPingSRV))->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);
+		atrousSet.SetCsUav(0, (i + 1 == iterations) ? pDenoiseGIUAV->GetDescInfo().cpuHandle : ((i & 1) ? pPingUAV : pPongUAV)->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+
+		pCmdList->GetLatestCommandList()->SetPipelineState(psoAtrous_->GetPSO());
+		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsAtrous_, &atrousSet);
+		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+	}
 }
 
 

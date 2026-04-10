@@ -11,6 +11,7 @@
 
 #define NOMINMAX
 #include <windowsx.h>
+#include <algorithm>
 #include <memory>
 #include <random>
 
@@ -383,8 +384,8 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 
 		OutCBs.hDetailCB = cbvMan->GetTemporal(&cbDetail, sizeof(cbDetail));
 	}
-	{
-		AmbOccCB cbAO;
+		{
+			AmbOccCB cbAO;
 
 		cbAO.intensity = ssaoIntensity_;
 		cbAO.giIntensity = ssgiIntensity_;
@@ -405,8 +406,21 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbAO.denoiseBaseWeight = denoiseBaseWeight_;
 		cbAO.denoiseDepthSigma = denoiseDepthSigma_;
 
-		OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
-	}
+			OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
+		}
+		{
+			SvgfCB cbSvgf;
+			cbSvgf.temporalResponse = svgfTemporalResponse_;
+			cbSvgf.disocclusionDepth = svgfDisocclusionDepth_;
+			cbSvgf.disocclusionNormal = svgfDisocclusionNormal_;
+			cbSvgf.momentAlpha = svgfMomentAlpha_;
+			cbSvgf.phiColor = svgfPhiColor_;
+			cbSvgf.phiNormal = svgfPhiNormal_;
+			cbSvgf.phiDepth = svgfPhiDepth_;
+			cbSvgf.atrousIterations = (sl12::u32)std::max(1, svgfAtrousIterations_);
+
+			OutCBs.hSvgfCB = cbvMan->GetTemporal(&cbSvgf, sizeof(cbSvgf));
+		}
 	{
 		TileCB cbTile;
 
@@ -537,13 +551,24 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Deinterleave", &bIsDeinterleave_);
 		}
 
-		// denoise settings.
-		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
-			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
-			ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
-		}
+			// denoise settings.
+			if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
+				ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
+				ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
+			}
+			if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				ImGui::SliderFloat("Temporal Response", &svgfTemporalResponse_, 0.01f, 1.0f);
+				ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.01f, 5.0f);
+				ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Moment Alpha", &svgfMomentAlpha_, 0.01f, 1.0f);
+				ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
+				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
+				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
+				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
+			}
 
 		// vrs settings.
 		if (ImGui::CollapsingHeader("VRS", ImGuiTreeNodeFlags_DefaultOpen))

@@ -26,6 +26,10 @@ static const sl12::TransientResourceID	kDenoiseAOID("DenoiseAO");
 static const sl12::TransientResourceID	kDenoiseGIID("DenoiseGI");
 static const sl12::TransientResourceID	kAOHistoryID(kDenoiseAOID, 1);
 static const sl12::TransientResourceID	kGIHistoryID(kDenoiseGIID, 1);
+static const sl12::TransientResourceID	kSvgfMomentID("SvgfMoment");
+static const sl12::TransientResourceID	kSvgfMomentHistoryID(kSvgfMomentID, 1);
+static const sl12::TransientResourceID	kSvgfPingID("SvgfPing");
+static const sl12::TransientResourceID	kSvgfPongID("SvgfPong");
 static const sl12::TransientResourceID	kVisBufferID("VisBuffer");
 static const sl12::TransientResourceID	kMaterialDepthID("MaterialDepth");
 static const sl12::TransientResourceID	kDrawFlagID("DrawFlag");
@@ -93,6 +97,7 @@ static const DXGI_FORMAT	kShadowExpFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 static const DXGI_FORMAT	kDeinterleaveDepthFormat = DXGI_FORMAT_R32_FLOAT;
 static const DXGI_FORMAT	kSsaoFormat = DXGI_FORMAT_R8_UNORM;
 static const DXGI_FORMAT	kSsgiFormat = DXGI_FORMAT_R11G11B10_FLOAT;
+static const DXGI_FORMAT	kSvgfMomentFormat = DXGI_FORMAT_R16G16_FLOAT;
 static const DXGI_FORMAT	kVisibilityFormat = DXGI_FORMAT_R32_UINT;
 static const DXGI_FORMAT	kMaterialDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
