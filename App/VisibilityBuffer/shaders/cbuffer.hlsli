@@ -144,6 +144,11 @@ struct SvgfCB
 	uint	atrousIterations;
 };
 
+struct SvgfAtrousRootCB
+{
+	uint	filterRadius;
+};
+
 struct DebugCB
 {
 	uint	displayMode;

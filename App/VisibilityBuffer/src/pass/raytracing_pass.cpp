@@ -1920,7 +1920,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-	const sl12::u32 iterations = 4;
+	const sl12::u32 iterations = 3;
 	for (sl12::u32 i = 0; i < iterations; ++i)
 	{
 		sl12::DescriptorSet atrousSet;
@@ -1936,6 +1936,8 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoAtrous_->GetPSO());
 		pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsAtrous_, &atrousSet);
+		const sl12::u32 filterRadius = (1u << i);
+		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rsAtrous_->GetRootConstantIndex(), filterRadius, 0);
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 	}
 }

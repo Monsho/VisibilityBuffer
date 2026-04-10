@@ -4,6 +4,7 @@
 
 ConstantBuffer<SceneCB> cbScene : REG(b0);
 ConstantBuffer<SvgfCB>  cbSvgf  : REG(b1);
+ConstantBuffer<SvgfAtrousRootCB> cbAtrous : REG(b0, space1);
 
 Texture2D<float3>       texInputGI : REG(t0);
 Texture2D<float2>       texMoments : REG(t1);
@@ -30,6 +31,11 @@ void main(uint3 did : SV_DispatchThreadID)
     }
 
     float centerDepth = texDepth[pixPos];
+    if (centerDepth <= 0.0)
+    {
+        rwOutputGI[pixPos] = texInputGI[pixPos];
+        return;
+    }
     float centerVD = ClipDepthToViewDepth(centerDepth, cbScene.mtxViewToProj);
     float3 centerNormal = normalize(texNormal[pixPos].xyz * 2.0 - 1.0);
     float3 centerGI = texInputGI[pixPos];
@@ -47,11 +53,15 @@ void main(uint3 did : SV_DispatchThreadID)
         [unroll]
         for (int x = -1; x <= 1; ++x)
         {
-            int2 p = int2(pixPos) + int2(x, y);
+            int2 p = int2(pixPos) + int2(x, y) * int(cbAtrous.filterRadius);
             p = clamp(p, int2(0, 0), int2(dim) - 1);
 
             float3 gi = texInputGI[p];
             float depth = texDepth[p];
+            if (depth <= 0.0)
+            {
+                continue;
+            }
             float vd = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
             float3 normal = normalize(texNormal[p].xyz * 2.0 - 1.0);
 
