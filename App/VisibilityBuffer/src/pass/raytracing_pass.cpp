@@ -123,16 +123,12 @@ namespace InitialSample
 
 	struct Reservoir
 	{
-		DirectX::XMFLOAT3 sampleRadiance;
-		float weightSum;
-		DirectX::XMFLOAT3 samplePosition;
-		float targetPdf;
-		DirectX::XMFLOAT3 sampleNormal;
-		float ucw;
-		sl12::u32 M;
-		sl12::u32 isValid;
-		sl12::u32 pad0;
-		sl12::u32 pad1;
+		DirectX::XMFLOAT3	sampleRadiance;
+		float				weightSum;
+		DirectX::XMFLOAT3	samplePosition;
+		uint				M;
+		DirectX::XMFLOAT3	sampleNormal;
+		uint				age;
 	};
 }
 

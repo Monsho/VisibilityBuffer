@@ -200,6 +200,7 @@ private:
 	float					restirSpatialRadius_ = 8.0f;
 	float					restirSpatialDepthEps_ = 20.0f;
 	float					restirSpatialNormalCos_ = 0.75f;
+	bool					bRestirComputeJacobian_ = false;
 	bool					bRestirInitFrame_ = true;
 	bool					bDebugDdgi_ = false;
 

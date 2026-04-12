@@ -30,7 +30,7 @@ void InitialSampleRGS()
 {
 	uint2 pixelPos = DispatchRaysIndex().xy;
 	uint2 dim = DispatchRaysDimensions().xy;
-	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
+	uint pixelIndex = pixelPos.x + pixelPos.y * cbScene.screenSize.x;
 
 	Reservoir reservoir = ReservoirEmpty();
 
@@ -143,7 +143,7 @@ void InitialSampleRGS()
 		float2 prevPixF = prevUV * (float2)dim - 0.5;
 		uint2 prevPixelPos = (uint2)round(prevPixF);
 
-		if (all(prevPixelPos >= 0) && all(prevPixelPos < dim))
+		if (all(prevUV >= 0.0) && all(prevUV <= 1.0))
 		{
 			float prevDepth = texPrevDepth[prevPixelPos];
 			float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxViewToProj);
@@ -161,11 +161,14 @@ void InitialSampleRGS()
 	[branch]
 	if (IsPreviousFounded)
 	{
-		float Jacobian = ComputeJacobian(worldPos, prevWorldPos, prevRes.samplePosition, prevRes.sampleNormal);
-		if (!IsValidateJacobian(Jacobian))
-			IsPreviousFounded = false;
+		if (cbRestir.computeJacobian)
+		{
+			float Jacobian = ComputeJacobian(worldPos, prevWorldPos, prevRes.samplePosition, prevRes.sampleNormal);
+			if (!IsValidateJacobian(Jacobian))
+				IsPreviousFounded = false;
 
-		prevRes.weightSum *= Jacobian;
+			prevRes.weightSum *= Jacobian;
+		}
 
 		// Increment history age.
 		prevRes.M = min(prevRes.M, cbRestir.maxReservoirM);

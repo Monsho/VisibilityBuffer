@@ -442,6 +442,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbRestir.spatialRadius = restirSpatialRadius_;
 		cbRestir.spatialDepthEps = restirSpatialDepthEps_;
 		cbRestir.spatialNormalCos = restirSpatialNormalCos_;
+		cbRestir.computeJacobian = bRestirComputeJacobian_ ? 1 : 0;
 		cbRestir.initialFrame = bRestirInitFrame_ ? 1 : 0;
 
 		OutCBs.hRestirCB = cbvMan->GetTemporal(&cbRestir, sizeof(cbRestir));
@@ -626,6 +627,7 @@ bool SampleApplication::Execute()
 					ImGui::SliderFloat("Spatial Radius", &restirSpatialRadius_, 1.0f, 32.0f);
 					ImGui::SliderFloat("Spatial Depth Eps", &restirSpatialDepthEps_, 0.0f, 100.0f);
 					ImGui::SliderFloat("Spatial Normal Cos", &restirSpatialNormalCos_, 0.0f, 1.0f);
+					ImGui::Checkbox("Compute Jacobian", &bRestirComputeJacobian_);
 				}
 				if (raytracingTech_ == 0)
 				{

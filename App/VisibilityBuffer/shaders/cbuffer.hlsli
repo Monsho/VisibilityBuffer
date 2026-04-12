@@ -133,6 +133,7 @@ struct RestirCB
 	float	spatialRadius;
 	float	spatialDepthEps;
 	float	spatialNormalCos;
+	uint	computeJacobian;
 	uint	initialFrame;
 };
 

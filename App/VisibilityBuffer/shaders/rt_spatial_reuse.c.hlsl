@@ -126,9 +126,13 @@ void main(
 			continue;
 
 		float3 nWorldPos = GetWorldPos(npos, nDepth, cbScene.screenSize, cbScene.mtxProjToWorld);
-		float Jacobian = ComputeJacobian(worldPos, nWorldPos, nRes.samplePosition, nRes.sampleNormal);
-		if (!IsValidateJacobian(Jacobian))
-			continue;
+		float Jacobian = 1.0;
+		if (cbRestir.computeJacobian)
+		{
+			Jacobian = ComputeJacobian(worldPos, nWorldPos, nRes.samplePosition, nRes.sampleNormal);
+			if (!IsValidateJacobian(Jacobian))
+				continue;
+		}
 
 		float3 dirN = normalize(nRes.samplePosition - worldPos.xyz);
 		float targetPdfN = ReservoirGetGIPdf(nRes.sampleRadiance, max(dot(normal, dirN), 0.0));

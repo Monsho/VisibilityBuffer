@@ -13,10 +13,6 @@ struct Reservoir
 	uint	age;
 };
 
-static const float kEpsPdf = 1e-6;
-static const uint  kMaxReservoirM = 8;
-static const uint  kMaxReservoirAge = 30;
-
 float Hash(uint v)
 {
 	v ^= 2747636419u;
