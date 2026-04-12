@@ -384,8 +384,8 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 
 		OutCBs.hDetailCB = cbvMan->GetTemporal(&cbDetail, sizeof(cbDetail));
 	}
-		{
-			AmbOccCB cbAO;
+	{
+		AmbOccCB cbAO;
 
 		cbAO.intensity = ssaoIntensity_;
 		cbAO.giIntensity = ssgiIntensity_;
@@ -406,21 +406,21 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbAO.denoiseBaseWeight = denoiseBaseWeight_;
 		cbAO.denoiseDepthSigma = denoiseDepthSigma_;
 
-			OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
-		}
-		{
-			SvgfCB cbSvgf;
-			cbSvgf.temporalResponse = svgfTemporalResponse_;
-			cbSvgf.disocclusionDepth = svgfDisocclusionDepth_;
-			cbSvgf.disocclusionNormal = svgfDisocclusionNormal_;
-			cbSvgf.momentAlpha = svgfMomentAlpha_;
-			cbSvgf.phiColor = svgfPhiColor_;
-			cbSvgf.phiNormal = svgfPhiNormal_;
-			cbSvgf.phiDepth = svgfPhiDepth_;
-			cbSvgf.atrousIterations = (sl12::u32)std::max(1, svgfAtrousIterations_);
+		OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
+	}
+	{
+		SvgfCB cbSvgf;
+		cbSvgf.temporalBlend = svgfTemporalBlend_;
+		cbSvgf.disocclusionDepth = svgfDisocclusionDepth_;
+		cbSvgf.disocclusionNormal = svgfDisocclusionNormal_;
+		cbSvgf.momentBlend = svgfMomentBlend_;
+		cbSvgf.phiColor = svgfPhiColor_;
+		cbSvgf.phiNormal = svgfPhiNormal_;
+		cbSvgf.phiDepth = svgfPhiDepth_;
+		cbSvgf.atrousIterations = (sl12::u32)std::max(1, svgfAtrousIterations_);
 
-			OutCBs.hSvgfCB = cbvMan->GetTemporal(&cbSvgf, sizeof(cbSvgf));
-		}
+		OutCBs.hSvgfCB = cbvMan->GetTemporal(&cbSvgf, sizeof(cbSvgf));
+	}
 	{
 		TileCB cbTile;
 
@@ -432,6 +432,18 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbTile.materialMax = (sl12::u32)scene_->GetMeshletResource()->GetWorldMaterials().size();
 
 		OutCBs.hTileCB = cbvMan->GetTemporal(&cbTile, sizeof(cbTile));
+	}
+	{
+		RestirCB cbRestir;
+		cbRestir.temporalDepthEps = restirTemporalDepthEps_;
+		cbRestir.maxReservoirM = restirMaxReservoirM_;
+		cbRestir.maxReservoirAge = restirMaxReservoirAge_;
+		cbRestir.spatialRadius = restirSpatialRadius_;
+		cbRestir.spatialDepthEps = restirSpatialDepthEps_;
+		cbRestir.spatialNormalCos = restirSpatialNormalCos_;
+		cbRestir.initialFrame = bRestirInitFrame_ ? 1 : 0;
+
+		OutCBs.hRestirCB = cbvMan->GetTemporal(&cbRestir, sizeof(cbRestir));
 	}
 	{
 		DebugCB cbDebug;
@@ -562,10 +574,10 @@ bool SampleApplication::Execute()
 			{
 				if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					ImGui::SliderFloat("Temporal Response", &svgfTemporalResponse_, 0.01f, 1.0f);
+					ImGui::SliderFloat("Temporal Response", &svgfTemporalBlend_, 0.0f, 1.0f);
 					ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
 					ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, -1.0f, 1.0f);
-					ImGui::SliderFloat("Moment Alpha", &svgfMomentAlpha_, 0.01f, 1.0f);
+					ImGui::SliderFloat("Moment Alpha", &svgfMomentBlend_, 0.0f, 1.0f);
 					ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
 					ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
 					ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
@@ -587,7 +599,11 @@ bool SampleApplication::Execute()
 		// raytracing settings.
 		if (ImGui::CollapsingHeader("RayTracing", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImGui::Checkbox("Use RayTracing", &bUseRaytracing_);
+			bRestirInitFrame_ = false;
+			if (ImGui::Checkbox("Use RayTracing", &bUseRaytracing_))
+			{
+				bRestirInitFrame_ = true;
+			}
 			if (bUseRaytracing_)
 			{
 				static const char* kRayTracingModes[] = {
@@ -595,13 +611,24 @@ bool SampleApplication::Execute()
 					"Monte Carlo GI",
 					"ReSTIR GI",
 				};
-				ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes));
+				if (ImGui::Combo("Technique", &raytracingTech_, kRayTracingModes, ARRAYSIZE(kRayTracingModes)))
+				{
+					bRestirInitFrame_ = true;
+				}
 				if (raytracingTech_ == 2)
 				{
 					// ReSTIR GI
+					ImGui::SliderFloat("Temporal Depth Eps", &restirTemporalDepthEps_, 0.0f, 100.0f);
+					ImGui::SliderInt("Max M", &restirMaxReservoirM_, 1, 100);
+					ImGui::SliderInt("Max Age", &restirMaxReservoirAge_, 1, 100);
 					ImGui::SliderFloat("Spatial Radius", &restirSpatialRadius_, 1.0f, 32.0f);
+					ImGui::SliderFloat("Spatial Depth Eps", &restirSpatialDepthEps_, 0.0f, 100.0f);
+					ImGui::SliderFloat("Spatial Normal Cos", &restirSpatialNormalCos_, 0.0f, 1.0f);
 				}
-				ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);
+				if (raytracingTech_ == 0)
+				{
+					ImGui::Checkbox("DebugDDGI", &bDebugDdgi_);
+				}
 			}
 		}
 

@@ -14,11 +14,6 @@ SamplerState				samLinearClamp	: REG(s0);
 
 RWTexture2D<float3>			rwGI		: REG(u0);
 
-float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
-{
-	return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -28,7 +23,7 @@ void main(uint3 did : SV_DispatchThreadID)
 	// current data.
 	float depth = texDepth[pixPos];
 	float4 clipPos = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
-	float VD = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
+	float VD = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
 	float3 gi = texGI[pixPos];
 
 	// temporal sampling.
@@ -46,8 +41,8 @@ void main(uint3 did : SV_DispatchThreadID)
 
 	// depth weight.
 	float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
-	float prevVD = ClipDepthToViewDepth(prevDepth, cbScene.mtxPrevViewToProj);
-	float currVD = ClipDepthToViewDepth(prevClipPos.z, cbScene.mtxPrevViewToProj);
+	float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
+	float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
 	float w = exp(-abs(prevVD - currVD) / (cbAO.denoiseDepthSigma + 1e-3));
 	float depthWeight = isfinite(w) ? w : 0;
 

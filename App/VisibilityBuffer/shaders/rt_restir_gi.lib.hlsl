@@ -40,6 +40,7 @@ void InitialSampleRGS()
 		rwReservoirs[pixelIndex] = reservoir;
 		return;
 	}
+	float VD = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
 
 	float3 normal = normalize(texGBufferC[pixelPos].xyz * 2.0 - 1.0);
 
@@ -145,13 +146,14 @@ void InitialSampleRGS()
 		if (all(prevPixelPos >= 0) && all(prevPixelPos < dim))
 		{
 			float prevDepth = texPrevDepth[prevPixelPos];
+			float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxViewToProj);
 			// Simple disocclusion rejection using depth.
-			if (abs(prevDepth - depth) <= TEMPORAL_DEPTH_EPS)
+			if (abs(prevVD - VD) <= cbRestir.temporalDepthEps)
 			{
 				uint prevIndex = prevPixelPos.x + prevPixelPos.y * dim.x;
 				prevRes = prevReservoirs[prevIndex];
-				IsPreviousFounded = IsReservoirValid(prevRes);
 				prevWorldPos = GetWorldPos(prevPixelPos, prevDepth, cbScene.screenSize, mul(cbScene.mtxProjToWorld, cbScene.mtxPrevProjToProj));
+				IsPreviousFounded = IsReservoirValid(prevRes);
 			}
 		}
 	}
@@ -166,10 +168,11 @@ void InitialSampleRGS()
 		prevRes.weightSum *= Jacobian;
 
 		// Increment history age.
-		prevRes.M = min(prevRes.M, kMaxReservoirM);
+		prevRes.M = min(prevRes.M, cbRestir.maxReservoirM);
 		prevRes.age++;
 
-		if (prevRes.age < kMaxReservoirAge)
+		// if (prevRes.age < cbRestir.maxReservoirAge)
+		if (prevRes.age > cbRestir.maxReservoirAge)
 			IsPreviousFounded = false;
 	}
 

@@ -67,11 +67,6 @@ float2 MapToDisk(uint2 fragCoord, uint frame, float radius)
 	return r * radius * float2(cos(phi), sin(phi));
 }
 
-float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
-{
-	return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
-}
-
 [numthreads(8, 8, 1)]
 void main(
 	uint3 gid : SV_GroupID,
@@ -87,7 +82,7 @@ void main(
 
 	uint pixelIndex = pixelPos.x + pixelPos.y * dim.x;
 	float depth = texDepth[pixelPos];
-	float cVD = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
+	float cVD = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
 	Reservoir center = inputReservoirs[pixelIndex];
 
 	if (MATH_VERIFY_MODE)
@@ -127,7 +122,7 @@ void main(
 			continue;
 
 		float nDepth = texDepth[npos];
-		float nVD = ClipDepthToViewDepth(nDepth, cbScene.mtxViewToProj);
+		float nVD = ClipDepthToViewDepthRH(nDepth, cbScene.mtxViewToProj);
 		float3 nNormal = normalize(texGBufferC[npos].xyz * 2.0 - 1.0);
 		bool IsDepthValid = (nDepth > 0.0) && (abs(nVD - cVD) <= cbRestir.spatialDepthEps);
 		bool IsNormalValid = dot(nNormal, normal) >= cbRestir.spatialNormalCos;

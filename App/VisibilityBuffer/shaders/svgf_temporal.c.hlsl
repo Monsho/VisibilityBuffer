@@ -17,11 +17,6 @@ SamplerState            samLinearClamp  : REG(s0);
 RWTexture2D<float3>     rwTemporalGI    : REG(u0);
 RWTexture2D<float2>     rwMoments       : REG(u1);
 
-float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
-{
-    return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -54,8 +49,8 @@ void main(uint3 did : SV_DispatchThreadID)
     }
 
     float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
-    float prevVD = ClipDepthToViewDepth(prevDepth, cbScene.mtxPrevViewToProj);
-    float currVD = ClipDepthToViewDepth(prevClipPos.z, cbScene.mtxPrevViewToProj);
+    float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
+    float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
     float depthDiff = abs(prevVD - currVD);
 
     // uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
@@ -68,11 +63,11 @@ void main(uint3 did : SV_DispatchThreadID)
     float3 prevGI = texPrevGI.SampleLevel(samLinearClamp, prevUV, 0);
     float2 prevMoments = texPrevMoments.SampleLevel(samLinearClamp, prevUV, 0);
 
-    float alpha = validHistory ? cbSvgf.temporalResponse : 1.0;
-    float momentAlpha = validHistory ? cbSvgf.momentAlpha : 1.0;
+    float temporalBlend = validHistory ? cbSvgf.temporalBlend : 0.0;
+    float momentBlend = validHistory ? cbSvgf.momentBlend : 0.0;
 
-    rwTemporalGI[pixPos] = lerp(prevGI, currGI, saturate(alpha));
-    rwMoments[pixPos] = lerp(prevMoments, currMoments, saturate(momentAlpha));
+    rwTemporalGI[pixPos] = lerp(currGI, prevGI, saturate(temporalBlend));
+    rwMoments[pixPos] = lerp(currMoments, prevMoments, saturate(momentBlend));
 }
 
 // EOF

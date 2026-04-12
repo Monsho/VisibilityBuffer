@@ -133,7 +133,7 @@ public:
 	{
 		return &envSampler_;
 	}
-	
+
 private:
 	UniqueHandle<sl12::ResourceLoader>	resLoader_;
 	UniqueHandle<sl12::ShaderManager>	shaderMan_;
@@ -160,6 +160,7 @@ struct TemporalCBs
 	sl12::CbvHandle hAmbOccCB;
 	sl12::CbvHandle hSvgfCB;
 	sl12::CbvHandle hTileCB;
+	sl12::CbvHandle hRestirCB;
 	sl12::CbvHandle hDebugCB;
 	std::vector<sl12::CbvHandle> hMeshCBs;
 
@@ -175,6 +176,7 @@ struct TemporalCBs
 		hAmbOccCB.Reset();
 		hSvgfCB.Reset();
 		hTileCB.Reset();
+		hRestirCB.Reset();
 		hDebugCB.Reset();
 		hMeshCBs.clear();
 	}

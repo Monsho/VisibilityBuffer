@@ -184,14 +184,6 @@ private:
 	float					denoiseRadius_ = 2.0f;
 	float					denoiseBaseWeight_ = 0.85f;
 	float					denoiseDepthSigma_ = 1.0f;
-	float					svgfTemporalResponse_ = 0.05f;
-	float					svgfDisocclusionDepth_ = 20.0f;
-	float					svgfDisocclusionNormal_ = 0.6f;
-	float					svgfMomentAlpha_ = 0.08f;
-	float					svgfPhiColor_ = 10.0f;
-	float					svgfPhiNormal_ = 128.0f;
-	float					svgfPhiDepth_ = 2.0f;
-	int						svgfAtrousIterations_ = 4;
 
 	// vrs parameters.
 	bool					bUseVRS_ = false;
@@ -201,8 +193,24 @@ private:
 	// raytracing parameters.
 	bool					bUseRaytracing_ = false;
 	int						raytracingTech_ = 0;
+	float					restirTemporalDepthEps_ = 10.0f;
+	int						restirMaxReservoirM_ = 8;
+	int						restirMaxReservoirAge_ = 30;
 	float					restirSpatialRadius_ = 8.0f;
+	float					restirSpatialDepthEps_ = 20.0f;
+	float					restirSpatialNormalCos_ = 0.75f;
+	bool					bRestirInitFrame_ = true;
 	bool					bDebugDdgi_ = false;
+
+	// svgf parameters.
+	float					svgfTemporalBlend_ = 0.95f;
+	float					svgfDisocclusionDepth_ = 20.0f;
+	float					svgfDisocclusionNormal_ = 0.6f;
+	float					svgfMomentBlend_ = 0.92f;
+	float					svgfPhiColor_ = 10.0f;
+	float					svgfPhiNormal_ = 128.0f;
+	float					svgfPhiDepth_ = 2.0f;
+	int						svgfAtrousIterations_ = 4;
 
 	// debug parameters.
 	int						displayMode_ = 0;

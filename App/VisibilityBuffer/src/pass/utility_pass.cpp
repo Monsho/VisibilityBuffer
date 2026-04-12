@@ -1014,6 +1014,7 @@ void DebugPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetPsCbv(0, pScene_->GetTemporalCBs().hDebugCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsCbv(1, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(0, pSourceSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 	if (pVrsRes)

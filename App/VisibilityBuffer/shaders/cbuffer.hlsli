@@ -126,6 +126,9 @@ struct MeshletCullCB
 
 struct RestirCB
 {
+	float	temporalDepthEps;
+	uint	maxReservoirM;
+	uint	maxReservoirAge;
 	float	spatialRadius;
 	float	spatialDepthEps;
 	float	spatialNormalCos;
@@ -134,10 +137,10 @@ struct RestirCB
 
 struct SvgfCB
 {
-	float	temporalResponse;
+	float	temporalBlend;
 	float	disocclusionDepth;
 	float	disocclusionNormal;
-	float	momentAlpha;
+	float	momentBlend;
 	float	phiColor;
 	float	phiNormal;
 	float	phiDepth;

@@ -14,6 +14,7 @@ struct PSOutput
 };
 
 ConstantBuffer<DebugCB>	cbDebug		: register(b0);
+ConstantBuffer<SceneCB>	cbScene		: register(b1);
 Texture2D			texSource		: register(t0);
 Texture2D<uint>		texVRS			: register(t1);
 SamplerState		samLinear		: register(s0);

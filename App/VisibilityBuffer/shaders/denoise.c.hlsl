@@ -22,11 +22,6 @@ SamplerState				samLinearClamp	: register(s0);
 RWTexture2D<float>			rwAO		: register(u0);
 RWTexture2D<float3>			rwGI		: register(u1);
 
-float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
-{
-	return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -36,7 +31,7 @@ void main(uint3 did : SV_DispatchThreadID)
 	// current depth.
 	float depth = texDepth[pixPos];
 	float4 clipPos = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
-	float VD = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
+	float VD = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
 
 	// spatio denoise.
 	const int kMaxSpatioPixel = 5;
@@ -55,7 +50,7 @@ void main(uint3 did : SV_DispatchThreadID)
 			{
 				int2 p = pixPos + int2(x, y);
 				float nd = texDepth[p];
-				float nVD = ClipDepthToViewDepth(nd, cbScene.mtxViewToProj);
+				float nVD = ClipDepthToViewDepthRH(nd, cbScene.mtxViewToProj);
 				float w = 1.0 - smoothstep(1.0, 2.0, abs(VD - nVD));
 				ao += texAO[p] * w;
 #if DENOISE_WITH_GI == 1
@@ -81,8 +76,8 @@ void main(uint3 did : SV_DispatchThreadID)
 
 	// depth weight.
 	float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
-	float prevVD = ClipDepthToViewDepth(prevDepth, cbScene.mtxPrevViewToProj);
-	float currVD = ClipDepthToViewDepth(prevClipPos.z, cbScene.mtxPrevViewToProj);
+	float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
+	float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
 	float w = exp(-abs(prevVD - currVD) / (cbAO.denoiseDepthSigma + 1e-3));
 	float depthWeight = isfinite(w) ? w : 0;
 

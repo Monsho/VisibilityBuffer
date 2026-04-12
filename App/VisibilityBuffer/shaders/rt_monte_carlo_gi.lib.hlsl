@@ -98,7 +98,7 @@ void ModteCarloGIRGS()
 		float3 skyIrradiance = texIrradiance.SampleLevel(samLinear, CartesianToLatLong(rayDir), 0).rgb * cbLight.ambientIntensity;
 		radiance = skyIrradiance;
 	}
-	rwGI[pixelPos] = radiance * (1.0 / PI);
+	rwGI[pixelPos] = radiance;
 }
 
 [shader("miss")]

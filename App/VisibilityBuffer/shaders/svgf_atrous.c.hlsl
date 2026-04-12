@@ -15,11 +15,6 @@ SamplerState            samLinearClamp : REG(s0);
 
 RWTexture2D<float3>     rwOutputGI : REG(u0);
 
-float ClipDepthToViewDepth(float D, float4x4 mtxViewToClip)
-{
-    return (D * mtxViewToClip[3][3] - mtxViewToClip[2][3]) / (mtxViewToClip[2][2] - D * mtxViewToClip[3][2]);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -36,7 +31,7 @@ void main(uint3 did : SV_DispatchThreadID)
         rwOutputGI[pixPos] = texInputGI[pixPos];
         return;
     }
-    float centerVD = ClipDepthToViewDepth(centerDepth, cbScene.mtxViewToProj);
+    float centerVD = ClipDepthToViewDepthRH(centerDepth, cbScene.mtxViewToProj);
     float3 centerNormal = normalize(texNormal[pixPos].xyz * 2.0 - 1.0);
     float3 centerGI = texInputGI[pixPos];
 
@@ -62,7 +57,7 @@ void main(uint3 did : SV_DispatchThreadID)
             {
                 continue;
             }
-            float vd = ClipDepthToViewDepth(depth, cbScene.mtxViewToProj);
+            float vd = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
             float3 normal = normalize(texNormal[p].xyz * 2.0 - 1.0);
 
             float depthW = exp(-abs(vd - centerVD) * cbSvgf.phiDepth);

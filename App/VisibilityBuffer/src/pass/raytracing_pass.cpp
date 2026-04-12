@@ -1591,16 +1591,12 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pPrevReservoirSrv = pResManager->CreateOrGetBufferView(pPrevReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pReservoir, 0, 0, 0, 0);
 
-	RestirCB cb;
-	cb.initialFrame = bInitialFrame_ ? 1 : 0;
-	auto hRestirCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
-
 	auto&& TempCB = pScene_->GetTemporalCBs();
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetCsCbv(2, hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(2, TempCB.hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pGbCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
@@ -1693,17 +1689,10 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pInputReservoirSrv = pResManager->CreateOrGetBufferView(pInputReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pOutputReservoirUav = pResManager->CreateOrGetUnorderedAccessBufferView(pOutputReservoir, 0, 0, 0, 0);
 
-	RestirCB cb;
-	cb.initialFrame = false;
-	cb.spatialRadius = spacialRadius_;
-	cb.spatialDepthEps = spacialDepthEps_;
-	cb.spatialNormalCos = spacialNormalCos_;
-	auto hRestirCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
-
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetCsCbv(1, hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pGBufferCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pInputReservoirSrv->GetDescInfo().cpuHandle);
