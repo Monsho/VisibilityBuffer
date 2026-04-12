@@ -26,7 +26,7 @@ ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene
 	rsMasked_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoOpaque_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
-	
+
 	// init root signature.
 	rsOpaque_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ShadowOpaqueVV), nullptr, nullptr, nullptr, nullptr);
 	rsMasked_->Initialize(pDev, pRenderSys->GetShader(ShaderName::ShadowMaskedVV), pRenderSys->GetShader(ShaderName::ShadowMaskedP), nullptr, nullptr, nullptr);
@@ -41,11 +41,11 @@ ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene
 		desc.blend.rtDesc[0].isBlendEnable = false;
 		desc.blend.rtDesc[0].writeMask = 0xf;
 
-		desc.rasterizer.cullMode = D3D12_CULL_MODE_FRONT;
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
 		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
 		desc.rasterizer.isDepthClipEnable = false;
 		desc.rasterizer.isFrontCCW = true;
-		desc.rasterizer.slopeScaledDepthBias = 2.0f;
+		desc.rasterizer.slopeScaledDepthBias = -2.0f;
 
 		desc.depthStencil.isDepthEnable = true;
 		desc.depthStencil.isDepthWriteEnable = true;
@@ -172,7 +172,7 @@ void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	dsMasked.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
 
 	sl12::GraphicsPipelineState* NowPSO = nullptr;
-	
+
 	// draw meshes.
 	sl12::u32 meshIndex = 0;
 	for (auto&& mesh : pScene_->GetSceneMeshes())
@@ -384,7 +384,7 @@ ShadowExpBlurPass::~ShadowExpBlurPass()
 	pso_.Reset();
 	rs_.Reset();
 }
-	
+
 std::vector<sl12::TransientResource> ShadowExpBlurPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
@@ -400,7 +400,6 @@ std::vector<sl12::TransientResource> ShadowExpBlurPass::GetInputResources(const 
 	}
 
 	return ret;
-	
 }
 
 std::vector<sl12::TransientResource> ShadowExpBlurPass::GetOutputResources(const sl12::RenderPassID& ID) const

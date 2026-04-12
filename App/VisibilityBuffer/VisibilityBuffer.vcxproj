@@ -117,6 +117,8 @@
     <None Include="shaders\svgf_variance.c.hlsl" />
     <None Include="shaders\svgf_atrous.c.hlsl" />
     <None Include="shaders\rt_monte_carlo_gi.lib.hlsl" />
+    <None Include="shaders\lighting_evsm.c.hlsl" />
+    <None Include="shaders\lighting_sm.c.hlsl" />
     <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\raytracing_pass.cpp" />

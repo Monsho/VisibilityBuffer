@@ -206,7 +206,5 @@ struct SubmeshOffsetCB
 	uint	index;
 };
 
-#define SHADOW_TYPE 0
-
 #endif // CBUFFER_HLSLI
 //  EOF

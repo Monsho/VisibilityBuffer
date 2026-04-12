@@ -134,7 +134,7 @@ void FeedbackMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientR
 
 	auto pMipRes = pResManager->GetRenderGraphResource(kMiplevelFeedbackID);
 	auto pMipSRV = pResManager->CreateOrGetTextureView(pMipRes);
-	
+
 	// output barrier.
 	pCmdList->TransitionBarrier(pScene_->GetMiplevelBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -162,27 +162,39 @@ LightingPass::LightingPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+	psoSM_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+	psoEVSM_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
 	// init root signature.
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::LightingC));
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::LightingSMC));
 
 	// init pipeline state.
 	{
 		sl12::ComputePipelineStateDesc desc{};
 		desc.pRootSignature = &rs_;
-		desc.pCS = pRenderSys->GetShader(ShaderName::LightingC);
+		desc.pCS = pRenderSys->GetShader(ShaderName::LightingSMC);
 
-		if (!pso_->Initialize(pDev, desc))
+		if (!psoSM_->Initialize(pDev, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init lighting pso.");
+			sl12::ConsolePrint("Error: failed to init lighting sm pso.");
+		}
+	}
+	{
+		sl12::ComputePipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pCS = pRenderSys->GetShader(ShaderName::LightingEVSMC);
+
+		if (!psoEVSM_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init lighting evsm pso.");
 		}
 	}
 }
 
 LightingPass::~LightingPass()
 {
-	pso_.Reset();
+	psoSM_.Reset();
+	psoEVSM_.Reset();
 	rs_.Reset();
 }
 
@@ -235,7 +247,7 @@ void LightingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pShadowSRV = pResManager->CreateOrGetTextureView(pShadowRes);
 	auto pAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pAccumRes);
-	
+
 	// set descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -252,7 +264,7 @@ void LightingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	descSet.SetCsSampler(0, sampler->GetDescInfo().cpuHandle);
 
 	// set pipeline.
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->GetLatestCommandList()->SetPipelineState(bEnableShadowExp_ ? psoEVSM_->GetPSO() : psoSM_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
@@ -268,7 +280,7 @@ HiZPass::HiZPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthReductionC));
 
@@ -321,7 +333,7 @@ void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pHiZRes = pResManager->GetRenderGraphResource(kHiZID);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
-	
+
 	auto srv = pDepthSRV->GetDescInfo().cpuHandle;
 	auto width = pScene_->GetScreenWidth() >> 2;
 	auto height = pScene_->GetScreenHeight() >> 2;
@@ -368,7 +380,7 @@ TonemapPass::TonemapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::FullscreenVV), pRenderSys->GetShader(ShaderName::TonemapP), nullptr, nullptr, nullptr);
 
@@ -432,14 +444,14 @@ void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	auto pSwapRes = pResManager->GetRenderGraphResource(kSwapchainID);
 	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
 	auto pSwapRTV = pResManager->CreateOrGetRenderTargetView(pSwapRes);
-	
+
 	// set render targets.
 	auto&& rtv = pSwapRTV->GetDescInfo().cpuHandle;
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
 
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
-	
+
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
@@ -477,7 +489,7 @@ GenerateVrsPass::GenerateVrsPass(sl12::Device* pDev, RenderSystem* pRenderSys, S
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::GenVrsC));
 
@@ -546,7 +558,7 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
 	auto pVRSUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pVRSRes);
-	
+
 	sl12::u32 width = pScene_->GetScreenWidth();
 	sl12::u32 height = pScene_->GetScreenHeight();
 
@@ -653,7 +665,7 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 
 	// dummy
 	auto pBlackView = pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
-	
+
 	// views
 	auto pPrevVrsSRV = pPrevVrsRes ? pResManager->CreateOrGetTextureView(pPrevVrsRes) : pBlackView;
 	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pBlackView;
@@ -706,7 +718,7 @@ PrefixSumTestPass::PrefixSumTestPass(sl12::Device* pDev, RenderSystem* pRenderSy
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoInit_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	psoMain_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
-	
+
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::PrefixSumInitCS));
 
@@ -785,7 +797,7 @@ void PrefixSumTestPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 		desc.size = sizeof(int);
 		desc.stride = sizeof(int);
 		pBlock->Initialize(pDevice_, desc);
-		
+
 		desc.heap = sl12::BufferHeap::Dynamic;
 		desc.size = sizeof(int) * kElemCount;
 		desc.stride = sizeof(int);
@@ -833,7 +845,7 @@ void PrefixSumTestPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 
 	sl12::u32 cb[] = {kElemCount, kBlockCount};
 	sl12::CbvHandle hCB = pRenderSystem_->GetCbvManager()->GetTemporal(cb, sizeof(cb));
-	
+
 	// 初期化
 	{
 		// set descriptors.

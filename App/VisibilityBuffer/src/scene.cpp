@@ -820,8 +820,14 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	}
 	node = node.AddChild(passNodes_[AppPassType::FeedbackMiplevel])
 		.AddChild(passNodes_[AppPassType::MotionVector])
-		.AddChild(passNodes_[AppPassType::ShadowMap])
-		.AddChild(passNodes_[AppPassType::Lighting])
+		.AddChild(passNodes_[AppPassType::ShadowMap]);
+	if (desc.bShadowBlur)
+	{
+		node = node.AddChild(passNodes_[AppPassType::ShadowExp])
+			.AddChild(passNodes_[AppPassType::ShadowBlurX])
+			.AddChild(passNodes_[AppPassType::ShadowBlurY]);
+	}
+	node = node.AddChild(passNodes_[AppPassType::Lighting])
 		.AddChild(passNodes_[AppPassType::HiZ]);
 	if (bEnableDDGI)
 	{

@@ -716,6 +716,7 @@ bool SampleApplication::Execute()
 	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
 	setupDesc.bUseRaytracing = bUseRaytracing_;
 	setupDesc.raytracingTech = raytracingTech_;
+	setupDesc.bShadowBlur = evsmBlur_;
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);

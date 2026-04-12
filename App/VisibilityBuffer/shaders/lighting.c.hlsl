@@ -48,7 +48,7 @@ float Chebyshev(float2 moments, float depth)
 {
 	const float kVarianceMin = 0.0;
 	const float kLightBleedCoeff = 0.0;
-	
+
 	if (depth <= moments.x)
 		return 1.0;
 

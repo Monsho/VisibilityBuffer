@@ -22,7 +22,7 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rsOpaque_, rsMasked_;
 	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoOpaque_, psoMasked_;
@@ -33,7 +33,7 @@ class ShadowExpPass : public AppPassBase
 public:
 	ShadowExpPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~ShadowExpPass();
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::ShadowExp;
@@ -57,7 +57,7 @@ class ShadowExpBlurPass : public AppPassBase
 public:
 	ShadowExpBlurPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~ShadowExpBlurPass();
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::ShadowBlurX;

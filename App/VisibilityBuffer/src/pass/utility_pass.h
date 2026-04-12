@@ -23,7 +23,7 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
@@ -48,7 +48,7 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
@@ -65,10 +65,15 @@ public:
 	{
 		bEnableShadowExp_ = b;
 	}
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::Lighting;
+	}
+
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{
+		bEnableShadowExp_ = desc.bShadowBlur;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
@@ -78,10 +83,10 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
+	sl12::UniqueHandle<sl12::ComputePipelineState> psoSM_, psoEVSM_;
 	bool bEnableShadowExp_ = false;
 };
 
@@ -91,7 +96,7 @@ class HiZPass : public AppPassBase
 public:
 	HiZPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~HiZPass();
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::HiZ;
@@ -104,7 +109,7 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> pso_;
@@ -116,7 +121,7 @@ class TonemapPass : public AppPassBase
 public:
 	TonemapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~TonemapPass();
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::Tonemap;
@@ -129,7 +134,7 @@ public:
 		return sl12::HardwareQueue::Graphics;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-	
+
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
 	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso_;
@@ -141,7 +146,7 @@ class GenerateVrsPass : public AppPassBase
 public:
 	GenerateVrsPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
 	virtual ~GenerateVrsPass();
-	
+
 	virtual AppPassType GetPassType() const override
 	{
 		return AppPassType::GenerateVRS;

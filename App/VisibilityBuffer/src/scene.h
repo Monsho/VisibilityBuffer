@@ -193,6 +193,7 @@ struct RenderPassSetupDesc
 	bool bUseRaytracing = false;
 	int raytracingTech = 0;
 	float spatialRadius = 8.0f;
+	bool bShadowBlur = false;
 	bool bDebugDdgi = false;
 	int debugMode = 0;
 
@@ -209,6 +210,7 @@ struct RenderPassSetupDesc
 			&& (bUseRaytracing == rhs.bUseRaytracing)
 			&& (raytracingTech == rhs.raytracingTech)
 			&& (spatialRadius == rhs.spatialRadius)
+			&& (bShadowBlur == rhs.bShadowBlur)
 			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (debugMode == rhs.debugMode);
 	}

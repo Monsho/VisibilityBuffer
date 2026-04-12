@@ -159,7 +159,7 @@ private:
 	// shadow parameters.
 	float					shadowBias_ = 0.001f;
 	float					shadowExponent_ = 10.0f;
-	bool					evsmBlur_ = true;
+	bool					evsmBlur_ = false;
 
 	// surface gradient parameters.
 	float					detailTile_ = 3.0f;
