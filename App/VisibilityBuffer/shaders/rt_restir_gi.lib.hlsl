@@ -171,11 +171,11 @@ void InitialSampleRGS()
 		prevRes.M = min(prevRes.M, cbRestir.maxReservoirM);
 		prevRes.age++;
 
-		// if (prevRes.age < cbRestir.maxReservoirAge)
 		if (prevRes.age > cbRestir.maxReservoirAge)
 			IsPreviousFounded = false;
 	}
 
+	bool IsPreviousSelection = false;
 	[branch]
 	if (IsPreviousFounded)
 	{
@@ -187,7 +187,7 @@ void InitialSampleRGS()
 		float rndScalar = Hash(pixelIndex * 4 + cbScene.frameIndex * 31u + 17u);
 
 		// Candidate 1: reprojected previous-frame reservoir.
-		bool IsPreviousSelection = ReservoirCombine(merged, prevRes, targetPdfPrev, rndScalar);
+		IsPreviousSelection = ReservoirCombine(merged, prevRes, targetPdfPrev, rndScalar);
 		if (IsPreviousSelection)
 		{
 			selectedPdf = targetPdfPrev;
@@ -195,9 +195,11 @@ void InitialSampleRGS()
 	}
 
 	// normalize weightSum.
-	float normalizeN = 1.0;
-	float normalizeD = selectedPdf * merged.M;
-	ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
+	{
+		float normalizeN = 1.0;
+		float normalizeD = selectedPdf * merged.M;
+		ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
+	}
 
 	rwReservoirs[pixelIndex] = merged;
 }

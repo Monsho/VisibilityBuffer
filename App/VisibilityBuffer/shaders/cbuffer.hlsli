@@ -129,6 +129,7 @@ struct RestirCB
 	float	temporalDepthEps;
 	uint	maxReservoirM;
 	uint	maxReservoirAge;
+	uint	spatialSampleCount;
 	float	spatialRadius;
 	float	spatialDepthEps;
 	float	spatialNormalCos;

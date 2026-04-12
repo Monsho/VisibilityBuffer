@@ -26,6 +26,7 @@ void main(uint3 did : SV_DispatchThreadID)
 	}
 
 	float3 radiance = reservoir.sampleRadiance * reservoir.weightSum;
+	float lum = dot(radiance, float3(0.2126, 0.7152, 0.0722));
 	rwGi[pixelPos] = radiance * (1.0 / PI);
 }
 

@@ -12,15 +12,6 @@ StructuredBuffer<Reservoir>			inputReservoirs	: REG(t2);
 
 RWStructuredBuffer<Reservoir>		outputReservoirs	: REG(u0);
 
-static const float SPATIAL_DEPTH_EPS = 0.02;
-static const float SPATIAL_NORMAL_COS = 0.75;
-
-static const int2 kSpatialOffsets[8] = {
-	int2(-1, -1), int2(0, -1), int2(1, -1),
-	int2(-1,  0),               int2(1,  0),
-	int2(-1,  1), int2(0,  1), int2(1,  1),
-};
-
 float Halton(int i, int b)
 {
 	float f = 1.0;
@@ -103,19 +94,17 @@ void main(
 	float4 worldPos = mul(cbScene.mtxProjToWorld, float4(clipSpacePos, depth, 1));
 	worldPos.xyz /= worldPos.w;
 
-	Reservoir merged = (Reservoir)0;
+	Reservoir merged = ReservoirEmpty();
 	float rnd = Hash(pixelIndex * 13 + cbScene.frameIndex * 31u + 7u);
 
 	float3 dirL = normalize(center.samplePosition - worldPos.xyz);
 	float selectedPdf = ReservoirGetGIPdf(center.sampleRadiance, max(dot(normal, dirL), 0.0));
 	ReservoirCombine(merged, center, selectedPdf, 0.5);
 
-	const int numSamples = 8;
 	[loop]
-	for (int i = 0; i < numSamples; ++i)
+	for (int i = 0; i < cbRestir.spatialSampleCount; ++i)
 	{
-		//int2 pixelOffset = kSpatialOffsets[i];
-		int2 pixelOffset = int2(MapToDisk(pixelPos, cbScene.frameIndex * numSamples * i, cbRestir.spatialRadius));
+		int2 pixelOffset = int2(MapToDisk(pixelPos, pixelIndex + cbScene.frameIndex * cbRestir.spatialSampleCount + i, cbRestir.spatialRadius));
 		int2 npos = (int2)pixelPos + pixelOffset;
 		[branch]
 		if (any(npos < 0) || any((uint2)npos >= dim))
@@ -154,10 +143,6 @@ void main(
 	float normalizeN = 1.0;
 	float normalizeD = merged.M * selectedPdf;
 	ReservoirFinalizeResampling(merged, normalizeN, normalizeD);
-	if (IsReservoirValid(merged))
-	{
-		merged = center;
-	}
 
 	outputReservoirs[pixelIndex] = merged;
 }

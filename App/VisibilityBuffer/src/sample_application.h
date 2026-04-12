@@ -196,6 +196,7 @@ private:
 	float					restirTemporalDepthEps_ = 10.0f;
 	int						restirMaxReservoirM_ = 8;
 	int						restirMaxReservoirAge_ = 30;
+	int						restirSpatialSampleCount_ = 2;
 	float					restirSpatialRadius_ = 8.0f;
 	float					restirSpatialDepthEps_ = 20.0f;
 	float					restirSpatialNormalCos_ = 0.75f;

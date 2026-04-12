@@ -438,6 +438,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbRestir.temporalDepthEps = restirTemporalDepthEps_;
 		cbRestir.maxReservoirM = restirMaxReservoirM_;
 		cbRestir.maxReservoirAge = restirMaxReservoirAge_;
+		cbRestir.spatialSampleCount = restirSpatialSampleCount_;
 		cbRestir.spatialRadius = restirSpatialRadius_;
 		cbRestir.spatialDepthEps = restirSpatialDepthEps_;
 		cbRestir.spatialNormalCos = restirSpatialNormalCos_;
@@ -563,27 +564,27 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Deinterleave", &bIsDeinterleave_);
 		}
 
-			// denoise settings.
-			if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+		// denoise settings.
+		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
+			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
+			ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
+		}
+		if (bUseRaytracing_ && (raytracingTech_ == 1 || raytracingTech_ == 2))
+		{
+			if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
-				ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
-				ImGui::SliderFloat("Depth Sigma", &denoiseDepthSigma_, 0.0f, 20.0f);
+				ImGui::SliderFloat("Temporal Response", &svgfTemporalBlend_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
+				ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, -1.0f, 1.0f);
+				ImGui::SliderFloat("Moment Alpha", &svgfMomentBlend_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
+				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
+				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
+				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
 			}
-			if (bUseRaytracing_ && (raytracingTech_ == 1 || raytracingTech_ == 2))
-			{
-				if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
-				{
-					ImGui::SliderFloat("Temporal Response", &svgfTemporalBlend_, 0.0f, 1.0f);
-					ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
-					ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, -1.0f, 1.0f);
-					ImGui::SliderFloat("Moment Alpha", &svgfMomentBlend_, 0.0f, 1.0f);
-					ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
-					ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
-					ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
-					ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
-				}
-			}
+		}
 
 		// vrs settings.
 		if (ImGui::CollapsingHeader("VRS", ImGuiTreeNodeFlags_DefaultOpen))
@@ -621,6 +622,7 @@ bool SampleApplication::Execute()
 					ImGui::SliderFloat("Temporal Depth Eps", &restirTemporalDepthEps_, 0.0f, 100.0f);
 					ImGui::SliderInt("Max M", &restirMaxReservoirM_, 1, 100);
 					ImGui::SliderInt("Max Age", &restirMaxReservoirAge_, 1, 100);
+					ImGui::SliderInt("Spatial Sample Count", &restirSpatialSampleCount_, 0, 8);
 					ImGui::SliderFloat("Spatial Radius", &restirSpatialRadius_, 1.0f, 32.0f);
 					ImGui::SliderFloat("Spatial Depth Eps", &restirSpatialDepthEps_, 0.0f, 100.0f);
 					ImGui::SliderFloat("Spatial Normal Cos", &restirSpatialNormalCos_, 0.0f, 1.0f);
