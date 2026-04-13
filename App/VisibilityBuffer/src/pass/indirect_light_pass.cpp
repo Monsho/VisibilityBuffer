@@ -282,13 +282,11 @@ DenoisePass::DenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	rsCopyGI_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoAO_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	psoGI_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 
 	// init root signature.
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DenoiseC));
-	rsCopyGI_->Initialize(pDev, pRenderSys->GetShader(ShaderName::RTCopyGIC));
 
 	// init pipeline state.
 	{
@@ -317,7 +315,6 @@ DenoisePass::~DenoisePass()
 {
 	psoAO_.Reset();
 	psoGI_.Reset();
-	rsCopyGI_.Reset();
 	rs_.Reset();
 }
 

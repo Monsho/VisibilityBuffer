@@ -92,7 +92,6 @@ public:
 
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::RootSignature> rsCopyGI_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoAO_;
 	sl12::UniqueHandle<sl12::ComputePipelineState> psoGI_;
 	bool bDenoiseGI_ = false;

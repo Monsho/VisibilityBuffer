@@ -104,7 +104,7 @@ void main(
 	[loop]
 	for (int i = 0; i < cbRestir.spatialSampleCount; ++i)
 	{
-		int2 pixelOffset = int2(MapToDisk(pixelPos, pixelIndex + cbScene.frameIndex * cbRestir.spatialSampleCount + i, cbRestir.spatialRadius));
+		int2 pixelOffset = int2(MapToDisk(pixelPos, cbScene.frameIndex * cbRestir.spatialSampleCount + i, cbRestir.spatialRadius));
 		int2 npos = (int2)pixelPos + pixelOffset;
 		[branch]
 		if (any(npos < 0) || any((uint2)npos >= dim))
