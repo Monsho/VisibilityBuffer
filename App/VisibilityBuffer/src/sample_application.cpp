@@ -418,6 +418,10 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbSvgf.phiNormal = svgfPhiNormal_;
 		cbSvgf.phiDepth = svgfPhiDepth_;
 		cbSvgf.atrousIterations = (sl12::u32)std::max(1, svgfAtrousIterations_);
+		cbSvgf.prepassClampSigma = svgfPrepassClampSigma_;
+		cbSvgf.prepassDepthPhiScale = svgfPrepassDepthPhiScale_;
+		cbSvgf.prepassVarianceBias = svgfPrepassVarianceBias_;
+		cbSvgf.prepassKernelRadius = (sl12::u32)std::clamp(svgfPrepassKernelRadius_, 1, 2);
 
 		OutCBs.hSvgfCB = cbvMan->GetTemporal(&cbSvgf, sizeof(cbSvgf));
 	}
@@ -584,6 +588,12 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
 				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
 				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
+				ImGui::Separator();
+				ImGui::TextUnformatted("PrePass");
+				ImGui::SliderInt("PrePass Radius", &svgfPrepassKernelRadius_, 1, 2);
+				ImGui::SliderFloat("Clamp Sigma", &svgfPrepassClampSigma_, 0.5f, 3.0f);
+				ImGui::SliderFloat("Depth Phi Scale", &svgfPrepassDepthPhiScale_, 0.25f, 4.0f);
+				ImGui::SliderFloat("Variance Bias", &svgfPrepassVarianceBias_, 1e-6f, 1e-2f, "%.6f", ImGuiSliderFlags_Logarithmic);
 			}
 		}
 
