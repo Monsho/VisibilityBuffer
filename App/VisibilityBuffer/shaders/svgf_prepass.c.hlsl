@@ -36,24 +36,22 @@ void main(uint3 did : SV_DispatchThreadID)
     float3 centerNormal = normalize(texNormal[pixPos].xyz * 2.0 - 1.0);
     float centerVD = ClipDepthToViewDepthRH(centerDepth, cbScene.mtxViewToProj);
 
-    const int maxKernelRadius = 2;
-    int kernelRadius = (int)min(cbSvgf.prepassKernelRadius, 2u);
+    int kernelRadius = cbSvgf.prepassKernelRadius;
+    int kernelWidth = 2 * kernelRadius + 1;
+    int loopCount = kernelWidth * kernelWidth;
 
     float meanL = 0.0;
     float meanL2 = 0.0;
     float statW = 0.0;
 
-    [unroll]
-    for (int y = -maxKernelRadius; y <= maxKernelRadius; ++y)
+    [loop]
+    for (int i = 0; i < loopCount; ++i)
     {
-        [unroll]
-        for (int x = -maxKernelRadius; x <= maxKernelRadius; ++x)
+        int x = (i % kernelWidth) - kernelRadius;
+        int y = (i / kernelWidth) - kernelRadius;
+        // [loop]
+        // for (int x = -kernelRadius; x <= kernelRadius; ++x)
         {
-            if (abs(x) > kernelRadius || abs(y) > kernelRadius)
-            {
-                continue;
-            }
-
             int2 p = clamp(int2(pixPos) + int2(x, y), int2(0, 0), int2(dim) - 1);
             float depth = texDepth[p];
             if (depth <= 0.0)
@@ -61,11 +59,16 @@ void main(uint3 did : SV_DispatchThreadID)
                 continue;
             }
 
+            // 輝度クランプする際に深度・法線のウェイトを考慮する場合は有効にする
+#if 0
             float3 normal = normalize(texNormal[p].xyz * 2.0 - 1.0);
             float vd = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
             float depthW = exp(-abs(vd - centerVD) * cbSvgf.phiDepth * cbSvgf.prepassDepthPhiScale);
             float normalW = pow(saturate(dot(normal, centerNormal)), cbSvgf.phiNormal);
             float w = depthW * normalW;
+#else
+            float w = 1.0;
+#endif
 
             float lum = Luma(texInputGI[p]);
             meanL += lum * w;
@@ -84,17 +87,15 @@ void main(uint3 did : SV_DispatchThreadID)
     float3 sumGI = 0.0;
     float sumW = 0.0;
 
-    [unroll]
-    for (int y = -maxKernelRadius; y <= maxKernelRadius; ++y)
+    [loop]
+    for (int i = 0; i < loopCount; ++i)
+    // for (int y = -kernelRadius; y <= kernelRadius; ++y)
     {
-        [unroll]
-        for (int x = -maxKernelRadius; x <= maxKernelRadius; ++x)
+        int x = (i % kernelWidth) - kernelRadius;
+        int y = (i / kernelWidth) - kernelRadius;
+        // [loop]
+        // for (int x = -kernelRadius; x <= kernelRadius; ++x)
         {
-            if (abs(x) > kernelRadius || abs(y) > kernelRadius)
-            {
-                continue;
-            }
-
             int2 p = clamp(int2(pixPos) + int2(x, y), int2(0, 0), int2(dim) - 1);
             float depth = texDepth[p];
             if (depth <= 0.0)

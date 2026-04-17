@@ -146,7 +146,6 @@ struct SvgfCB
 	float	phiColor;
 	float	phiNormal;
 	float	phiDepth;
-	uint	atrousIterations;
 	float	prepassClampSigma;
 	float	prepassDepthPhiScale;
 	float	prepassVarianceBias;

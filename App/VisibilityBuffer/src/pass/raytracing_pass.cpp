@@ -1939,8 +1939,8 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	// dispatch.
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-	const sl12::u32 iterations = 3;
-	for (sl12::u32 i = 0; i < iterations; ++i)
+	const sl12::u32 kIterationCount = atrousIterations_;
+	for (sl12::u32 i = 0; i < kIterationCount; ++i)
 	{
 		sl12::DescriptorSet atrousSet;
 		atrousSet.Reset();
@@ -1950,7 +1950,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);
-		atrousSet.SetCsUav(0, (i + 1 == iterations) ? pDenoiseGIUAV->GetDescInfo().cpuHandle : ((i & 1) ? pPingUAV : pPongUAV)->GetDescInfo().cpuHandle);
+		atrousSet.SetCsUav(0, (i + 1 == kIterationCount) ? pDenoiseGIUAV->GetDescInfo().cpuHandle : ((i & 1) ? pPingUAV : pPongUAV)->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoAtrous_->GetPSO());

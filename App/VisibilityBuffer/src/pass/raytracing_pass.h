@@ -252,11 +252,6 @@ public:
 		return AppPassType::SpatialReuse;
 	}
 
-	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
-	{
-		spacialRadius_ = desc.spatialRadius;
-	}
-
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -268,10 +263,6 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rs_;
 	UniqueHandle<sl12::ComputePipelineState> pso_;
-
-	float spacialRadius_ = 8.0f;
-	float spacialDepthEps_ = 0.02f;
-	float spacialNormalCos_ = 0.75f;
 };
 
 class ReSTIRResolvePass : public AppPassBase
@@ -309,6 +300,11 @@ public:
 		return AppPassType::RayTracingDenoise;
 	}
 
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
+	{
+		atrousIterations_ = desc.atrousIterations;
+	}
+
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -324,6 +320,8 @@ private:
 	UniqueHandle<sl12::ComputePipelineState> psoTemporal_;
 	UniqueHandle<sl12::RootSignature> rsAtrous_;
 	UniqueHandle<sl12::ComputePipelineState> psoAtrous_;
+
+	int atrousIterations_ = 2;
 };
 
 //	EOF

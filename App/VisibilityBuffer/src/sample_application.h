@@ -197,7 +197,7 @@ private:
 	int						restirMaxReservoirM_ = 8;
 	int						restirMaxReservoirAge_ = 30;
 	int						restirSpatialSampleCount_ = 2;
-	float					restirSpatialRadius_ = 8.0f;
+	float					restirSpatialRadius_ = 24.0f;
 	float					restirSpatialDepthEps_ = 20.0f;
 	float					restirSpatialNormalCos_ = 0.75f;
 	bool					bRestirComputeJacobian_ = false;
@@ -206,17 +206,17 @@ private:
 
 	// svgf parameters.
 	float					svgfTemporalBlend_ = 0.95f;
+	float					svgfMomentBlend_ = 0.92f;
+	float					svgfPrepassClampSigma_ = 1.25f;
+	float					svgfPrepassDepthPhiScale_ = 1.5f;
+	float					svgfPrepassVarianceBias_ = 1e-4f;
+	int						svgfPrepassKernelRadius_ = 2;
 	float					svgfDisocclusionDepth_ = 20.0f;
 	float					svgfDisocclusionNormal_ = 0.6f;
-	float					svgfMomentBlend_ = 0.92f;
 	float					svgfPhiColor_ = 10.0f;
 	float					svgfPhiNormal_ = 128.0f;
 	float					svgfPhiDepth_ = 2.0f;
 	int						svgfAtrousIterations_ = 4;
-	float					svgfPrepassClampSigma_ = 1.25f;
-	float					svgfPrepassDepthPhiScale_ = 1.5f;
-	float					svgfPrepassVarianceBias_ = 1e-4f;
-	int						svgfPrepassKernelRadius_ = 1;
 
 	// debug parameters.
 	int						displayMode_ = 0;
@@ -228,7 +228,6 @@ private:
 
 	int	displayWidth_, displayHeight_;
 	int meshType_;
-	//sl12::u64	frameIndex_ = 0;
 
 	std::string				captureFileName_;
 };	// class SampleApplication

@@ -417,7 +417,6 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbSvgf.phiColor = svgfPhiColor_;
 		cbSvgf.phiNormal = svgfPhiNormal_;
 		cbSvgf.phiDepth = svgfPhiDepth_;
-		cbSvgf.atrousIterations = (sl12::u32)std::max(1, svgfAtrousIterations_);
 		cbSvgf.prepassClampSigma = svgfPrepassClampSigma_;
 		cbSvgf.prepassDepthPhiScale = svgfPrepassDepthPhiScale_;
 		cbSvgf.prepassVarianceBias = svgfPrepassVarianceBias_;
@@ -581,19 +580,17 @@ bool SampleApplication::Execute()
 			if (ImGui::CollapsingHeader("SVGF", ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				ImGui::SliderFloat("Temporal Response", &svgfTemporalBlend_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Moment Alpha", &svgfMomentBlend_, 0.0f, 1.0f);
 				ImGui::SliderFloat("Disocclusion Depth", &svgfDisocclusionDepth_, 0.1f, 100.0f);
 				ImGui::SliderFloat("Disocclusion Normal", &svgfDisocclusionNormal_, -1.0f, 1.0f);
-				ImGui::SliderFloat("Moment Alpha", &svgfMomentBlend_, 0.0f, 1.0f);
 				ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
 				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
 				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
 				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
-				ImGui::Separator();
-				ImGui::TextUnformatted("PrePass");
-				ImGui::SliderInt("PrePass Radius", &svgfPrepassKernelRadius_, 1, 2);
-				ImGui::SliderFloat("Clamp Sigma", &svgfPrepassClampSigma_, 0.5f, 3.0f);
-				ImGui::SliderFloat("Depth Phi Scale", &svgfPrepassDepthPhiScale_, 0.25f, 4.0f);
-				ImGui::SliderFloat("Variance Bias", &svgfPrepassVarianceBias_, 1e-6f, 1e-2f, "%.6f", ImGuiSliderFlags_Logarithmic);
+				ImGui::SliderInt("PrePass Radius", &svgfPrepassKernelRadius_, 1, 5);
+				ImGui::SliderFloat("PrePass Clamp Sigma", &svgfPrepassClampSigma_, 0.5f, 5.0f);
+				ImGui::SliderFloat("PrePass Depth Phi Scale", &svgfPrepassDepthPhiScale_, 0.25f, 4.0f);
+				ImGui::SliderFloat("PrePass Variance Bias", &svgfPrepassVarianceBias_, 1e-6f, 1.0f, "%.6f", ImGuiSliderFlags_Logarithmic);
 			}
 		}
 
@@ -757,6 +754,7 @@ bool SampleApplication::Execute()
 	setupDesc.vrsDepthThreshold = vrsDepthThreshold_;
 	setupDesc.bUseRaytracing = bUseRaytracing_;
 	setupDesc.raytracingTech = raytracingTech_;
+	setupDesc.atrousIterations = svgfAtrousIterations_;
 	setupDesc.bShadowBlur = evsmBlur_;
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.debugMode = displayMode_;
