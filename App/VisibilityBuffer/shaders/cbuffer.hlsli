@@ -147,6 +147,10 @@ struct SvgfCB
 	float	phiNormal;
 	float	phiDepth;
 	uint	atrousIterations;
+	float	prepassClampSigma;
+	float	prepassDepthPhiScale;
+	float	prepassVarianceBias;
+	uint	prepassKernelRadius;
 };
 
 struct SvgfAtrousRootCB

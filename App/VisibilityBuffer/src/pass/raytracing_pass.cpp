@@ -1778,15 +1778,25 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 RayTracingDenoisePass::RayTracingDenoisePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
+	rsPrepass_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	psoPrepass_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	rsTemporal_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoTemporal_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 	rsAtrous_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoAtrous_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
 
+	rsPrepass_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFPrepass));
 	rsTemporal_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFTemporal));
 	rsAtrous_->Initialize(pDev, pRenderSys->GetShader(ShaderName::SVGFAtrous), 1);
 
 	sl12::ComputePipelineStateDesc desc{};
+	desc.pRootSignature = &rsPrepass_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::SVGFPrepass);
+	if (!psoPrepass_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init svgf prepass pso.");
+	}
+
 	desc.pRootSignature = &rsTemporal_;
 	desc.pCS = pRenderSys->GetShader(ShaderName::SVGFTemporal);
 	if (!psoTemporal_->Initialize(pDev, desc))
@@ -1808,6 +1818,8 @@ RayTracingDenoisePass::~RayTracingDenoisePass()
 	rsAtrous_.Reset();
 	psoTemporal_.Reset();
 	rsTemporal_.Reset();
+	psoPrepass_.Reset();
+	rsPrepass_.Reset();
 }
 
 std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(const sl12::RenderPassID& ID) const
@@ -1827,6 +1839,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource moments(kSvgfMomentID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource prepassGI(kSvgfPrepassID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ping(kSvgfPingID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource pong(kSvgfPongID, sl12::TransientState::UnorderedAccess);
 
@@ -1839,6 +1852,8 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	moments.desc.bIsTexture = true;
 	moments.desc.textureDesc.Initialize2D(kSvgfMomentFormat, width, height, 1, 1, 0);
 	moments.desc.historyFrame = 1;
+	prepassGI.desc.bIsTexture = true;
+	prepassGI.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 	ping.desc.bIsTexture = true;
 	ping.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 	pong.desc.bIsTexture = true;
@@ -1846,6 +1861,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 
 	ret.push_back(gi);
 	ret.push_back(moments);
+	ret.push_back(prepassGI);
 	ret.push_back(ping);
 	ret.push_back(pong);
 
@@ -1871,17 +1887,37 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
 	auto pMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentID);
+	auto pPrepassRes = pResManager->GetRenderGraphResource(kSvgfPrepassID);
 	auto pPingRes = pResManager->GetRenderGraphResource(kSvgfPingID);
 	auto pPongRes = pResManager->GetRenderGraphResource(kSvgfPongID);
 	auto pDenoiseGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseGIRes);
 	auto pMomentSRV = pResManager->CreateOrGetTextureView(pMomentRes);
 	auto pMomentUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMomentRes);
+	auto pPrepassGISRV = pResManager->CreateOrGetTextureView(pPrepassRes);
+	auto pPrepassGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPrepassRes);
 	auto pPingSRV = pResManager->CreateOrGetTextureView(pPingRes);
 	auto pPingUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPingRes);
 	auto pPongSRV = pResManager->CreateOrGetTextureView(pPongRes);
 	auto pPongUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPongRes);
 
-	// set descriptors.
+	// prepass descriptors.
+	sl12::DescriptorSet prepassSet;
+	prepassSet.Reset();
+	prepassSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	prepassSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
+	prepassSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
+	prepassSet.SetCsSrv(1, pNormalSRV->GetDescInfo().cpuHandle);
+	prepassSet.SetCsSrv(2, pRestirGISRV->GetDescInfo().cpuHandle);
+	prepassSet.SetCsUav(0, pPrepassGIUAV->GetDescInfo().cpuHandle);
+
+	pCmdList->GetLatestCommandList()->SetPipelineState(psoPrepass_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsPrepass_, &prepassSet);
+
+	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
+	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+	// temporal descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -1889,7 +1925,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pNormalSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(3, pRestirGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pPrepassGISRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(4, pPrevGISRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(5, pPrevMomentSRV ? pPrevMomentSRV->GetDescInfo().cpuHandle : pMomentSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pPingUAV->GetDescInfo().cpuHandle);
@@ -1901,8 +1937,6 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsTemporal_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
 	const sl12::u32 iterations = 3;

@@ -213,6 +213,10 @@ private:
 	float					svgfPhiNormal_ = 128.0f;
 	float					svgfPhiDepth_ = 2.0f;
 	int						svgfAtrousIterations_ = 4;
+	float					svgfPrepassClampSigma_ = 1.25f;
+	float					svgfPrepassDepthPhiScale_ = 1.5f;
+	float					svgfPrepassVarianceBias_ = 1e-4f;
+	int						svgfPrepassKernelRadius_ = 1;
 
 	// debug parameters.
 	int						displayMode_ = 0;
