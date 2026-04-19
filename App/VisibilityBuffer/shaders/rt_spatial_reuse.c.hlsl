@@ -81,7 +81,7 @@ void main(
 		outputReservoirs[pixelIndex] = center;
 		return;
 	}
-	if (depth <= 0.0 || !IsReservoirValid(center))
+	if (cbRestir.spatialSampleCount == 0 || depth <= 0.0 || !IsReservoirValid(center))
 	{
 		outputReservoirs[pixelIndex] = center;
 		return;

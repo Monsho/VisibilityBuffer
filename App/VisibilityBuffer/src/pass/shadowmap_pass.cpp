@@ -41,7 +41,7 @@ ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene
 		desc.blend.rtDesc[0].isBlendEnable = false;
 		desc.blend.rtDesc[0].writeMask = 0xf;
 
-		desc.rasterizer.cullMode = D3D12_CULL_MODE_BACK;
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
 		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
 		desc.rasterizer.isDepthClipEnable = false;
 		desc.rasterizer.isFrontCCW = true;
@@ -77,7 +77,7 @@ ShadowMapPass::ShadowMapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene
 		desc.blend.rtDesc[0].isBlendEnable = false;
 		desc.blend.rtDesc[0].writeMask = 0xf;
 
-		desc.rasterizer.cullMode = D3D12_CULL_MODE_FRONT;
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
 		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
 		desc.rasterizer.isDepthClipEnable = false;
 		desc.rasterizer.isFrontCCW = true;

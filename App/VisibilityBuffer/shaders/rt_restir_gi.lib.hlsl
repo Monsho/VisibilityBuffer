@@ -114,7 +114,7 @@ void InitialSampleRGS()
 		ReservoirMake(reservoir,
 			skyIrradiance,
 			rayDir * RayTMax,
-			rayDir,
+			-rayDir,
 			samplePDF);
 	}
 	float selectedPdf = ReservoirGetGIPdf(reservoir.sampleRadiance, primaryNoL);

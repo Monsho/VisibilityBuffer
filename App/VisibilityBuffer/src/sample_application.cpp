@@ -522,24 +522,24 @@ bool SampleApplication::Execute()
 		}
 
 		// detail normal settings.
-		if (ImGui::CollapsingHeader("Surface Gradient", ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			static const char* kDetailTypes[] = {
-				"None",
-				"UDN",
-				"Surface Gradient",
-				"Surface Gradient Tex",
-			};
-			static const char* kTriplanarTypes[] = {
-				"Blend",
-				"Surface Gradient",
-			};
-			ImGui::Combo("Detail Type", &detailType_, kDetailTypes, ARRAYSIZE(kDetailTypes));
-			ImGui::SliderFloat("Detail Tiling", &detailTile_, 1.0f, 10.0f);
-			ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
-			ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
-			ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
-		}
+		// if (ImGui::CollapsingHeader("Surface Gradient", ImGuiTreeNodeFlags_DefaultOpen))
+		// {
+		// 	static const char* kDetailTypes[] = {
+		// 		"None",
+		// 		"UDN",
+		// 		"Surface Gradient",
+		// 		"Surface Gradient Tex",
+		// 	};
+		// 	static const char* kTriplanarTypes[] = {
+		// 		"Blend",
+		// 		"Surface Gradient",
+		// 	};
+		// 	ImGui::Combo("Detail Type", &detailType_, kDetailTypes, ARRAYSIZE(kDetailTypes));
+		// 	ImGui::SliderFloat("Detail Tiling", &detailTile_, 1.0f, 10.0f);
+		// 	ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
+		// 	ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
+		// 	ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
+		// }
 
 		// ssao settings.
 		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen))

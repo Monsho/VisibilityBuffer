@@ -119,8 +119,7 @@ bool IsValidateJacobian(inout float jacobian)
 		return false;
 	}
 
-	jacobian = clamp(jacobian, 1 / 3.0, 1.0);
-	//jacobian = clamp(jacobian, 1 / 3.0, 3.0);
+	jacobian = clamp(jacobian, 1 / 1.5, 1.5);
 
 	return true;
 }
