@@ -14,6 +14,212 @@ namespace
 	static const sl12::TransientResourceID	kBuildBvhDummy("BuildBvhDummy");
 	static const sl12::TransientResourceID	kReadyRtxgiDummy("ReadyRtxgiDummy");
 	static const sl12::TransientResourceID	kProbeTraceDummy("ProbeTraceDummy");
+
+	struct RtShaderTableLocalRecord
+	{
+		D3D12_GPU_DESCRIPTOR_HANDLE	cbv;
+		D3D12_GPU_DESCRIPTOR_HANDLE	srv;
+		D3D12_GPU_DESCRIPTOR_HANDLE	sampler;
+	};
+
+	UINT AlignShaderTableSize(UINT size, UINT align)
+	{
+		return ((size + align - 1) / align) * align;
+	}
+
+	bool CreateShaderTable(
+		sl12::Device* pDevice,
+		RenderSystem* pRenderSystem,
+		Scene* pScene,
+		const sl12::RaytracingDescriptorCount& globalDescriptorCount,
+		const sl12::RaytracingDescriptorCount& localDescriptorCount,
+		sl12::DxrPipelineState* pPipelineState,
+		LPCWSTR pMaterialOpacityHitGroupName,
+		LPCWSTR pMaterialMaskedHitGroupName,
+		LPCWSTR pRayGenExportName,
+		LPCWSTR pMissExportName,
+		sl12::UniqueHandle<sl12::RaytracingDescriptorManager>& rtDescMan,
+		sl12::UniqueHandle<sl12::Buffer>& materialHGTable,
+		sl12::UniqueHandle<sl12::Buffer>& rayGenTable,
+		sl12::UniqueHandle<sl12::Buffer>& missTable,
+		UINT& shaderRecordSize)
+	{
+		auto& rtTableSources = pScene->GetRTTableSources();
+		auto& rtOffsetCBs = pScene->GetMeshOffsetCBs();
+
+		size_t totalSubmeshCount = 0;
+		for (auto&& src : rtTableSources)
+		{
+			totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
+		}
+
+		rtDescMan = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice);
+		if (!rtDescMan->Initialize(
+			pDevice,
+			1,
+			1,
+			globalDescriptorCount,
+			localDescriptorCount,
+			static_cast<sl12::u32>(totalSubmeshCount)))
+		{
+			sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
+			return false;
+		}
+
+		std::vector<RtShaderTableLocalRecord> materialTable;
+		std::vector<bool> opaqueTable;
+		auto viewDescSize = rtDescMan->GetViewDescSize();
+		auto samplerDescSize = rtDescMan->GetSamplerDescSize();
+		auto localHandleStart = rtDescMan->IncrementLocalHandleStart();
+		auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
+		{
+			auto&& submeshes = pMeshItem->GetSubmeshes();
+			auto CBs = rtOffsetCBs.find(pMeshItem);
+			auto& CBL = CBs->second;
+			for (int i = 0; i < submeshes.size(); i++)
+			{
+				auto&& submesh = submeshes[i];
+				auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
+				auto bcSrv = pDevice->GetDummyTextureView(sl12::DummyTex::White);
+				auto ormSrv = pDevice->GetDummyTextureView(sl12::DummyTex::White);
+				if (material.baseColorTex.IsValid())
+				{
+					auto pTexBC = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
+					bcSrv = &pTexBC->GetTextureView();
+				}
+				if (material.ormTex.IsValid())
+				{
+					auto pTexORM = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
+					ormSrv = &pTexORM->GetTextureView();
+				}
+
+				opaqueTable.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
+
+				RtShaderTableLocalRecord table{};
+
+				D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = {
+					CBL[i].GetCBV()->GetDescInfo().cpuHandle,
+				};
+				sl12::u32 cbvCnt = ARRAYSIZE(cbv);
+				pDevice->GetDeviceDep()->CopyDescriptors(
+					1, &localHandleStart.viewCpuHandle, &cbvCnt,
+					cbvCnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+				table.cbv = localHandleStart.viewGpuHandle;
+				localHandleStart.viewCpuHandle.ptr += viewDescSize * cbvCnt;
+				localHandleStart.viewGpuHandle.ptr += viewDescSize * cbvCnt;
+
+				D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
+					pRenderSystem->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
+					pRenderSystem->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
+					bcSrv->GetDescInfo().cpuHandle,
+					ormSrv->GetDescInfo().cpuHandle,
+				};
+				sl12::u32 srvCnt = ARRAYSIZE(srv);
+				pDevice->GetDeviceDep()->CopyDescriptors(
+					1, &localHandleStart.viewCpuHandle, &srvCnt,
+					srvCnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+				table.srv = localHandleStart.viewGpuHandle;
+				localHandleStart.viewCpuHandle.ptr += viewDescSize * srvCnt;
+				localHandleStart.viewGpuHandle.ptr += viewDescSize * srvCnt;
+
+				D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = {
+					pRenderSystem->GetLinearWrapSampler()->GetDescInfo().cpuHandle,
+				};
+				sl12::u32 samplerCnt = ARRAYSIZE(sampler);
+				pDevice->GetDeviceDep()->CopyDescriptors(
+					1, &localHandleStart.samplerCpuHandle, &samplerCnt,
+					samplerCnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+				table.sampler = localHandleStart.samplerGpuHandle;
+				localHandleStart.samplerCpuHandle.ptr += samplerDescSize * samplerCnt;
+				localHandleStart.samplerGpuHandle.ptr += samplerDescSize * samplerCnt;
+
+				materialTable.push_back(table);
+			}
+		};
+		for (auto&& src : rtTableSources)
+		{
+			FillMeshTable(src.pResMesh);
+		}
+
+		const UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+		const UINT descHandleOffset = AlignShaderTableSize(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+		shaderRecordSize = AlignShaderTableSize(descHandleOffset + sizeof(RtShaderTableLocalRecord), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+
+		auto GenShaderTable = [&](void* const* shaderIds, int tableCountPerMaterial, sl12::UniqueHandle<sl12::Buffer>& buffer, int materialCount)
+		{
+			buffer = sl12::MakeUnique<sl12::Buffer>(pDevice);
+
+			materialCount = (materialCount < 0) ? static_cast<int>(materialTable.size()) : materialCount;
+			sl12::BufferDesc desc{};
+			desc.heap = sl12::BufferHeap::Dynamic;
+			desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
+			desc.usage = sl12::ResourceUsage::ShaderResource;
+			desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
+			if (!buffer->Initialize(pDevice, desc))
+			{
+				return false;
+			}
+
+			auto p = static_cast<char*>(buffer->Map());
+			for (int i = 0; i < materialCount; ++i)
+			{
+				for (int id = 0; id < tableCountPerMaterial; ++id)
+				{
+					auto start = p;
+
+					memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
+					p += descHandleOffset;
+
+					memcpy(p, &materialTable[i], sizeof(RtShaderTableLocalRecord));
+
+					p = start + shaderRecordSize;
+				}
+			}
+			buffer->Unmap();
+
+			return true;
+		};
+
+		ID3D12StateObjectProperties* prop = nullptr;
+		if (FAILED(pPipelineState->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
+		{
+			sl12::ConsolePrint("Error : Failed to query raytracing state object properties.\n");
+			return false;
+		}
+
+		void* hgIdentifiers[2] = {
+			prop->GetShaderIdentifier(pMaterialOpacityHitGroupName),
+			prop->GetShaderIdentifier(pMaterialMaskedHitGroupName),
+		};
+		std::vector<void*> hgTable;
+		hgTable.reserve(opaqueTable.size());
+		for (bool isOpaque : opaqueTable)
+		{
+			hgTable.push_back(hgIdentifiers[isOpaque ? 0 : 1]);
+		}
+
+		void* rgsIdentifier = prop->GetShaderIdentifier(pRayGenExportName);
+		void* msIdentifier = prop->GetShaderIdentifier(pMissExportName);
+		prop->Release();
+
+		if (!GenShaderTable(hgTable.data(), 1, materialHGTable, -1))
+		{
+			sl12::ConsolePrint("Error : Failed to create hit group shader table.\n");
+			return false;
+		}
+		if (!GenShaderTable(&rgsIdentifier, 1, rayGenTable, 1))
+		{
+			sl12::ConsolePrint("Error : Failed to create ray generation shader table.\n");
+			return false;
+		}
+		if (!GenShaderTable(&msIdentifier, 1, missTable, 1))
+		{
+			sl12::ConsolePrint("Error : Failed to create miss shader table.\n");
+			return false;
+		}
+
+		return true;
+	}
 }
 
 //----------------
@@ -247,213 +453,31 @@ std::vector<sl12::TransientResource> TestRayTracingPass::GetOutputResources(cons
 	return ret;
 }
 
-void TestRayTracingPass::CreateShaderTable()
-{
-	auto& rtTableSources = pScene_->GetRTTableSources();
-	auto& rtOffsetCBs = pScene_->GetMeshOffsetCBs();
-
-	// count submeshes.
-	size_t totalSubmeshCount = 0;
-	for (auto&& src : rtTableSources)
-	{
-		totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
-	}
-
-	// initialize descriptor manager.
-	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
-	if (!rtDescMan_->Initialize(pDevice_,
-		1,		// Render Count
-		1,		// AS Count
-		TestPass::kRTDescriptorCountGlobal,
-		RTCommon::kRTDescriptorCountLocal,
-		(sl12::u32)totalSubmeshCount))
-	{
-		sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
-		assert(false);
-	}
-
-	// create local shader resource table.
-	struct LocalTable
-	{
-		D3D12_GPU_DESCRIPTOR_HANDLE	cbv;
-		D3D12_GPU_DESCRIPTOR_HANDLE	srv;
-		D3D12_GPU_DESCRIPTOR_HANDLE	sampler;
-	};
-	std::vector<LocalTable> material_table;
-	std::vector<bool> opaque_table;
-	auto view_desc_size = rtDescMan_->GetViewDescSize();
-	auto sampler_desc_size = rtDescMan_->GetSamplerDescSize();
-	auto local_handle_start = rtDescMan_->IncrementLocalHandleStart();
-	auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
-	{
-		auto&& submeshes = pMeshItem->GetSubmeshes();
-		auto CBs = rtOffsetCBs.find(pMeshItem);
-		auto& CBL = CBs->second;
-		for (int i = 0; i < submeshes.size(); i++)
-		{
-			auto&& submesh = submeshes[i];
-			auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
-			auto bc_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			auto orm_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			if (material.baseColorTex.IsValid())
-			{
-				auto pTexBC = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
-				bc_srv = &pTexBC->GetTextureView();
-			}
-			if (material.ormTex.IsValid())
-			{
-				auto pTexORM = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
-				orm_srv = &pTexORM->GetTextureView();
-			}
-
-			opaque_table.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
-
-			LocalTable table;
-
-			// CBV
-			D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = {
-				CBL[i].GetCBV()->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 cbv_cnt = ARRAYSIZE(cbv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.viewCpuHandle, &cbv_cnt,
-				cbv_cnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.cbv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * cbv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * cbv_cnt;
-
-			// SRV
-			D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
-				pRenderSystem_->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
-				pRenderSystem_->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
-				bc_srv->GetDescInfo().cpuHandle,
-				orm_srv->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 srv_cnt = ARRAYSIZE(srv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.viewCpuHandle, &srv_cnt,
-				srv_cnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.srv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * srv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * srv_cnt;
-
-			// Samplerは1つ
-			D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = {
-				pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 sampler_cnt = ARRAYSIZE(sampler);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.samplerCpuHandle, &sampler_cnt,
-				sampler_cnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-			table.sampler = local_handle_start.samplerGpuHandle;
-			local_handle_start.samplerCpuHandle.ptr += sampler_desc_size * sampler_cnt;
-			local_handle_start.samplerGpuHandle.ptr += sampler_desc_size * sampler_cnt;
-
-			material_table.push_back(table);
-		}
-	};
-	for (auto&& s : rtTableSources)
-	{
-		FillMeshTable(s.pResMesh);
-	}
-
-	// create shader table.
-	auto Align = [](UINT size, UINT align)
-	{
-		return ((size + align - 1) / align) * align;
-	};
-	UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	UINT descHandleOffset = Align(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-	UINT shaderRecordSize = Align(descHandleOffset + sizeof(LocalTable), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-	bvhShaderRecordSize_ = shaderRecordSize;
-
-	auto GenShaderTable = [&](
-		void* const * shaderIds,
-		int tableCountPerMaterial,
-		sl12::UniqueHandle<sl12::Buffer>& buffer,
-		int materialCount)
-	{
-		buffer = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-
-		materialCount = (materialCount < 0) ? (int)material_table.size() : materialCount;
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
-		if (!buffer->Initialize(pDevice_, desc))
-		{
-			return false;
-		}
-
-		auto p = (char*)buffer->Map();
-		for (int i = 0; i < materialCount; ++i)
-		{
-			for (int id = 0; id < tableCountPerMaterial; ++id)
-			{
-				auto start = p;
-
-				memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
-				p += descHandleOffset;
-
-				memcpy(p, &material_table[i], sizeof(LocalTable));
-
-				p = start + shaderRecordSize;
-			}
-		}
-		buffer->Unmap();
-
-		return true;
-	};
-	// material shader table.
-	{
-		void* hg_identifier[2];
-		{
-			ID3D12StateObjectProperties* prop;
-			psoTestRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
-			hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
-			prop->Release();
-		}
-		std::vector<void*> hg_table;
-		for (auto v : opaque_table)
-		{
-			hg_table.push_back(v ? hg_identifier[0] : hg_identifier[1]);
-		}
-		if (!GenShaderTable(hg_table.data(), 1, MaterialHGTable_, -1))
-		{
-			assert(false);
-		}
-	}
-	// for rgs and ms.
-	{
-		void* rgs_identifier;
-		void* ms_identifier;
-		{
-			ID3D12StateObjectProperties* prop;
-			psoTestRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			rgs_identifier = prop->GetShaderIdentifier(TestPass::kTestRGS);
-			ms_identifier = prop->GetShaderIdentifier(TestPass::kTestMS);
-			prop->Release();
-		}
-		if (!GenShaderTable(&rgs_identifier, 1, TestRGSTable_, 1))
-		{
-			assert(false);
-		}
-		if (!GenShaderTable(&ms_identifier, 1, TestMSTable_, 1))
-		{
-			assert(false);
-		}
-	}
-}
-
 void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "TestRayTracingPass");
 
 	if (pScene_->IsRTTableDirty())
 	{
-		CreateShaderTable();
+		if (!::CreateShaderTable(
+			pDevice_,
+			pRenderSystem_,
+			pScene_,
+			TestPass::kRTDescriptorCountGlobal,
+			RTCommon::kRTDescriptorCountLocal,
+			&psoTestRT_,
+			RTCommon::kMaterialOpacityHG,
+			RTCommon::kMaterialMaskedHG,
+			TestPass::kTestRGS,
+			TestPass::kTestMS,
+			rtDescMan_,
+			MaterialHGTable_,
+			TestRGSTable_,
+			TestMSTable_,
+			bvhShaderRecordSize_))
+		{
+			assert(false);
+		}
 	}
 
 	auto pResultMap = pResManager->GetRenderGraphResource(kTestRTResultID);
@@ -645,213 +669,31 @@ std::vector<sl12::TransientResource> ProbeTracePass::GetOutputResources(const sl
 	return ret;
 }
 
-void ProbeTracePass::CreateShaderTable()
-{
-	auto& rtTableSources = pScene_->GetRTTableSources();
-	auto& rtOffsetCBs = pScene_->GetMeshOffsetCBs();
-
-	// count submeshes.
-	size_t totalSubmeshCount = 0;
-	for (auto&& src : rtTableSources)
-	{
-		totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
-	}
-
-	// initialize descriptor manager.
-	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
-	if (!rtDescMan_->Initialize(pDevice_,
-		1,		// Render Count
-		1,		// AS Count
-		ProbeTrace::kRTDescriptorCountGlobal,
-		RTCommon::kRTDescriptorCountLocal,
-		(sl12::u32)totalSubmeshCount))
-	{
-		sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
-		assert(false);
-	}
-
-	// create local shader resource table.
-	struct LocalTable
-	{
-		D3D12_GPU_DESCRIPTOR_HANDLE	cbv;
-		D3D12_GPU_DESCRIPTOR_HANDLE	srv;
-		D3D12_GPU_DESCRIPTOR_HANDLE	sampler;
-	};
-	std::vector<LocalTable> material_table;
-	std::vector<bool> opaque_table;
-	auto view_desc_size = rtDescMan_->GetViewDescSize();
-	auto sampler_desc_size = rtDescMan_->GetSamplerDescSize();
-	auto local_handle_start = rtDescMan_->IncrementLocalHandleStart();
-	auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
-	{
-		auto&& submeshes = pMeshItem->GetSubmeshes();
-		auto CBs = rtOffsetCBs.find(pMeshItem);
-		auto& CBL = CBs->second;
-		for (int i = 0; i < submeshes.size(); i++)
-		{
-			auto&& submesh = submeshes[i];
-			auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
-			auto bc_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			auto orm_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			if (material.baseColorTex.IsValid())
-			{
-				auto pTexBC = const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>());
-				bc_srv = &pTexBC->GetTextureView();
-			}
-			if (material.ormTex.IsValid())
-			{
-				auto pTexORM = const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>());
-				orm_srv = &pTexORM->GetTextureView();
-			}
-
-			opaque_table.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
-
-			LocalTable table;
-
-			// CBV
-			D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = {
-				CBL[i].GetCBV()->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 cbv_cnt = ARRAYSIZE(cbv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.viewCpuHandle, &cbv_cnt,
-				cbv_cnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.cbv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * cbv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * cbv_cnt;
-
-			// SRV
-			D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
-				pRenderSystem_->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
-				pRenderSystem_->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
-				bc_srv->GetDescInfo().cpuHandle,
-				orm_srv->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 srv_cnt = ARRAYSIZE(srv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.viewCpuHandle, &srv_cnt,
-				srv_cnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.srv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * srv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * srv_cnt;
-
-			// Samplerは1つ
-			D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = {
-				pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 sampler_cnt = ARRAYSIZE(sampler);
-			pDevice_->GetDeviceDep()->CopyDescriptors(
-				1, &local_handle_start.samplerCpuHandle, &sampler_cnt,
-				sampler_cnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-			table.sampler = local_handle_start.samplerGpuHandle;
-			local_handle_start.samplerCpuHandle.ptr += sampler_desc_size * sampler_cnt;
-			local_handle_start.samplerGpuHandle.ptr += sampler_desc_size * sampler_cnt;
-
-			material_table.push_back(table);
-		}
-	};
-	for (auto&& s : rtTableSources)
-	{
-		FillMeshTable(s.pResMesh);
-	}
-
-	// create shader table.
-	auto Align = [](UINT size, UINT align)
-	{
-		return ((size + align - 1) / align) * align;
-	};
-	UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	UINT descHandleOffset = Align(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-	UINT shaderRecordSize = Align(descHandleOffset + sizeof(LocalTable), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-	bvhShaderRecordSize_ = shaderRecordSize;
-
-	auto GenShaderTable = [&](
-		void* const * shaderIds,
-		int tableCountPerMaterial,
-		sl12::UniqueHandle<sl12::Buffer>& buffer,
-		int materialCount)
-	{
-		buffer = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-
-		materialCount = (materialCount < 0) ? (int)material_table.size() : materialCount;
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
-		if (!buffer->Initialize(pDevice_, desc))
-		{
-			return false;
-		}
-
-		auto p = (char*)buffer->Map();
-		for (int i = 0; i < materialCount; ++i)
-		{
-			for (int id = 0; id < tableCountPerMaterial; ++id)
-			{
-				auto start = p;
-
-				memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
-				p += descHandleOffset;
-
-				memcpy(p, &material_table[i], sizeof(LocalTable));
-
-				p = start + shaderRecordSize;
-			}
-		}
-		buffer->Unmap();
-
-		return true;
-	};
-	// material shader table.
-	{
-		void* hg_identifier[2];
-		{
-			ID3D12StateObjectProperties* prop;
-			psoProbeTraceRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
-			hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
-			prop->Release();
-		}
-		std::vector<void*> hg_table;
-		for (auto v : opaque_table)
-		{
-			hg_table.push_back(v ? hg_identifier[0] : hg_identifier[1]);
-		}
-		if (!GenShaderTable(hg_table.data(), 1, MaterialHGTable_, -1))
-		{
-			assert(false);
-		}
-	}
-	// for rgs and ms.
-	{
-		void* rgs_identifier;
-		void* ms_identifier;
-		{
-			ID3D12StateObjectProperties* prop;
-			psoProbeTraceRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop));
-			rgs_identifier = prop->GetShaderIdentifier(ProbeTrace::kProbeTraceRGS);
-			ms_identifier = prop->GetShaderIdentifier(ProbeTrace::kProbeTraceMS);
-			prop->Release();
-		}
-		if (!GenShaderTable(&rgs_identifier, 1, ProbeTraceRGSTable_, 1))
-		{
-			assert(false);
-		}
-		if (!GenShaderTable(&ms_identifier, 1, ProbeTraceMSTable_, 1))
-		{
-			assert(false);
-		}
-	}
-}
-
 void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "ProbeTracePass");
 
 	if (pScene_->IsRTTableDirty())
 	{
-		CreateShaderTable();
+		if (!::CreateShaderTable(
+			pDevice_,
+			pRenderSystem_,
+			pScene_,
+			ProbeTrace::kRTDescriptorCountGlobal,
+			RTCommon::kRTDescriptorCountLocal,
+			&psoProbeTraceRT_,
+			RTCommon::kMaterialOpacityHG,
+			RTCommon::kMaterialMaskedHG,
+			ProbeTrace::kProbeTraceRGS,
+			ProbeTrace::kProbeTraceMS,
+			rtDescMan_,
+			MaterialHGTable_,
+			ProbeTraceRGSTable_,
+			ProbeTraceMSTable_,
+			bvhShaderRecordSize_))
+		{
+			assert(false);
+		}
 	}
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
@@ -1123,158 +965,31 @@ std::vector<sl12::TransientResource> MonteCarloGIPass::GetOutputResources(const 
 	return ret;
 }
 
-void MonteCarloGIPass::CreateShaderTable()
-{
-	auto& rtTableSources = pScene_->GetRTTableSources();
-	auto& rtOffsetCBs = pScene_->GetMeshOffsetCBs();
-
-	size_t totalSubmeshCount = 0;
-	for (auto&& src : rtTableSources) totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
-
-	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
-	if (!rtDescMan_->Initialize(pDevice_, 1, 1, MonteCarloGI::kRTDescriptorCountGlobal, RTCommon::kRTDescriptorCountLocal, (sl12::u32)totalSubmeshCount))
-	{
-		sl12::ConsolePrint("Error : Failed to init initial sample descriptor.\n");
-		assert(false);
-	}
-
-	struct LocalTable { D3D12_GPU_DESCRIPTOR_HANDLE cbv, srv, sampler; };
-	std::vector<LocalTable> material_table;
-	std::vector<bool> opaque_table;
-	auto view_desc_size = rtDescMan_->GetViewDescSize();
-	auto sampler_desc_size = rtDescMan_->GetSamplerDescSize();
-	auto local_handle_start = rtDescMan_->IncrementLocalHandleStart();
-	auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
-	{
-		auto&& submeshes = pMeshItem->GetSubmeshes();
-		auto CBs = rtOffsetCBs.find(pMeshItem);
-		auto& CBL = CBs->second;
-		for (int i = 0; i < submeshes.size(); i++)
-		{
-			auto&& submesh = submeshes[i];
-			auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
-			auto bc_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			auto orm_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			if (material.baseColorTex.IsValid()) bc_srv = &const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
-			if (material.ormTex.IsValid()) orm_srv = &const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
-
-			opaque_table.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
-			LocalTable table{};
-
-			D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = { CBL[i].GetCBV()->GetDescInfo().cpuHandle };
-			sl12::u32 cbv_cnt = ARRAYSIZE(cbv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &cbv_cnt, cbv_cnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.cbv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * cbv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * cbv_cnt;
-
-			D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
-				pRenderSystem_->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
-				pRenderSystem_->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
-				bc_srv->GetDescInfo().cpuHandle,
-				orm_srv->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 srv_cnt = ARRAYSIZE(srv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &srv_cnt, srv_cnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.srv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * srv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * srv_cnt;
-
-			D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = { pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle };
-			sl12::u32 sampler_cnt = ARRAYSIZE(sampler);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.samplerCpuHandle, &sampler_cnt, sampler_cnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-			table.sampler = local_handle_start.samplerGpuHandle;
-			local_handle_start.samplerCpuHandle.ptr += sampler_desc_size * sampler_cnt;
-			local_handle_start.samplerGpuHandle.ptr += sampler_desc_size * sampler_cnt;
-
-			material_table.push_back(table);
-		}
-	};
-	for (auto&& s : rtTableSources) FillMeshTable(s.pResMesh);
-
-	auto Align = [](UINT size, UINT align) { return ((size + align - 1) / align) * align; };
-	UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	UINT descHandleOffset = Align(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-	UINT shaderRecordSize = Align(descHandleOffset + sizeof(LocalTable), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-	bvhShaderRecordSize_ = shaderRecordSize;
-
-	auto GenShaderTable = [&](void* const* shaderIds, int tableCountPerMaterial, sl12::UniqueHandle<sl12::Buffer>& buffer, int materialCount)
-	{
-		buffer = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-		materialCount = (materialCount < 0) ? (int)material_table.size() : materialCount;
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
-		if (!buffer->Initialize(pDevice_, desc)) return false;
-		auto p = (char*)buffer->Map();
-		for (int i = 0; i < materialCount; ++i)
-		{
-			for (int id = 0; id < tableCountPerMaterial; ++id)
-			{
-				auto start = p;
-				memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
-				p += descHandleOffset;
-				memcpy(p, &material_table[i], sizeof(LocalTable));
-				p = start + shaderRecordSize;
-			}
-		}
-		buffer->Unmap();
-		return true;
-	};
-
-	{
-		void* hg_identifier[2];
-		ID3D12StateObjectProperties* prop;
-		if (FAILED(psoMonteCarloRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
-		{
-			sl12::ConsolePrint("Error : failed query interface in InitialSamplePass::CreateShaderTable()\n");
-			assert(false);
-		}
-		hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
-		hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
-		prop->Release();
-		std::vector<void*> hg_table;
-		for (auto&& o : opaque_table) hg_table.push_back(hg_identifier[o ? 0 : 1]);
-		if (!GenShaderTable(hg_table.data(), 1, MaterialHGTable_, -1))
-		{
-			sl12::ConsolePrint("Error : failed to create initial sample hitgroup table.\n");
-			assert(false);
-		}
-	}
-	{
-		void* rgs_identifier = nullptr;
-		void* ms_identifier = nullptr;
-		ID3D12StateObjectProperties* prop;
-		if (FAILED(psoMonteCarloRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
-		{
-			sl12::ConsolePrint("Error : failed query interface in MonteCarloGIPass::CreateShaderTable()\n");
-			assert(false);
-		}
-		rgs_identifier = prop->GetShaderIdentifier(MonteCarloGI::kMonteCarloGIRGS);
-		ms_identifier = prop->GetShaderIdentifier(MonteCarloGI::kMonteCarloGIMS);
-		prop->Release();
-		if (!GenShaderTable(&rgs_identifier, 1, MonteCarloRGSTable_, 1))
-		{
-			sl12::ConsolePrint("Error : failed to create monte carlo RGS table.\n");
-			assert(false);
-		}
-		if (!GenShaderTable(&ms_identifier, 1, MonteCarloMSTable_, 1))
-		{
-			sl12::ConsolePrint("Error : failed to create monte carlo MS table.\n");
-			assert(false);
-		}
-	}
-}
-
 void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "InitialSamplePass");
 
 	if (pScene_->IsRTTableDirty() || !rtDescMan_.IsValid())
 	{
-		CreateShaderTable();
+		if (!::CreateShaderTable(
+			pDevice_,
+			pRenderSystem_,
+			pScene_,
+			MonteCarloGI::kRTDescriptorCountGlobal,
+			RTCommon::kRTDescriptorCountLocal,
+			&psoMonteCarloRT_,
+			RTCommon::kMaterialOpacityHG,
+			RTCommon::kMaterialMaskedHG,
+			MonteCarloGI::kMonteCarloGIRGS,
+			MonteCarloGI::kMonteCarloGIMS,
+			rtDescMan_,
+			MaterialHGTable_,
+			MonteCarloRGSTable_,
+			MonteCarloMSTable_,
+			bvhShaderRecordSize_))
+		{
+			assert(false);
+		}
 	}
 
 	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
@@ -1415,158 +1130,31 @@ std::vector<sl12::TransientResource> InitialSamplePass::GetOutputResources(const
 	return ret;
 }
 
-void InitialSamplePass::CreateShaderTable()
-{
-	auto& rtTableSources = pScene_->GetRTTableSources();
-	auto& rtOffsetCBs = pScene_->GetMeshOffsetCBs();
-
-	size_t totalSubmeshCount = 0;
-	for (auto&& src : rtTableSources) totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
-
-	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
-	if (!rtDescMan_->Initialize(pDevice_, 1, 1, InitialSample::kRTDescriptorCountGlobal, RTCommon::kRTDescriptorCountLocal, (sl12::u32)totalSubmeshCount))
-	{
-		sl12::ConsolePrint("Error : Failed to init initial sample descriptor.\n");
-		assert(false);
-	}
-
-	struct LocalTable { D3D12_GPU_DESCRIPTOR_HANDLE cbv, srv, sampler; };
-	std::vector<LocalTable> material_table;
-	std::vector<bool> opaque_table;
-	auto view_desc_size = rtDescMan_->GetViewDescSize();
-	auto sampler_desc_size = rtDescMan_->GetSamplerDescSize();
-	auto local_handle_start = rtDescMan_->IncrementLocalHandleStart();
-	auto FillMeshTable = [&](const sl12::ResourceItemMesh* pMeshItem)
-	{
-		auto&& submeshes = pMeshItem->GetSubmeshes();
-		auto CBs = rtOffsetCBs.find(pMeshItem);
-		auto& CBL = CBs->second;
-		for (int i = 0; i < submeshes.size(); i++)
-		{
-			auto&& submesh = submeshes[i];
-			auto&& material = pMeshItem->GetMaterials()[submesh.materialIndex];
-			auto bc_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			auto orm_srv = pDevice_->GetDummyTextureView(sl12::DummyTex::White);
-			if (material.baseColorTex.IsValid()) bc_srv = &const_cast<sl12::ResourceItemTexture*>(material.baseColorTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
-			if (material.ormTex.IsValid()) orm_srv = &const_cast<sl12::ResourceItemTexture*>(material.ormTex.GetItem<sl12::ResourceItemTexture>())->GetTextureView();
-
-			opaque_table.push_back(material.blendType == sl12::ResourceMeshMaterialBlendType::Opaque);
-			LocalTable table{};
-
-			D3D12_CPU_DESCRIPTOR_HANDLE cbv[] = { CBL[i].GetCBV()->GetDescInfo().cpuHandle };
-			sl12::u32 cbv_cnt = ARRAYSIZE(cbv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &cbv_cnt, cbv_cnt, cbv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.cbv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * cbv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * cbv_cnt;
-
-			D3D12_CPU_DESCRIPTOR_HANDLE srv[] = {
-				pRenderSystem_->GetMeshManager()->GetIndexBufferSRV()->GetDescInfo().cpuHandle,
-				pRenderSystem_->GetMeshManager()->GetVertexBufferSRV()->GetDescInfo().cpuHandle,
-				bc_srv->GetDescInfo().cpuHandle,
-				orm_srv->GetDescInfo().cpuHandle,
-			};
-			sl12::u32 srv_cnt = ARRAYSIZE(srv);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.viewCpuHandle, &srv_cnt, srv_cnt, srv, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			table.srv = local_handle_start.viewGpuHandle;
-			local_handle_start.viewCpuHandle.ptr += view_desc_size * srv_cnt;
-			local_handle_start.viewGpuHandle.ptr += view_desc_size * srv_cnt;
-
-			D3D12_CPU_DESCRIPTOR_HANDLE sampler[] = { pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle };
-			sl12::u32 sampler_cnt = ARRAYSIZE(sampler);
-			pDevice_->GetDeviceDep()->CopyDescriptors(1, &local_handle_start.samplerCpuHandle, &sampler_cnt, sampler_cnt, sampler, nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-			table.sampler = local_handle_start.samplerGpuHandle;
-			local_handle_start.samplerCpuHandle.ptr += sampler_desc_size * sampler_cnt;
-			local_handle_start.samplerGpuHandle.ptr += sampler_desc_size * sampler_cnt;
-
-			material_table.push_back(table);
-		}
-	};
-	for (auto&& s : rtTableSources) FillMeshTable(s.pResMesh);
-
-	auto Align = [](UINT size, UINT align) { return ((size + align - 1) / align) * align; };
-	UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-	UINT descHandleOffset = Align(shaderIdentifierSize, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-	UINT shaderRecordSize = Align(descHandleOffset + sizeof(LocalTable), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-	bvhShaderRecordSize_ = shaderRecordSize;
-
-	auto GenShaderTable = [&](void* const* shaderIds, int tableCountPerMaterial, sl12::UniqueHandle<sl12::Buffer>& buffer, int materialCount)
-	{
-		buffer = sl12::MakeUnique<sl12::Buffer>(pDevice_);
-		materialCount = (materialCount < 0) ? (int)material_table.size() : materialCount;
-		sl12::BufferDesc desc{};
-		desc.heap = sl12::BufferHeap::Dynamic;
-		desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
-		desc.usage = sl12::ResourceUsage::ShaderResource;
-		desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
-		if (!buffer->Initialize(pDevice_, desc)) return false;
-		auto p = (char*)buffer->Map();
-		for (int i = 0; i < materialCount; ++i)
-		{
-			for (int id = 0; id < tableCountPerMaterial; ++id)
-			{
-				auto start = p;
-				memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
-				p += descHandleOffset;
-				memcpy(p, &material_table[i], sizeof(LocalTable));
-				p = start + shaderRecordSize;
-			}
-		}
-		buffer->Unmap();
-		return true;
-	};
-
-	{
-		void* hg_identifier[2];
-		ID3D12StateObjectProperties* prop;
-		if (FAILED(psoInitialSampleRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
-		{
-			sl12::ConsolePrint("Error : failed query interface in InitialSamplePass::CreateShaderTable()\n");
-			assert(false);
-		}
-		hg_identifier[0] = prop->GetShaderIdentifier(RTCommon::kMaterialOpacityHG);
-		hg_identifier[1] = prop->GetShaderIdentifier(RTCommon::kMaterialMaskedHG);
-		prop->Release();
-		std::vector<void*> hg_table;
-		for (auto&& o : opaque_table) hg_table.push_back(hg_identifier[o ? 0 : 1]);
-		if (!GenShaderTable(hg_table.data(), 1, MaterialHGTable_, -1))
-		{
-			sl12::ConsolePrint("Error : failed to create initial sample hitgroup table.\n");
-			assert(false);
-		}
-	}
-	{
-		void* rgs_identifier = nullptr;
-		void* ms_identifier = nullptr;
-		ID3D12StateObjectProperties* prop;
-		if (FAILED(psoInitialSampleRT_->GetPSO()->QueryInterface(IID_PPV_ARGS(&prop))))
-		{
-			sl12::ConsolePrint("Error : failed query interface in InitialSamplePass::CreateShaderTable()\n");
-			assert(false);
-		}
-		rgs_identifier = prop->GetShaderIdentifier(InitialSample::kInitialSampleRGS);
-		ms_identifier = prop->GetShaderIdentifier(InitialSample::kInitialSampleMS);
-		prop->Release();
-		if (!GenShaderTable(&rgs_identifier, 1, InitialSampleRGSTable_, 1))
-		{
-			sl12::ConsolePrint("Error : failed to create initial sample RGS table.\n");
-			assert(false);
-		}
-		if (!GenShaderTable(&ms_identifier, 1, InitialSampleMSTable_, 1))
-		{
-			sl12::ConsolePrint("Error : failed to create initial sample MS table.\n");
-			assert(false);
-		}
-	}
-}
-
 void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
 {
 	GPU_MARKER(pCmdList, 0, "InitialSamplePass");
 
 	if (pScene_->IsRTTableDirty() || !rtDescMan_.IsValid())
 	{
-		CreateShaderTable();
+		if (!::CreateShaderTable(
+			pDevice_,
+			pRenderSystem_,
+			pScene_,
+			InitialSample::kRTDescriptorCountGlobal,
+			RTCommon::kRTDescriptorCountLocal,
+			&psoInitialSampleRT_,
+			RTCommon::kMaterialOpacityHG,
+			RTCommon::kMaterialMaskedHG,
+			InitialSample::kInitialSampleRGS,
+			InitialSample::kInitialSampleMS,
+			rtDescMan_,
+			MaterialHGTable_,
+			InitialSampleRGSTable_,
+			InitialSampleMSTable_,
+			bvhShaderRecordSize_))
+		{
+			assert(false);
+		}
 	}
 
 	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);

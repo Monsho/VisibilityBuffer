@@ -46,9 +46,6 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	void CreateShaderTable();
-
-private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoTestRT_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
@@ -94,9 +91,6 @@ public:
 		return sl12::HardwareQueue::Compute;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-
-private:
-	void CreateShaderTable();
 
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
@@ -194,9 +188,6 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	void CreateShaderTable();
-
-private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoMonteCarloRT_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
@@ -227,9 +218,6 @@ public:
 		return sl12::HardwareQueue::Compute;
 	}
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-
-private:
-	void CreateShaderTable();
 
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
