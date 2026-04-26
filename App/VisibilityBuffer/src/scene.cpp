@@ -61,6 +61,9 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 	// init cbv manager.
 	cbvMan_ = sl12::MakeUnique<sl12::CbvManager>(nullptr, pDev);
 
+	// init rt pipeline manager.
+	rtPsoMan_ = sl12::MakeUnique<RTPipelineManager>(nullptr, pDev);
+
 	// init samplers.
 	{
 		linearWrapSampler_ = sl12::MakeUnique<sl12::Sampler>(pDev);

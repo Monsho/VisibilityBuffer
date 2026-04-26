@@ -6,6 +6,7 @@
 
 #include "app_pass_base.h"
 #include "meshlet_resource.h"
+#include "rt_pipeline_manager.h"
 
 #include "sl12/resource_loader.h"
 #include "sl12/shader_manager.h"
@@ -107,6 +108,10 @@ public:
 	{
 		return &cbvMan_;
 	}
+	RTPipelineManager* GetRTPipelineManager()
+	{
+		return &rtPsoMan_;
+	}
 
 	sl12::ShaderHandle GetShaderHandle(int index)
 	{
@@ -140,6 +145,7 @@ private:
 	UniqueHandle<sl12::MeshManager>		meshMan_;
 	UniqueHandle<sl12::TextureStreamer>	texStreamer_;
 	UniqueHandle<sl12::CbvManager>		cbvMan_;
+	UniqueHandle<RTPipelineManager>		rtPsoMan_;
 
 	// shader handles.
 	std::vector<sl12::ShaderHandle>	hShaders_;

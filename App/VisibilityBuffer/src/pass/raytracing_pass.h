@@ -46,8 +46,8 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
-	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoTestRT_;
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoTestCollection_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, TestRGSTable_, TestMSTable_;
 	UINT bvhShaderRecordSize_;
@@ -93,8 +93,8 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
-	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoProbeTraceRT_;
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoProbeTraceCollection_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, ProbeTraceRGSTable_, ProbeTraceMSTable_;
 	UINT bvhShaderRecordSize_;
@@ -188,8 +188,8 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
-	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoMonteCarloRT_;
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoMonteCarloCollection_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, MonteCarloRGSTable_, MonteCarloMSTable_;
 	UINT bvhShaderRecordSize_;
@@ -220,8 +220,8 @@ public:
 	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
 
 private:
-	UniqueHandle<sl12::RootSignature> rtGlobalRS_, rtLocalRS_;
-	UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_, psoInitialSampleRT_;
+	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
+	UniqueHandle<sl12::DxrPipelineState> psoInitialSampleCollection_;
 	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, InitialSampleRGSTable_, InitialSampleMSTable_;
 	UINT bvhShaderRecordSize_;

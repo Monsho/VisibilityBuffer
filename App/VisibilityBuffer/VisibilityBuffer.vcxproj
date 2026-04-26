@@ -126,6 +126,7 @@
     <ClCompile Include="src\pass\indirect_light_pass.cpp" />
     <ClCompile Include="src\pass\utility_pass.cpp" />
     <ClCompile Include="src\pass\visibility_pass.cpp" />
+    <ClCompile Include="src\rt_pipeline_manager.cpp" />
     <ClCompile Include="src\scene.cpp" />
     <None Include="shaders\classify.c.hlsl" />
     <None Include="shaders\clear_arg.c.hlsl" />
@@ -185,6 +186,7 @@
     <ClInclude Include="src\pass\indirect_light_pass.h" />
     <ClInclude Include="src\pass\utility_pass.h" />
     <ClInclude Include="src\pass\visibility_pass.h" />
+    <ClInclude Include="src\rt_pipeline_manager.h" />
     <ClInclude Include="src\scene.h" />
     <ClInclude Include="src\shader_types.h" />
     <None Include="shaders\cbuffer.hlsli" />
