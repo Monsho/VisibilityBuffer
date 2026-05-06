@@ -2,6 +2,7 @@
 
 #include "shader_types.h"
 #include "scene.h"
+#include "sl12/swapchain.h"
 
 RTPipelineManager::RTPipelineManager(sl12::Device* pDevice)
 	: pDevice_(pDevice)
@@ -9,6 +10,7 @@ RTPipelineManager::RTPipelineManager(sl12::Device* pDevice)
 
 RTPipelineManager::~RTPipelineManager()
 {
+	rtDescMan_.Reset();
 	psoRaytracing_.Reset();
 	psoMaterialCollection_.Reset();
 }
@@ -31,6 +33,44 @@ bool RTPipelineManager::Setup(RenderSystem* pRenderSys)
 	}
 
 	return true;
+}
+
+bool RTPipelineManager::InitializeDescriptorManager(
+	const sl12::RaytracingDescriptorCount& globalCapacity,
+	const sl12::RaytracingDescriptorCount& localCount,
+	sl12::u32 materialCount)
+{
+	if (rtDescMan_.IsValid() && rtMaterialCount_ == materialCount)
+	{
+		return true;
+	}
+
+	rtDescMan_ = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice_);
+	if (!rtDescMan_->Initialize(
+		pDevice_,
+		sl12::Swapchain::kMaxBuffer,
+		1,
+		globalCapacity,
+		localCount,
+		materialCount))
+	{
+		rtDescMan_.Reset();
+		rtMaterialCount_ = 0;
+		return false;
+	}
+	rtMaterialCount_ = materialCount;
+	rtDescriptorGeneration_++;
+	rtDescMan_->BeginNewFrame(rtFrameIndex_);
+	return true;
+}
+
+void RTPipelineManager::BeginNewFrame(sl12::u32 frameIndex)
+{
+	rtFrameIndex_ = frameIndex;
+	if (rtDescMan_.IsValid())
+	{
+		rtDescMan_->BeginNewFrame(frameIndex);
+	}
 }
 
 namespace RTCommon

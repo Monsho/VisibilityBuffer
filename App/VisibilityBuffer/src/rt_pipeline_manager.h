@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "sl12/pipeline_state.h"
+#include "sl12/descriptor_heap.h"
 #include "sl12/unique_handle.h"
 
 struct RTPipelineEntry
@@ -24,10 +25,23 @@ public:
 
 	int AddPipelineEntry(const RTPipelineEntry& entry);
 	bool Setup(class RenderSystem* pRenderSys);
+	bool InitializeDescriptorManager(
+		const sl12::RaytracingDescriptorCount& globalCapacity,
+		const sl12::RaytracingDescriptorCount& localCount,
+		sl12::u32 materialCount);
+	void BeginNewFrame(sl12::u32 frameIndex);
 
 	sl12::DxrPipelineState* GetPipelineState()
 	{
 		return &psoRaytracing_;
+	}
+	sl12::RaytracingDescriptorManager* GetDescriptorManager()
+	{
+		return rtDescMan_.IsValid() ? &rtDescMan_ : nullptr;
+	}
+	sl12::u32 GetDescriptorGeneration() const
+	{
+		return rtDescriptorGeneration_;
 	}
 	const RTPipelineIndex& GetPipelineIndex(int index) const
 	{
@@ -45,6 +59,10 @@ private:
 	sl12::UniqueHandle<sl12::DxrPipelineState> psoMaterialCollection_;
 	sl12::UniqueHandle<sl12::RootSignature> rtLocalRS_;
 	sl12::UniqueHandle<sl12::DxrPipelineState> psoRaytracing_;
+	sl12::UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
+	sl12::u32 rtMaterialCount_ = 0;
+	sl12::u32 rtFrameIndex_ = 0;
+	sl12::u32 rtDescriptorGeneration_ = 0;
 	std::vector<RTPipelineEntry> pipelineEntries_;
 	std::vector<RTPipelineIndex> pipelineIndices_;
 	bool bPipelineDirty_ = true;

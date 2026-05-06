@@ -31,14 +31,14 @@ namespace
 		sl12::Device* pDevice,
 		RenderSystem* pRenderSystem,
 		Scene* pScene,
-		const sl12::RaytracingDescriptorCount& globalDescriptorCount,
+		const sl12::RaytracingDescriptorCount& globalDescriptorCapacity,
+		const sl12::RaytracingDescriptorCount&,
 		const sl12::RaytracingDescriptorCount& localDescriptorCount,
 		sl12::DxrPipelineState* pPipelineState,
 		LPCWSTR pMaterialOpacityHitGroupName,
 		LPCWSTR pMaterialMaskedHitGroupName,
 		LPCWSTR pRayGenExportName,
 		LPCWSTR pMissExportName,
-		sl12::UniqueHandle<sl12::RaytracingDescriptorManager>& rtDescMan,
 		sl12::UniqueHandle<sl12::Buffer>& materialHGTable,
 		sl12::UniqueHandle<sl12::Buffer>& rayGenTable,
 		sl12::UniqueHandle<sl12::Buffer>& missTable,
@@ -53,18 +53,16 @@ namespace
 			totalSubmeshCount += src.pResMesh->GetSubmeshes().size();
 		}
 
-		rtDescMan = sl12::MakeUnique<sl12::RaytracingDescriptorManager>(pDevice);
-		if (!rtDescMan->Initialize(
-			pDevice,
-			1,
-			1,
-			globalDescriptorCount,
+		if (!pRenderSystem->GetRTPipelineManager()->InitializeDescriptorManager(
+			globalDescriptorCapacity,
 			localDescriptorCount,
 			static_cast<sl12::u32>(totalSubmeshCount)))
 		{
 			sl12::ConsolePrint("Error : Failed to init raytracing descriptor.\n");
 			return false;
 		}
+		auto rtDescMan = pRenderSystem->GetRTPipelineManager()->GetDescriptorManager();
+		assert(rtDescMan != nullptr);
 
 		std::vector<RtShaderTableLocalRecord> materialTable;
 		std::vector<bool> opaqueTable;
@@ -267,6 +265,12 @@ namespace RTCommon
 		0,	// uav
 		1,	// sampler
 	};
+	static const sl12::RaytracingDescriptorCount kRTDescriptorCapacityGlobal = {
+		9,	// cbv
+		15,	// srv
+		5,	// uav
+		3,	// sampler
+	};
 
 	static LPCWSTR kMaterialCHS = L"MaterialCHS";
 	static LPCWSTR kMaterialAHS = L"MaterialAHS";
@@ -425,12 +429,15 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 	}
 	sl12::DxrPipelineState* pso = pRenderSystem_->GetRTPipelineManager()->GetPipelineState();
 
-	if (pScene_->IsRTTableDirty())
+	if (pScene_->IsRTTableDirty()
+		|| pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager() == nullptr
+		|| rtDescriptorGeneration_ != pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration())
 	{
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
 			pScene_,
+			RTCommon::kRTDescriptorCapacityGlobal,
 			TestPass::kRTDescriptorCountGlobal,
 			RTCommon::kRTDescriptorCountLocal,
 			// &psoTestRT_,
@@ -439,7 +446,6 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 			RTCommon::kMaterialMaskedHG,
 			TestPass::kTestRGS,
 			TestPass::kTestMS,
-			rtDescMan_,
 			MaterialHGTable_,
 			TestRGSTable_,
 			TestMSTable_,
@@ -447,6 +453,7 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 		{
 			assert(false);
 		}
+		rtDescriptorGeneration_ = pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration();
 	}
 
 	auto pResultMap = pResManager->GetRenderGraphResource(kTestRTResultID);
@@ -464,7 +471,7 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = {
 		pScene_->GetBvhScene()->GetGPUAddress()
 	};
-	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, &rtDescMan_, as_address, ARRAYSIZE(as_address));
+	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager(), TestPass::kRTDescriptorCountGlobal, as_address, ARRAYSIZE(as_address));
 
 	// execute raytracing.
 	sl12::DispatchRaysDesc desc{};
@@ -611,12 +618,15 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 	}
 	sl12::DxrPipelineState* pso = pRenderSystem_->GetRTPipelineManager()->GetPipelineState();
 
-	if (pScene_->IsRTTableDirty())
+	if (pScene_->IsRTTableDirty()
+		|| pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager() == nullptr
+		|| rtDescriptorGeneration_ != pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration())
 	{
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
 			pScene_,
+			RTCommon::kRTDescriptorCapacityGlobal,
 			ProbeTrace::kRTDescriptorCountGlobal,
 			RTCommon::kRTDescriptorCountLocal,
 			//&psoProbeTraceRT_,
@@ -625,7 +635,6 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 			RTCommon::kMaterialMaskedHG,
 			ProbeTrace::kProbeTraceRGS,
 			ProbeTrace::kProbeTraceMS,
-			rtDescMan_,
 			MaterialHGTable_,
 			ProbeTraceRGSTable_,
 			ProbeTraceMSTable_,
@@ -633,6 +642,7 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 		{
 			assert(false);
 		}
+		rtDescriptorGeneration_ = pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration();
 	}
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
@@ -654,7 +664,7 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = {
 		pScene_->GetBvhScene()->GetGPUAddress()
 	};
-	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, &rtDescMan_, as_address, ARRAYSIZE(as_address));
+	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager(), ProbeTrace::kRTDescriptorCountGlobal, as_address, ARRAYSIZE(as_address));
 
 	// execute raytracing.
 	sl12::DispatchRaysDesc desc{};
@@ -853,7 +863,6 @@ MonteCarloGIPass::~MonteCarloGIPass()
 	MonteCarloMSTable_.Reset();
 	MonteCarloRGSTable_.Reset();
 	MaterialHGTable_.Reset();
-	rtDescMan_.Reset();
 	psoMonteCarloCollection_.Reset();
 	rtGlobalRS_.Reset();
 }
@@ -893,12 +902,15 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	}
 	sl12::DxrPipelineState* pso = pRenderSystem_->GetRTPipelineManager()->GetPipelineState();
 
-	if (pScene_->IsRTTableDirty() || !rtDescMan_.IsValid())
+	if (pScene_->IsRTTableDirty()
+		|| pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager() == nullptr
+		|| rtDescriptorGeneration_ != pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration())
 	{
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
 			pScene_,
+			RTCommon::kRTDescriptorCapacityGlobal,
 			MonteCarloGI::kRTDescriptorCountGlobal,
 			RTCommon::kRTDescriptorCountLocal,
 			// &psoMonteCarloRT_,
@@ -907,7 +919,6 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 			RTCommon::kMaterialMaskedHG,
 			MonteCarloGI::kMonteCarloGIRGS,
 			MonteCarloGI::kMonteCarloGIMS,
-			rtDescMan_,
 			MaterialHGTable_,
 			MonteCarloRGSTable_,
 			MonteCarloMSTable_,
@@ -915,6 +926,7 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 		{
 			assert(false);
 		}
+		rtDescriptorGeneration_ = pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration();
 	}
 
 	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
@@ -937,7 +949,7 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = { pScene_->GetBvhScene()->GetGPUAddress() };
-	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, &rtDescMan_, as_address, ARRAYSIZE(as_address));
+	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager(), MonteCarloGI::kRTDescriptorCountGlobal, as_address, ARRAYSIZE(as_address));
 
 	sl12::DispatchRaysDesc desc{};
 	// desc.pso = &psoMonteCarloRT_;
@@ -1001,7 +1013,6 @@ InitialSamplePass::~InitialSamplePass()
 	InitialSampleMSTable_.Reset();
 	InitialSampleRGSTable_.Reset();
 	MaterialHGTable_.Reset();
-	rtDescMan_.Reset();
 	rtGlobalRS_.Reset();
 }
 
@@ -1043,12 +1054,15 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	}
 	sl12::DxrPipelineState* pso = pRenderSystem_->GetRTPipelineManager()->GetPipelineState();
 
-	if (pScene_->IsRTTableDirty() || !rtDescMan_.IsValid())
+	if (pScene_->IsRTTableDirty()
+		|| pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager() == nullptr
+		|| rtDescriptorGeneration_ != pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration())
 	{
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
 			pScene_,
+			RTCommon::kRTDescriptorCapacityGlobal,
 			InitialSample::kRTDescriptorCountGlobal,
 			RTCommon::kRTDescriptorCountLocal,
 			// &psoInitialSampleRT_,
@@ -1057,7 +1071,6 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 			RTCommon::kMaterialMaskedHG,
 			InitialSample::kInitialSampleRGS,
 			InitialSample::kInitialSampleMS,
-			rtDescMan_,
 			MaterialHGTable_,
 			InitialSampleRGSTable_,
 			InitialSampleMSTable_,
@@ -1065,6 +1078,7 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 		{
 			assert(false);
 		}
+		rtDescriptorGeneration_ = pRenderSystem_->GetRTPipelineManager()->GetDescriptorGeneration();
 	}
 
 	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
@@ -1101,7 +1115,7 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	D3D12_GPU_VIRTUAL_ADDRESS as_address[] = { pScene_->GetBvhScene()->GetGPUAddress() };
-	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, &rtDescMan_, as_address, ARRAYSIZE(as_address));
+	pCmdList->SetRaytracingGlobalRootSignatureAndDescriptorSet(&rtGlobalRS_, &descSet, pRenderSystem_->GetRTPipelineManager()->GetDescriptorManager(), InitialSample::kRTDescriptorCountGlobal, as_address, ARRAYSIZE(as_address));
 
 	sl12::DispatchRaysDesc desc{};
 	// desc.pso = &psoInitialSampleRT_;

@@ -769,6 +769,7 @@ bool SampleApplication::Execute()
 	device_.LoadRenderCommands(pFrameStartCmdList);
 	meshMan->BeginNewFrame(pFrameStartCmdList);
 	cbvMan->BeginNewFrame();
+	renderSys_->GetRTPipelineManager()->BeginNewFrame(frameIndex);
 
 	// create scene constant buffer.
 	auto&& TempCB = scene_->GetTemporalCBs();

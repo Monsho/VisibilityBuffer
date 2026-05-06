@@ -48,9 +48,9 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoTestCollection_;
-	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, TestRGSTable_, TestMSTable_;
 	UINT bvhShaderRecordSize_;
+	sl12::u32 rtDescriptorGeneration_ = ~0u;
 };
 
 class ReadyRtxgiPass : public AppPassBase
@@ -95,9 +95,9 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoProbeTraceCollection_;
-	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, ProbeTraceRGSTable_, ProbeTraceMSTable_;
 	UINT bvhShaderRecordSize_;
+	sl12::u32 rtDescriptorGeneration_ = ~0u;
 };
 
 class UpdateRtxgiPass : public AppPassBase
@@ -190,9 +190,9 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoMonteCarloCollection_;
-	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, MonteCarloRGSTable_, MonteCarloMSTable_;
 	UINT bvhShaderRecordSize_;
+	sl12::u32 rtDescriptorGeneration_ = ~0u;
 };
 
 class InitialSamplePass : public AppPassBase
@@ -222,9 +222,9 @@ public:
 private:
 	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
 	UniqueHandle<sl12::DxrPipelineState> psoInitialSampleCollection_;
-	UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	UniqueHandle<sl12::Buffer> MaterialHGTable_, InitialSampleRGSTable_, InitialSampleMSTable_;
 	UINT bvhShaderRecordSize_;
+	sl12::u32 rtDescriptorGeneration_ = ~0u;
 
 	bool bInitialFrame_ = true;
 };
