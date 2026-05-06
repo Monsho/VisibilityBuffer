@@ -29,7 +29,7 @@ public:
 		const sl12::RaytracingDescriptorCount& globalCapacity,
 		const sl12::RaytracingDescriptorCount& localCount,
 		sl12::u32 materialCount);
-	void BeginNewFrame(sl12::u32 frameIndex);
+	void BeginNewFrame();
 
 	sl12::DxrPipelineState* GetPipelineState()
 	{
@@ -61,7 +61,6 @@ private:
 	sl12::UniqueHandle<sl12::DxrPipelineState> psoRaytracing_;
 	sl12::UniqueHandle<sl12::RaytracingDescriptorManager> rtDescMan_;
 	sl12::u32 rtMaterialCount_ = 0;
-	sl12::u32 rtFrameIndex_ = 0;
 	sl12::u32 rtDescriptorGeneration_ = 0;
 	std::vector<RTPipelineEntry> pipelineEntries_;
 	std::vector<RTPipelineIndex> pipelineIndices_;

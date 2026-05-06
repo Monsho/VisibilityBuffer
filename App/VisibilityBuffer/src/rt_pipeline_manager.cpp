@@ -60,16 +60,15 @@ bool RTPipelineManager::InitializeDescriptorManager(
 	}
 	rtMaterialCount_ = materialCount;
 	rtDescriptorGeneration_++;
-	rtDescMan_->BeginNewFrame(rtFrameIndex_);
+	rtDescMan_->BeginNewFrame();
 	return true;
 }
 
-void RTPipelineManager::BeginNewFrame(sl12::u32 frameIndex)
+void RTPipelineManager::BeginNewFrame()
 {
-	rtFrameIndex_ = frameIndex;
 	if (rtDescMan_.IsValid())
 	{
-		rtDescMan_->BeginNewFrame(frameIndex);
+		rtDescMan_->BeginNewFrame();
 	}
 }
 
