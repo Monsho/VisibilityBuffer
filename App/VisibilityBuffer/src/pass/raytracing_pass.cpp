@@ -150,7 +150,7 @@ namespace
 			materialCount = (materialCount < 0) ? static_cast<int>(materialTable.size()) : materialCount;
 			sl12::BufferDesc desc{};
 			desc.heap = sl12::BufferHeap::Dynamic;
-			desc.size = shaderRecordSize * tableCountPerMaterial * materialCount;
+			desc.size = shaderRecordSize * tableCountPerMaterial * (materialCount == 0 ? 1 : materialCount);
 			desc.usage = sl12::ResourceUsage::ShaderResource;
 			desc.initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
 			if (!buffer->Initialize(pDevice, desc))
@@ -158,8 +158,9 @@ namespace
 				return false;
 			}
 
+			int loopCount = (materialCount == 0) ? 1 : materialCount;
 			auto p = static_cast<char*>(buffer->Map());
-			for (int i = 0; i < materialCount; ++i)
+			for (int i = 0; i < loopCount; ++i)
 			{
 				for (int id = 0; id < tableCountPerMaterial; ++id)
 				{
@@ -168,7 +169,10 @@ namespace
 					memcpy(p, shaderIds[i * tableCountPerMaterial + id], shaderIdentifierSize);
 					p += descHandleOffset;
 
-					memcpy(p, &materialTable[i], sizeof(RtShaderTableLocalRecord));
+					if (materialCount > 0)
+					{
+						memcpy(p, &materialTable[i], sizeof(RtShaderTableLocalRecord));
+					}
 
 					p = start + shaderRecordSize;
 				}
@@ -205,12 +209,12 @@ namespace
 			sl12::ConsolePrint("Error : Failed to create hit group shader table.\n");
 			return false;
 		}
-		if (!GenShaderTable(&rgsIdentifier, 1, rayGenTable, 1))
+		if (!GenShaderTable(&rgsIdentifier, 1, rayGenTable, 0))
 		{
 			sl12::ConsolePrint("Error : Failed to create ray generation shader table.\n");
 			return false;
 		}
-		if (!GenShaderTable(&msIdentifier, 1, missTable, 1))
+		if (!GenShaderTable(&msIdentifier, 1, missTable, 0))
 		{
 			sl12::ConsolePrint("Error : Failed to create miss shader table.\n");
 			return false;
