@@ -30,6 +30,12 @@ namespace RTCommon
 		0,	// uav
 		1,	// sampler
 	};
+	static const sl12::RaytracingDescriptorCount kRTDescriptorCapacityGlobal = {
+		9,	// cbv
+		15,	// srv
+		5,	// uav
+		3,	// sampler
+	};
 
 	static LPCWSTR kMaterialCHS = L"MaterialCHS";
 	static LPCWSTR kMaterialAHS = L"MaterialAHS";
@@ -58,7 +64,7 @@ int RTPipelineManager::AddPipelineEntry(const RTPipelineEntry& entry)
 	return (int)pipelineEntries_.size() - 1;
 }
 
-bool RTPipelineManager::Setup(RenderSystem* pRenderSys)
+bool RTPipelineManager::Setup(RenderSystem* pRenderSys, Scene* pScene)
 {
 	if (bPipelineDirty_)
 	{
@@ -68,14 +74,15 @@ bool RTPipelineManager::Setup(RenderSystem* pRenderSys)
 		}
 	}
 
+	if (!SetupMaterialHitGroupTable(pRenderSys, pScene))
+	{
+		return false;
+	}
+
 	return true;
 }
 
-bool RTPipelineManager::InitializeDescriptorManager(
-	const sl12::RaytracingDescriptorCount& globalCapacity,
-	const sl12::RaytracingDescriptorCount& localCount,
-	sl12::u32 materialCount,
-	bool forceRecreate)
+bool RTPipelineManager::InitializeDescriptorManager(sl12::u32 materialCount, bool forceRecreate)
 {
 	if (!forceRecreate && rtDescMan_.IsValid() && rtMaterialCount_ == materialCount)
 	{
@@ -87,8 +94,8 @@ bool RTPipelineManager::InitializeDescriptorManager(
 		pDevice_,
 		sl12::Swapchain::kMaxBuffer,
 		1,
-		globalCapacity,
-		localCount,
+		RTCommon::kRTDescriptorCapacityGlobal,
+		RTCommon::kRTDescriptorCountLocal,
 		materialCount))
 	{
 		rtDescMan_.Reset();
@@ -103,10 +110,7 @@ bool RTPipelineManager::InitializeDescriptorManager(
 
 bool RTPipelineManager::SetupMaterialHitGroupTable(
 	RenderSystem* pRenderSys,
-	Scene* pScene,
-	const sl12::RaytracingDescriptorCount& globalCapacity,
-	const sl12::RaytracingDescriptorCount& localCount,
-	bool)
+	Scene* pScene)
 {
 	auto& rtTableSources = pScene->GetRTTableSources();
 	auto& rtOffsetCBs = pScene->GetMeshOffsetCBs();
@@ -120,8 +124,6 @@ bool RTPipelineManager::SetupMaterialHitGroupTable(
 	}
 
 	if (!InitializeDescriptorManager(
-		globalCapacity,
-		localCount,
 		static_cast<sl12::u32>(totalSubmeshCount),
 		sceneChanged))
 	{

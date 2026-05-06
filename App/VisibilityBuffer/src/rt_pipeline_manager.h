@@ -29,18 +29,7 @@ public:
 	~RTPipelineManager();
 
 	int AddPipelineEntry(const RTPipelineEntry& entry);
-	bool Setup(class RenderSystem* pRenderSys);
-	bool InitializeDescriptorManager(
-		const sl12::RaytracingDescriptorCount& globalCapacity,
-		const sl12::RaytracingDescriptorCount& localCount,
-		sl12::u32 materialCount,
-		bool forceRecreate = false);
-	bool SetupMaterialHitGroupTable(
-		class RenderSystem* pRenderSys,
-		class Scene* pScene,
-		const sl12::RaytracingDescriptorCount& globalCapacity,
-		const sl12::RaytracingDescriptorCount& localCount,
-		bool forceRecreate);
+	bool Setup(class RenderSystem* pRenderSys, class Scene* pScene);
 	void BeginNewFrame();
 
 	sl12::DxrPipelineState* GetPipelineState()
@@ -75,6 +64,8 @@ public:
 
 private:
 	bool CreatePipeline(class RenderSystem* pRenderSys);
+	bool InitializeDescriptorManager(sl12::u32 materialCount, bool forceRecreate = false);
+	bool SetupMaterialHitGroupTable(class RenderSystem* pRenderSys, class Scene* pScene);
 
 private:
 	sl12::Device* pDevice_ = nullptr;

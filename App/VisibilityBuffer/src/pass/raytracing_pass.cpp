@@ -16,9 +16,6 @@ namespace
 	bool CreateShaderTable(
 		sl12::Device* pDevice,
 		RenderSystem* pRenderSystem,
-		Scene* pScene,
-		const sl12::RaytracingDescriptorCount& globalDescriptorCapacity,
-		const sl12::RaytracingDescriptorCount& localDescriptorCount,
 		sl12::DxrPipelineState* pPipelineState,
 		LPCWSTR pRayGenExportName,
 		LPCWSTR pMissExportName,
@@ -26,16 +23,6 @@ namespace
 		sl12::UniqueHandle<sl12::Buffer>& missTable,
 		UINT& shaderRecordSize)
 	{
-		if (!pRenderSystem->GetRTPipelineManager()->SetupMaterialHitGroupTable(
-			pRenderSystem,
-			pScene,
-			globalDescriptorCapacity,
-			localDescriptorCount,
-			pScene->IsRTTableDirty()))
-		{
-			return false;
-		}
-
 		const UINT shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
 		shaderRecordSize = pRenderSystem->GetRTPipelineManager()->GetShaderRecordSize();
 
@@ -126,25 +113,7 @@ void BuildBvhPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 
 namespace RTCommon
 {
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCountLocal = {
-		1,	// cbv
-		4,	// srv
-		0,	// uav
-		1,	// sampler
-	};
-	static const sl12::RaytracingDescriptorCount kRTDescriptorCapacityGlobal = {
-		9,	// cbv
-		15,	// srv
-		5,	// uav
-		3,	// sampler
-	};
-
-	static LPCWSTR kMaterialCHS = L"MaterialCHS";
-	static LPCWSTR kMaterialAHS = L"MaterialAHS";
-	static LPCWSTR kMaterialOpacityHG = L"MaterialOpacityHG";
-	static LPCWSTR kMaterialMaskedHG = L"MaterialMaskedHG";
 	static const int kPayloadSize = 32;
-	static const sl12::u32 kLocalSpaceId = 16;
 }
 
 namespace TestPass
@@ -290,7 +259,7 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 {
 	GPU_MARKER(pCmdList, 0, "TestRayTracingPass");
 
-	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_))
+	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_, pScene_))
 	{
 		assert(false);
 	}
@@ -304,10 +273,6 @@ void TestRayTracingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientRes
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
-			pScene_,
-			RTCommon::kRTDescriptorCapacityGlobal,
-			RTCommon::kRTDescriptorCountLocal,
-			// &psoTestRT_,
 			pso,
 			TestPass::kTestRGS,
 			TestPass::kTestMS,
@@ -477,7 +442,7 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 {
 	GPU_MARKER(pCmdList, 0, "ProbeTracePass");
 
-	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_))
+	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_, pScene_))
 	{
 		assert(false);
 	}
@@ -491,10 +456,6 @@ void ProbeTracePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
-			pScene_,
-			RTCommon::kRTDescriptorCapacityGlobal,
-			RTCommon::kRTDescriptorCountLocal,
-			//&psoProbeTraceRT_,
 			pso,
 			ProbeTrace::kProbeTraceRGS,
 			ProbeTrace::kProbeTraceMS,
@@ -758,7 +719,7 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 {
 	GPU_MARKER(pCmdList, 0, "InitialSamplePass");
 
-	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_))
+	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_, pScene_))
 	{
 		assert(false);
 	}
@@ -772,10 +733,6 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
-			pScene_,
-			RTCommon::kRTDescriptorCapacityGlobal,
-			RTCommon::kRTDescriptorCountLocal,
-			// &psoMonteCarloRT_,
 			pso,
 			MonteCarloGI::kMonteCarloGIRGS,
 			MonteCarloGI::kMonteCarloGIMS,
@@ -907,7 +864,7 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 {
 	GPU_MARKER(pCmdList, 0, "InitialSamplePass");
 
-	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_))
+	if (!pRenderSystem_->GetRTPipelineManager()->Setup(pRenderSystem_, pScene_))
 	{
 		assert(false);
 	}
@@ -921,10 +878,6 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 		if (!::CreateShaderTable(
 			pDevice_,
 			pRenderSystem_,
-			pScene_,
-			RTCommon::kRTDescriptorCapacityGlobal,
-			RTCommon::kRTDescriptorCountLocal,
-			// &psoInitialSampleRT_,
 			pso,
 			InitialSample::kInitialSampleRGS,
 			InitialSample::kInitialSampleMS,
