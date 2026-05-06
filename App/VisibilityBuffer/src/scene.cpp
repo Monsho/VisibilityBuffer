@@ -1081,6 +1081,7 @@ void Scene::UpdateBVH(sl12::CommandList* pCmdList)
 	}
 	rtTableSources_ = tableSource;
 	bRTTableDirty_ = true;
+	rtTableGeneration_++;
 
 	// create CBs.
 	rtMeshOffsetCBs_.clear();

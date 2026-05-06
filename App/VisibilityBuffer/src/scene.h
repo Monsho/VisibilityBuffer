@@ -389,6 +389,10 @@ public:
 	{
 		return bRTTableDirty_;
 	}
+	sl12::u32 GetRTTableGeneration() const
+	{
+		return rtTableGeneration_;
+	}
 	const std::vector<RTTableSource>& GetRTTableSources() const
 	{
 		return rtTableSources_;
@@ -473,6 +477,7 @@ private:
 	std::vector<RTTableSource>				rtTableSources_;
 	std::map<const sl12::ResourceItemMesh*, std::vector<sl12::CbvHandle>>	rtMeshOffsetCBs_;
 	bool									bRTTableDirty_ = false;
+	sl12::u32								rtTableGeneration_ = 0;
 	bool									bResetProbes_ = false;
 
 	sl12::u64		frameIndex_ = 0;
