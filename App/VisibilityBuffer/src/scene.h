@@ -167,6 +167,7 @@ struct TemporalCBs
 	sl12::CbvHandle hSvgfCB;
 	sl12::CbvHandle hTileCB;
 	sl12::CbvHandle hRestirCB;
+	sl12::CbvHandle hWaterCB;
 	sl12::CbvHandle hDebugCB;
 	std::vector<sl12::CbvHandle> hMeshCBs;
 
@@ -183,6 +184,7 @@ struct TemporalCBs
 		hSvgfCB.Reset();
 		hTileCB.Reset();
 		hRestirCB.Reset();
+		hWaterCB.Reset();
 		hDebugCB.Reset();
 		hMeshCBs.clear();
 	}
@@ -228,13 +230,6 @@ struct RenderPassSetupDesc
 	{
 		return !operator==(rhs);
 	}
-};
-
-struct WaterSettings
-{
-	float height = 0.0f;
-	float color[3] = {0.0f, 0.35f, 0.6f};
-	float opacity = 0.35f;
 };
 
 //----
@@ -347,14 +342,6 @@ public:
 		aabbMin = sceneAABBMin_;
 		aabbMax = sceneAABBMax_;
 	}
-	const WaterSettings& GetWaterSettings() const
-	{
-		return waterSettings_;
-	}
-	void SetWaterSettings(const WaterSettings& settings)
-	{
-		waterSettings_ = settings;
-	}
 	sl12::Buffer* GetMiplevelBuffer()
 	{
 		return &miplevelBuffer_;
@@ -466,7 +453,6 @@ private:
 	UniqueHandle<sl12::SceneRoot>					sceneRoot_;
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 	DirectX::XMFLOAT3								sceneAABBMax_, sceneAABBMin_;
-	WaterSettings									waterSettings_;
 	sl12::RenderCommandsList						sceneRenderCommands_;
 
 	// miplevel feedback resources.

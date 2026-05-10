@@ -144,14 +144,15 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 {
 	GPU_MARKER(pCmdList, 0, "WaterPass");
 
-	const auto& settings = pScene_->GetWaterSettings();
-
 	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
-	auto pWaterLightAccumRes = pResManager->GetRenderGraphResource(kWaterLightAccumID);
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pWaterLightAccumRes = pResManager->GetRenderGraphResource(kWaterLightAccumID);
+	auto pWaterDepthRes = pResManager->GetRenderGraphResource(kWaterDepthID);
+
 	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
-	pResManager->CreateOrGetTextureView(pWaterLightAccumRes);
 	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
+	auto pWaterLightAccumSRV = pResManager->CreateOrGetTextureView(pWaterLightAccumRes);
+	auto pWaterDepthSRV = pResManager->CreateOrGetTextureView(pWaterDepthRes);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
 		pAccumRTV->GetDescInfo().cpuHandle,
@@ -176,17 +177,16 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	DirectX::XMFLOAT3 sceneAabbMin, sceneAabbMax;
 	pScene_->GetSceneAABB(sceneAabbMin, sceneAabbMax);
 
-	WaterCB cbWater;
-	cbWater.color = DirectX::XMFLOAT4(settings.color[0], settings.color[1], settings.color[2], settings.opacity);
-	cbWater.aabbMinHeight = DirectX::XMFLOAT4(sceneAabbMin.x, sceneAabbMin.y, sceneAabbMin.z, settings.height);
-	cbWater.aabbMax = DirectX::XMFLOAT4(sceneAabbMax.x, sceneAabbMax.y, sceneAabbMax.z, 0.0f);
-	auto hWaterCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cbWater, sizeof(cbWater));
-
+	auto&& TempCBs = pScene_->GetTemporalCBs();
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
-	descSet.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetVsCbv(1, hWaterCB.GetCBV()->GetDescInfo().cpuHandle);
-	descSet.SetPsCbv(1, hWaterCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetVsCbv(0, TempCBs.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetVsCbv(1, TempCBs.hWaterCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsCbv(0, TempCBs.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsCbv(1, TempCBs.hWaterCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(0, pWaterLightAccumSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(1, pWaterDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

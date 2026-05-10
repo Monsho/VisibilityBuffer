@@ -80,7 +80,7 @@ RenderSystem::RenderSystem(sl12::Device* pDev, const std::string& resDir, const 
 		desc.MipLODBias = 0.0f;
 		linearWrapSampler_->Initialize(pDev, desc);
 
-		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 		linearClampSampler_->Initialize(pDev, desc);
 
 		desc.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;

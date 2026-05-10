@@ -167,6 +167,8 @@ struct WaterCB
 	float4	color;
 	float4	aabbMinHeight;
 	float4	aabbMax;
+	float	eta;
+	float	intensity;
 };
 
 struct InstanceData

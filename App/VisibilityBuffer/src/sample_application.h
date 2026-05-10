@@ -148,11 +148,7 @@ private:
 	bool					bEnableMeshShader_ = false;
 	int						VisToGBufferType_ = 0;
 	bool					bEnableWorkGraph_ = false;
-	bool					bEnableWater_ = false;
-	float					waterHeight_ = 980.0f;
-	float					waterColor_[3] = {0.0f, 0.35f, 0.6f};
-	float					waterOpacity_ = 0.35f;
-	
+
 	// light parameters.
 	float					ambientIntensity_ = 0.1f;
 	float					directionalTheta_ = 30.0f;
@@ -221,6 +217,13 @@ private:
 	float					svgfPhiNormal_ = 128.0f;
 	float					svgfPhiDepth_ = 2.0f;
 	int						svgfAtrousIterations_ = 4;
+
+	// water parameters.
+	bool					bEnableWater_ = false;
+	float					waterHeight_ = 980.0f;
+	float					waterColor_[3] = {0.0f, 0.35f, 0.6f};
+	float					waterOpacity_ = 0.35f;
+	float					waterRefractIntensity_ = 0.0f;
 
 	// debug parameters.
 	int						displayMode_ = 0;

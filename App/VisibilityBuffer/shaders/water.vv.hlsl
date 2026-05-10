@@ -3,6 +3,7 @@
 struct VSOutput
 {
 	float4	position	: SV_POSITION;
+	float3	worldPos	: WORLDPOS;
 };
 
 ConstantBuffer<SceneCB>		cbScene	: register(b0);
@@ -24,6 +25,7 @@ VSOutput main(uint vertexID : SV_VertexID)
 	float2 xz = lerp(cbWater.aabbMinHeight.xz, cbWater.aabbMax.xz, corners[vertexID]);
 	float3 worldPos = float3(xz.x, cbWater.aabbMinHeight.w, xz.y);
 	Out.position = mul(cbScene.mtxWorldToProj, float4(worldPos, 1.0));
+	Out.worldPos = worldPos;
 
 	return Out;
 }

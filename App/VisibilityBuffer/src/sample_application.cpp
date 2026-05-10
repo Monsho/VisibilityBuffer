@@ -451,6 +451,19 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		OutCBs.hRestirCB = cbvMan->GetTemporal(&cbRestir, sizeof(cbRestir));
 	}
 	{
+		DirectX::XMFLOAT3 sceneAabbMin, sceneAabbMax;
+		scene_->GetSceneAABB(sceneAabbMin, sceneAabbMax);
+
+		WaterCB cbWater;
+		cbWater.color = DirectX::XMFLOAT4(waterColor_[0], waterColor_[1], waterColor_[2], waterOpacity_);
+		cbWater.aabbMinHeight = DirectX::XMFLOAT4(sceneAabbMin.x, sceneAabbMin.y, sceneAabbMin.z, waterHeight_);
+		cbWater.aabbMax = DirectX::XMFLOAT4(sceneAabbMax.x, sceneAabbMax.y, sceneAabbMax.z, 0.0f);
+		cbWater.eta = 1.0f / 1.33333f;
+		cbWater.intensity = waterRefractIntensity_;
+
+		OutCBs.hWaterCB = cbvMan->GetTemporal(&cbWater, sizeof(cbWater));
+	}
+	{
 		DebugCB cbDebug;
 
 		cbDebug.displayMode = displayMode_;
@@ -583,6 +596,7 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("Height", &waterHeight_, -2000.0f, 2000.0f);
 				ImGui::ColorEdit3("Color", waterColor_);
 				ImGui::SliderFloat("Opacity", &waterOpacity_, 0.0f, 1.0f);
+				ImGui::SliderFloat("Refract Intensity", &waterRefractIntensity_, 0.0f, 64.0f);
 			}
 		}
 
@@ -751,13 +765,6 @@ bool SampleApplication::Execute()
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.bUseWater = bEnableWater_;
 	setupDesc.debugMode = displayMode_;
-	WaterSettings waterSettings;
-	waterSettings.height = waterHeight_;
-	waterSettings.color[0] = waterColor_[0];
-	waterSettings.color[1] = waterColor_[1];
-	waterSettings.color[2] = waterColor_[2];
-	waterSettings.opacity = waterOpacity_;
-	scene_->SetWaterSettings(waterSettings);
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();
 
