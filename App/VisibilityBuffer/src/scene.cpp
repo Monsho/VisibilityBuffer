@@ -10,6 +10,7 @@
 #include "pass/indirect_light_pass.h"
 #include "pass/visibility_pass.h"
 #include "pass/raytracing_pass.h"
+#include "pass/water_pass.h"
 
 #define NOMINMAX
 #include <windowsx.h>
@@ -665,6 +666,16 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<WaterLightAccumCopyPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::WaterLightAccumCopy] = renderGraph_->AddPass(sl12::RenderPassID("WaterLightAccumCopy"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<WaterPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::Water] = renderGraph_->AddPass(sl12::RenderPassID("Water"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<BuildBvhPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::BuildBvh] = renderGraph_->AddPass(sl12::RenderPassID("BuildBvh"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -841,6 +852,11 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	}
 	node = node.AddChild(passNodes_[AppPassType::IndirectLight])
 		.AddChild(passNodes_[AppPassType::Xlu]);
+	if (desc.bUseWater)
+	{
+		node = node.AddChild(passNodes_[AppPassType::WaterLightAccumCopy])
+			.AddChild(passNodes_[AppPassType::Water]);
+	}
 	if (bEnableVRS)
 	{
 		node = node.AddChild(passNodes_[AppPassType::GenerateVRS]);

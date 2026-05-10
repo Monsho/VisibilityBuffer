@@ -203,6 +203,7 @@ struct RenderPassSetupDesc
 	int atrousIterations = 4;
 	bool bShadowBlur = false;
 	bool bDebugDdgi = false;
+	bool bUseWater = false;
 	int debugMode = 0;
 
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -220,12 +221,20 @@ struct RenderPassSetupDesc
 			&& (atrousIterations == rhs.atrousIterations)
 			&& (bShadowBlur == rhs.bShadowBlur)
 			&& (bDebugDdgi == rhs.bDebugDdgi)
+			&& (bUseWater == rhs.bUseWater)
 			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
 	{
 		return !operator==(rhs);
 	}
+};
+
+struct WaterSettings
+{
+	float height = 0.0f;
+	float color[3] = {0.0f, 0.35f, 0.6f};
+	float opacity = 0.35f;
 };
 
 //----
@@ -338,6 +347,14 @@ public:
 		aabbMin = sceneAABBMin_;
 		aabbMax = sceneAABBMax_;
 	}
+	const WaterSettings& GetWaterSettings() const
+	{
+		return waterSettings_;
+	}
+	void SetWaterSettings(const WaterSettings& settings)
+	{
+		waterSettings_ = settings;
+	}
 	sl12::Buffer* GetMiplevelBuffer()
 	{
 		return &miplevelBuffer_;
@@ -449,6 +466,7 @@ private:
 	UniqueHandle<sl12::SceneRoot>					sceneRoot_;
 	std::vector<std::shared_ptr<sl12::SceneMesh>>	sceneMeshes_;
 	DirectX::XMFLOAT3								sceneAABBMax_, sceneAABBMin_;
+	WaterSettings									waterSettings_;
 	sl12::RenderCommandsList						sceneRenderCommands_;
 
 	// miplevel feedback resources.

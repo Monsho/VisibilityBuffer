@@ -9,6 +9,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\pass\water_pass.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
@@ -17,6 +20,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\pass\water_pass.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="src\sample_application.h">
       <Filter>src</Filter>
     </ClInclude>
@@ -65,6 +71,12 @@
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\mesh.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water.p.hlsl">
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\mesh.p.hlsl">

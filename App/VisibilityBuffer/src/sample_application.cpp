@@ -521,26 +521,6 @@ bool SampleApplication::Execute()
 			ImGui::SliderFloat("Constant Bias", &shadowBias_, 0.001f, 0.02f);
 		}
 
-		// detail normal settings.
-		// if (ImGui::CollapsingHeader("Surface Gradient", ImGuiTreeNodeFlags_DefaultOpen))
-		// {
-		// 	static const char* kDetailTypes[] = {
-		// 		"None",
-		// 		"UDN",
-		// 		"Surface Gradient",
-		// 		"Surface Gradient Tex",
-		// 	};
-		// 	static const char* kTriplanarTypes[] = {
-		// 		"Blend",
-		// 		"Surface Gradient",
-		// 	};
-		// 	ImGui::Combo("Detail Type", &detailType_, kDetailTypes, ARRAYSIZE(kDetailTypes));
-		// 	ImGui::SliderFloat("Detail Tiling", &detailTile_, 1.0f, 10.0f);
-		// 	ImGui::SliderFloat("Detail Intensity", &detailIntensity_, 0.0f, 2.0f);
-		// 	ImGui::Combo("Triplanar Type", &triplanarType_, kTriplanarTypes, ARRAYSIZE(kTriplanarTypes));
-		// 	ImGui::SliderFloat("Triplanar Tiling", &triplanarTile_, 0.001f, 0.1f);
-		// }
-
 		// ssao settings.
 		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen))
 		{
@@ -591,6 +571,18 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("PrePass Clamp Sigma", &svgfPrepassClampSigma_, 0.5f, 5.0f);
 				ImGui::SliderFloat("PrePass Depth Phi Scale", &svgfPrepassDepthPhiScale_, 0.25f, 4.0f);
 				ImGui::SliderFloat("PrePass Variance Bias", &svgfPrepassVarianceBias_, 1e-6f, 1.0f, "%.6f", ImGuiSliderFlags_Logarithmic);
+			}
+		}
+
+		// water settings.
+		if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Checkbox("Render Water", &bEnableWater_);
+			if (bEnableWater_)
+			{
+				ImGui::SliderFloat("Height", &waterHeight_, -2000.0f, 2000.0f);
+				ImGui::ColorEdit3("Color", waterColor_);
+				ImGui::SliderFloat("Opacity", &waterOpacity_, 0.0f, 1.0f);
 			}
 		}
 
@@ -757,7 +749,15 @@ bool SampleApplication::Execute()
 	setupDesc.atrousIterations = svgfAtrousIterations_;
 	setupDesc.bShadowBlur = evsmBlur_;
 	setupDesc.bDebugDdgi = bDebugDdgi_;
+	setupDesc.bUseWater = bEnableWater_;
 	setupDesc.debugMode = displayMode_;
+	WaterSettings waterSettings;
+	waterSettings.height = waterHeight_;
+	waterSettings.color[0] = waterColor_[0];
+	waterSettings.color[1] = waterColor_[1];
+	waterSettings.color[2] = waterColor_[2];
+	waterSettings.opacity = waterOpacity_;
+	scene_->SetWaterSettings(waterSettings);
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();
 

@@ -162,6 +162,13 @@ struct DebugCB
 	uint	displayMode;
 };
 
+struct WaterCB
+{
+	float4	color;
+	float4	aabbMinHeight;
+	float4	aabbMax;
+};
+
 struct InstanceData
 {
 	float4x4	mtxBoxTransform;

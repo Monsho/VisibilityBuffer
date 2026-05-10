@@ -42,6 +42,8 @@ enum class AppPassType
 	ReprojectVRS,
 	PrefixSumTest,
 	Xlu,
+	WaterLightAccumCopy,
+	Water,
 	BuildBvh,
 	ReadyRtxgi,
 	ProbeTrace,
