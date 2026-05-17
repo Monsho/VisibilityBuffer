@@ -169,6 +169,9 @@ struct WaterCB
 	float4	aabbMax;
 	float	eta;
 	float	intensity;
+	float	stepLength;
+	int		loopCount;
+	int		bNewtonMethod;
 };
 
 struct InstanceData

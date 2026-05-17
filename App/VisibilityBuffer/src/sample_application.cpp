@@ -458,8 +458,11 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbWater.color = DirectX::XMFLOAT4(waterColor_[0], waterColor_[1], waterColor_[2], waterOpacity_);
 		cbWater.aabbMinHeight = DirectX::XMFLOAT4(sceneAabbMin.x, sceneAabbMin.y, sceneAabbMin.z, waterHeight_);
 		cbWater.aabbMax = DirectX::XMFLOAT4(sceneAabbMax.x, sceneAabbMax.y, sceneAabbMax.z, 0.0f);
-		cbWater.eta = 1.0f / 1.33333f;
+		cbWater.eta = 1.0f / waterIOR_;
 		cbWater.intensity = waterRefractIntensity_;
+		cbWater.stepLength = waterStepLength_;
+		cbWater.loopCount = waterLoopCount_;
+		cbWater.bNewtonMethod = bNewtonMethod_ ? 1 : 0;
 
 		OutCBs.hWaterCB = cbvMan->GetTemporal(&cbWater, sizeof(cbWater));
 	}
@@ -596,7 +599,11 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("Height", &waterHeight_, -2000.0f, 2000.0f);
 				ImGui::ColorEdit3("Color", waterColor_);
 				ImGui::SliderFloat("Opacity", &waterOpacity_, 0.0f, 1.0f);
+				ImGui::Checkbox("Newton Method", &bNewtonMethod_);
 				ImGui::SliderFloat("Refract Intensity", &waterRefractIntensity_, 0.0f, 64.0f);
+				ImGui::SliderFloat("IOR", &waterIOR_, 1.0f, 1.5f);
+				ImGui::SliderFloat("Step Length", &waterStepLength_, 1.0f, 10.0f);
+				ImGui::SliderInt("Loop Count", &waterLoopCount_, 1, 32);
 			}
 		}
 

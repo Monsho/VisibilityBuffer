@@ -116,6 +116,8 @@ std::vector<sl12::TransientResource> WaterPass::GetInputResources(const sl12::Re
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kWaterLightAccumID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kWaterDepthID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -148,11 +150,13 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pWaterLightAccumRes = pResManager->GetRenderGraphResource(kWaterLightAccumID);
 	auto pWaterDepthRes = pResManager->GetRenderGraphResource(kWaterDepthID);
+	auto pGBufferCRes = pResManager->GetRenderGraphResource(kGBufferCID);
 
 	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
 	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
 	auto pWaterLightAccumSRV = pResManager->CreateOrGetTextureView(pWaterLightAccumRes);
 	auto pWaterDepthSRV = pResManager->CreateOrGetTextureView(pWaterDepthRes);
+	auto pGBufferCSRV = pResManager->CreateOrGetTextureView(pGBufferCRes);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = {
 		pAccumRTV->GetDescInfo().cpuHandle,
@@ -185,7 +189,8 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	descSet.SetPsCbv(0, TempCBs.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetPsCbv(1, TempCBs.hWaterCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(0, pWaterLightAccumSRV->GetDescInfo().cpuHandle);
-	descSet.SetPsSrv(1, pWaterDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(1, pGBufferCSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(2, pWaterDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
