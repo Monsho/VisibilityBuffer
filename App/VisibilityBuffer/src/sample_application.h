@@ -220,13 +220,13 @@ private:
 
 	// water parameters.
 	bool					bEnableWater_ = false;
-	bool					bNewtonMethod_ = true;
+	int						waterMethod_ = 1;
 	float					waterHeight_ = 980.0f;
-	float					waterColor_[3] = {0.0f, 0.35f, 0.6f};
-	float					waterOpacity_ = 0.35f;
+	float					waterColor_[3] = {0.0f, 0.15f, 0.25f};
+	float					waterOpacity_ = 0.1f;
 	float					waterRefractIntensity_ = 0.0f;
 	float					waterIOR_ = 1.333f;
-	float					waterStepLength_ = 2.0f;
+	float					waterStepLength_ = 10.0f;
 	int						waterLoopCount_ = 8;
 
 	// debug parameters.

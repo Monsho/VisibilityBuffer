@@ -462,7 +462,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbWater.intensity = waterRefractIntensity_;
 		cbWater.stepLength = waterStepLength_;
 		cbWater.loopCount = waterLoopCount_;
-		cbWater.bNewtonMethod = bNewtonMethod_ ? 1 : 0;
+		cbWater.bNewtonMethod = waterMethod_;
 
 		OutCBs.hWaterCB = cbvMan->GetTemporal(&cbWater, sizeof(cbWater));
 	}
@@ -596,13 +596,18 @@ bool SampleApplication::Execute()
 			ImGui::Checkbox("Render Water", &bEnableWater_);
 			if (bEnableWater_)
 			{
+				static const char* kMethods[] = {
+					"Uniform",
+					"Newton",
+					"Ray March",
+				};
+				ImGui::Combo("Method", &waterMethod_, kMethods, ARRAYSIZE(kMethods));
 				ImGui::SliderFloat("Height", &waterHeight_, -2000.0f, 2000.0f);
 				ImGui::ColorEdit3("Color", waterColor_);
 				ImGui::SliderFloat("Opacity", &waterOpacity_, 0.0f, 1.0f);
-				ImGui::Checkbox("Newton Method", &bNewtonMethod_);
 				ImGui::SliderFloat("Refract Intensity", &waterRefractIntensity_, 0.0f, 64.0f);
 				ImGui::SliderFloat("IOR", &waterIOR_, 1.0f, 1.5f);
-				ImGui::SliderFloat("Step Length", &waterStepLength_, 1.0f, 10.0f);
+				ImGui::SliderFloat("Step Length", &waterStepLength_, 1.0f, 20.0f);
 				ImGui::SliderInt("Loop Count", &waterLoopCount_, 1, 32);
 			}
 		}

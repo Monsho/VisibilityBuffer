@@ -32,9 +32,9 @@ float3 Refract(float3 v, float3 n, float eta)
 	return normalize(eta * v + (eta * cosTheta - sqrt(k)) * n);
 }
 
-float3 ReconstructWorldPosition(float2 screenPos, float depth)
+float3 ReconstructWorldPosition(float2 screenUV, float depth)
 {
-	float2 clipSpacePos = screenPos * float2(2, -2) + float2(-1, 1);
+	float2 clipSpacePos = screenUV * float2(2, -2) + float2(-1, 1);
 	float4 worldPos = mul(cbScene.mtxProjToWorld, float4(clipSpacePos, depth, 1));
 	return worldPos.xyz /= worldPos.w;
 }
@@ -55,6 +55,17 @@ bool IntersectPlaneRay(float3 planeP, float3 planeN, float3 rayO, float3 rayD, o
 	return true;
 }
 
+float3 ReconstructFaceNormal(float2 UV, float3 BaseWorldPos)
+{
+	float2 uvr = UV + float2(cbScene.invScreenSize.x, 0.0);
+	float2 uvb = UV + float2(0.0, cbScene.invScreenSize.y);
+	float dr = rDepth.SampleLevel(samLinear, uvr, 0.0);
+	float db = rDepth.SampleLevel(samLinear, uvb, 0.0);
+	float3 pr = ReconstructWorldPosition(uvr, dr);
+	float3 pb = ReconstructWorldPosition(uvb, db);
+	return normalize(cross(pb - BaseWorldPos, pr - BaseWorldPos));
+}
+
 [earlydepthstencil]
 PSOutput main(PSInput In)
 {
@@ -68,9 +79,9 @@ PSOutput main(PSInput In)
 	float4 ScreenColor = 0;
 
 	[branch]
-	if (!cbWater.bNewtonMethod)
+	if (cbWater.bNewtonMethod == 0)
 	{
-		// simple refraction.
+		// uniform refraction.
 		float3 RefractedVecVS = mul((float3x3)cbScene.mtxWorldToView, RefractedVec);
 		float2 PixelPos = In.position.xy;
 		float2 ScreenUV = (PixelPos + 0.5) / cbScene.screenSize.xy;
@@ -78,18 +89,22 @@ PSOutput main(PSInput In)
 
 		ScreenColor = rColor.SampleLevel(samLinear, RefractedUV, 0.0);
 	}
-	else
+	else if (cbWater.bNewtonMethod == 1)
 	{
-		// refraction via newton method
+		// newton method
 		uint2 PixelPos = (uint2)In.position.xy;
 		float depth = rDepth[PixelPos];
+		[branch]
 		if (depth > 0.0)
 		{
-			float3 planeP = ReconstructWorldPosition(((float2)PixelPos + 0.5) / cbScene.screenSize, depth);
-			float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;;
+			float2 BaseUV = ((float2)PixelPos + 0.5) * cbScene.invScreenSize;
+			float3 planeP = ReconstructWorldPosition(BaseUV, depth);
+			// float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;;
+			float3 planeN = ReconstructFaceNormal(BaseUV, planeP);
 			float2 screenUV;
 			bool bHit = true;
-			for (int i = 0; i < cbWater.loopCount; i++)
+			[loop]
+			for (int i = 0; i < 4; i++)
 			{
 				float3 hitP;
 				if (!IntersectPlaneRay(planeP, planeN, In.worldPos, RefractedVec, hitP))
@@ -100,13 +115,20 @@ PSOutput main(PSInput In)
 				float4 clipPos = mul(cbScene.mtxWorldToProj, float4(hitP, 1.0));
 				screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
 				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
+				if (depth > In.position.z)
+				{
+					bHit = false;
+					break;
+				}
 				planeP = ReconstructWorldPosition(screenUV, depth);
-				planeN = rGBufferC.SampleLevel(samLinear, screenUV, 0.0);
+				// planeN = rGBufferC.SampleLevel(samLinear, screenUV, 0.0);
+				planeN = ReconstructFaceNormal(screenUV, planeP);
 				if (distance(hitP, planeP) < 1.0)
 				{
 					break;
 				}
 			}
+			[branch]
 			if (bHit)
 			{
 				ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
@@ -139,6 +161,45 @@ PSOutput main(PSInput In)
 				}
 				ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
 			}
+		}
+		else
+		{
+			ScreenColor = rColor[PixelPos];
+		}
+	}
+	else
+	{
+		// ray march only.
+		uint2 PixelPos = (uint2)In.position.xy;
+		float depth = rDepth[PixelPos];
+		[branch]
+		if (depth > 0.0)
+		{
+			const float StepLength = cbWater.stepLength;
+			const float DepthThreshold = 10.0;
+			float3 step = RefractedVec * StepLength;
+			float3 wp = In.worldPos;
+			float2 screenUV;
+			for (int i = 0; i < cbWater.loopCount; i++)
+			{
+				wp += step;
+				float4 clipPos = mul(cbScene.mtxWorldToProj, float4(wp, 1.0));
+				screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
+				if (any(screenUV < 0.0) || any(screenUV > 1.0))
+				{
+					screenUV = saturate(screenUV);
+					break;
+				}
+				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
+				float3 planeP = ReconstructWorldPosition(screenUV, depth);
+				float l1 = length(planeP - eyePos);
+				float l2 = length(wp - eyePos);
+				if (l1 < l2 && (l2 - l1) < DepthThreshold)
+				{
+					break;
+				}
+			}
+			ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
 		}
 		else
 		{
