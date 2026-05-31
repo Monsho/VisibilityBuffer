@@ -182,6 +182,7 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	pScene_->GetSceneAABB(sceneAabbMin, sceneAabbMax);
 
 	auto&& TempCBs = pScene_->GetTemporalCBs();
+	auto&& hTex = pScene_->GetWaterNormalTexHandle();
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetVsCbv(0, TempCBs.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -191,7 +192,9 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	descSet.SetPsSrv(0, pWaterLightAccumSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(1, pGBufferCSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSrv(2, pWaterDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSrv(3, hTex.GetItem<sl12::ResourceItemTextureBase>()->GetTextureView().GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(1, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

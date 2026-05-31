@@ -462,7 +462,9 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbWater.intensity = waterRefractIntensity_;
 		cbWater.stepLength = waterStepLength_;
 		cbWater.loopCount = waterLoopCount_;
-		cbWater.bNewtonMethod = waterMethod_;
+		cbWater.method = waterMethod_;
+		cbWater.bUseNormalTex = waterUseNormalTex_;
+		cbWater.normalIntensity = waterNormalIntensity_;
 
 		OutCBs.hWaterCB = cbvMan->GetTemporal(&cbWater, sizeof(cbWater));
 	}
@@ -609,6 +611,8 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("IOR", &waterIOR_, 1.0f, 1.5f);
 				ImGui::SliderFloat("Step Length", &waterStepLength_, 1.0f, 20.0f);
 				ImGui::SliderInt("Loop Count", &waterLoopCount_, 1, 32);
+				ImGui::Checkbox("Normal Tex", &waterUseNormalTex_);
+				ImGui::SliderFloat("Normal Intensity", &waterNormalIntensity_, 0.0f, 1.0f);
 			}
 		}
 

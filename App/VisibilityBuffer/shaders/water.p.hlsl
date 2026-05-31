@@ -17,8 +17,10 @@ ConstantBuffer<WaterCB>	cbWater	: register(b1);
 Texture2D			rColor		: register(t0);
 Texture2D			rGBufferC	: register(t1);
 Texture2D<float>	rDepth		: register(t2);
+Texture2D			rNormal		: register(t3);
 
-SamplerState samLinear : register(s0);
+SamplerState samLinear		: register(s0);
+SamplerState samLinearWrap	: register(s1);
 
 
 float3 Refract(float3 v, float3 n, float eta)
@@ -72,24 +74,30 @@ PSOutput main(PSInput In)
 	PSOutput Out = (PSOutput)0;
 
 	float3 WaterNormal = float3(0.0, 1.0, 0.0);
-	float3 eyePos = cbScene.eyePosition;
+	[branch]
+	if (cbWater.bUseNormalTex)
+	{
+		float2 WaterUV = In.worldPos.xz * 0.01;
+		WaterNormal = normalize(lerp(WaterNormal, rNormal.Sample(samLinearWrap, WaterUV).xzy * 2.0 - 1.0, cbWater.normalIntensity));
+	}
+	float3 eyePos = cbScene.eyePosition.xyz;
 	float3 ViewVec = normalize(In.worldPos - eyePos);
 	float3 RefractedVec = Refract(ViewVec, WaterNormal, cbWater.eta);
 
 	float4 ScreenColor = 0;
 
 	[branch]
-	if (cbWater.bNewtonMethod == 0)
+	if (cbWater.method == 0)
 	{
 		// uniform refraction.
-		float3 RefractedVecVS = mul((float3x3)cbScene.mtxWorldToView, RefractedVec);
+		float3 NormalVecVS = mul((float3x3)cbScene.mtxWorldToView, WaterNormal);
 		float2 PixelPos = In.position.xy;
 		float2 ScreenUV = (PixelPos + 0.5) / cbScene.screenSize.xy;
-		float2 RefractedUV = ScreenUV + RefractedVecVS.xy * float2(1.0, -1.0) * cbWater.intensity * cbScene.invScreenSize.xy;
+		float2 RefractedUV = ScreenUV - NormalVecVS.xy * float2(1.0, -1.0) * cbWater.intensity * cbScene.invScreenSize.xy;
 
 		ScreenColor = rColor.SampleLevel(samLinear, RefractedUV, 0.0);
 	}
-	else if (cbWater.bNewtonMethod == 1)
+	else if (cbWater.method == 1)
 	{
 		// newton method
 		uint2 PixelPos = (uint2)In.position.xy;
@@ -99,7 +107,7 @@ PSOutput main(PSInput In)
 		{
 			float2 BaseUV = ((float2)PixelPos + 0.5) * cbScene.invScreenSize;
 			float3 planeP = ReconstructWorldPosition(BaseUV, depth);
-			// float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;;
+			// float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;
 			float3 planeN = ReconstructFaceNormal(BaseUV, planeP);
 			float2 screenUV;
 			bool bHit = true;

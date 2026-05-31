@@ -323,6 +323,10 @@ public:
 	{
 		return hDotTex_;
 	}
+	sl12::ResourceHandle GetWaterNormalTexHandle()
+	{
+		return hWaterNormalTex_;
+	}
 	sl12::BufferView* GetMeshletBoundsSRV(const sl12::ResourceHandle& hMeshRes)
 	{
 		sl12::u64 ID = hMeshRes.GetID();
@@ -444,6 +448,7 @@ private:
 	sl12::ResourceHandle	hDetailTex_;
 	sl12::ResourceHandle	hDotTex_;
 	sl12::ResourceHandle	hHDRI_;
+	sl12::ResourceHandle	hWaterNormalTex_;
 
 	// meshlet bounds buffer.
 	std::map<sl12::u64, UniqueHandle<sl12::Buffer>>		meshletBoundsBuffers_;

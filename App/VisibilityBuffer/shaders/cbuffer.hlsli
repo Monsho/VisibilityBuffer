@@ -171,7 +171,9 @@ struct WaterCB
 	float	intensity;
 	float	stepLength;
 	int		loopCount;
-	int		bNewtonMethod;
+	int		method;
+	int		bUseNormalTex;
+	float	normalIntensity;
 };
 
 struct InstanceData

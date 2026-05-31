@@ -191,6 +191,7 @@ bool Scene::Initialize(sl12::Device* pDev, RenderSystem* pRenderSys, int meshTyp
 	hDetailTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/detail_normal.dds");
 	hDotTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/dot_normal.dds");
 	hHDRI_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/citrus_orchard_road_puresky_4k.exr");
+	hWaterNormalTex_ = resLoader->LoadRequest<sl12::ResourceItemTexture>("texture/water_normal.dds");
 
 	meshletResource_ = sl12::MakeUnique<MeshletResource>(nullptr);
 
