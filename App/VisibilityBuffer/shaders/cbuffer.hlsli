@@ -170,6 +170,7 @@ struct WaterCB
 	float	eta;
 	float	intensity;
 	float	stepLength;
+	float	depthThreshold;
 	int		loopCount;
 	int		method;
 	int		bUseNormalTex;

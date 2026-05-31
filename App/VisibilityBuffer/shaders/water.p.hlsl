@@ -110,42 +110,51 @@ PSOutput main(PSInput In)
 			// float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;
 			float3 planeN = ReconstructFaceNormal(BaseUV, planeP);
 			float2 screenUV;
-			bool bHit = true;
+			bool bHit = false;
 			[loop]
 			for (int i = 0; i < 4; i++)
 			{
 				float3 hitP;
+				[branch]
 				if (!IntersectPlaneRay(planeP, planeN, In.worldPos, RefractedVec, hitP))
 				{
-					bHit = false;
 					break;
 				}
+
 				float4 clipPos = mul(cbScene.mtxWorldToProj, float4(hitP, 1.0));
 				screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
-				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
-				if (depth > In.position.z)
+				[branch]
+				if (any(screenUV < 0.0) || any(screenUV > 1.0))
 				{
-					bHit = false;
+					screenUV = saturate(screenUV);
+					bHit = true;
 					break;
 				}
+
+				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
+				[branch]
+				if (depth > In.position.z)
+				{
+					break;
+				}
+
 				planeP = ReconstructWorldPosition(screenUV, depth);
 				// planeN = rGBufferC.SampleLevel(samLinear, screenUV, 0.0);
 				planeN = ReconstructFaceNormal(screenUV, planeP);
+				[branch]
 				if (distance(hitP, planeP) < 1.0)
 				{
+					bHit = true;
 					break;
 				}
 			}
+			ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
 			[branch]
-			if (bHit)
-			{
-				ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
-			}
-			else
+			if (!bHit)
 			{
 				// fallback: ray march
 				const float StepLength = cbWater.stepLength;
-				const float DepthThreshold = 10.0;
+				const float DepthThreshold = cbWater.depthThreshold;
 				float3 step = RefractedVec * StepLength;
 				float3 wp = In.worldPos;
 				for (int i = 0; i < cbWater.loopCount; i++)
@@ -184,7 +193,7 @@ PSOutput main(PSInput In)
 		if (depth > 0.0)
 		{
 			const float StepLength = cbWater.stepLength;
-			const float DepthThreshold = 10.0;
+			const float DepthThreshold = cbWater.depthThreshold;
 			float3 step = RefractedVec * StepLength;
 			float3 wp = In.worldPos;
 			float2 screenUV;
