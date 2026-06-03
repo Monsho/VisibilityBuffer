@@ -124,6 +124,8 @@
     <None Include="shaders\water_newton.p.hlsl" />
     <None Include="shaders\water_raymarch.p.hlsl" />
     <None Include="shaders\water_uniform.p.hlsl" />
+    <None Include="shaders\water_mipmap.c.hlsl" />
+    <None Include="shaders\water_newton_face.p.hlsl" />
     <ClCompile Include="src\meshlet_resource.cpp" />
     <ClCompile Include="src\pass\gbuffer_pass.cpp" />
     <ClCompile Include="src\pass\water_pass.cpp" />

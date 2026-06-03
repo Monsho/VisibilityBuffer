@@ -465,6 +465,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbWater.loopCount = waterLoopCount_;
 		cbWater.bUseNormalTex = waterUseNormalTex_;
 		cbWater.normalIntensity = waterNormalIntensity_;
+		cbWater.debugFallback = waterDebugFallback_ ? 1 : 0;
 
 		OutCBs.hWaterCB = cbvMan->GetTemporal(&cbWater, sizeof(cbWater));
 	}
@@ -600,7 +601,8 @@ bool SampleApplication::Execute()
 			{
 				static const char* kMethods[] = {
 					"Uniform",
-					"Newton",
+					"Newton + GBuffer",
+					"Newton + FaceNormal",
 					"Ray March",
 				};
 				ImGui::Combo("Method", &waterMethod_, kMethods, ARRAYSIZE(kMethods));
@@ -614,6 +616,7 @@ bool SampleApplication::Execute()
 				ImGui::SliderInt("Loop Count", &waterLoopCount_, 1, 32);
 				ImGui::Checkbox("Normal Tex", &waterUseNormalTex_);
 				ImGui::SliderFloat("Normal Intensity", &waterNormalIntensity_, 0.0f, 1.0f);
+				ImGui::Checkbox("Display Fallback", &waterDebugFallback_);
 			}
 		}
 

@@ -231,6 +231,7 @@ private:
 	bool					waterUseNormalTex_ = false;
 	float					waterNormalIntensity_ = 0.3f;
 	float					waterDepthThreshold_ = 10.0f;
+	bool					waterDebugFallback_ = false;
 
 	// debug parameters.
 	int						displayMode_ = 0;

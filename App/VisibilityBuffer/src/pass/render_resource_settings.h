@@ -16,6 +16,8 @@ static const sl12::TransientResourceID	kMiplevelFeedbackID("MiplevelFeedback");
 static const sl12::TransientResourceID	kLightAccumID("LightAccum");
 static const sl12::TransientResourceID	kWaterLightAccumID("WaterLightAccum");
 static const sl12::TransientResourceID	kWaterDepthID("WaterDepth");
+static const sl12::TransientResourceID	kWaterDepthMipID("WaterDepthMip");
+static const sl12::TransientResourceID	kWaterNormalMipID("WaterNormalMip");
 static const sl12::TransientResourceID	kLightAccumHistoryID(kLightAccumID, 1);
 static const sl12::TransientResourceID	kHiZID("HiZ");
 static const sl12::TransientResourceID	kSwapchainID("Swapchain");
@@ -106,6 +108,7 @@ static const DXGI_FORMAT	kMaterialDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
 static const sl12::u32 kShadowMapSize = 2048;
 static const sl12::u32 kHiZMiplevels = 6;
+static const sl12::u32 kWaterMiplevels = 5;
 
 static const sl12::u32 kIndirectArgsBufferStride = 4 + sizeof(D3D12_DRAW_INDEXED_ARGUMENTS); // root constant + draw indexed args.
 

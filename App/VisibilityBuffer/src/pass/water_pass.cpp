@@ -59,6 +59,102 @@ void WaterLightAccumCopyPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 		pDepthRes->pTexture->GetResourceDep());
 }
 
+WaterMipmapPass::WaterMipmapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::ComputePipelineState>(pDev);
+
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::WaterMipmapC));
+
+	sl12::ComputePipelineStateDesc desc{};
+	desc.pRootSignature = &rs_;
+	desc.pCS = pRenderSys->GetShader(ShaderName::WaterMipmapC);
+	if (!pso_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init water mipmap pso.");
+	}
+}
+
+WaterMipmapPass::~WaterMipmapPass()
+{
+	pso_.Reset();
+	rs_.Reset();
+}
+
+std::vector<sl12::TransientResource> WaterMipmapPass::GetInputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+	ret.push_back(sl12::TransientResource(kWaterDepthID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	return ret;
+}
+
+std::vector<sl12::TransientResource> WaterMipmapPass::GetOutputResources(const sl12::RenderPassID& ID) const
+{
+	std::vector<sl12::TransientResource> ret;
+
+	sl12::u32 width = pScene_->GetScreenWidth();
+	sl12::u32 height = pScene_->GetScreenHeight();
+
+	sl12::TransientResource depth(kWaterDepthMipID, sl12::TransientState::UnorderedAccess);
+	depth.desc.bIsTexture = true;
+	depth.desc.textureDesc.Initialize2D(DXGI_FORMAT_R32_FLOAT, width, height, kWaterMiplevels, 1, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
+
+	sl12::TransientResource normal(kWaterNormalMipID, sl12::TransientState::UnorderedAccess);
+	normal.desc.bIsTexture = true;
+	normal.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, kWaterMiplevels, 1, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
+
+	ret.push_back(depth);
+	ret.push_back(normal);
+	return ret;
+}
+
+void WaterMipmapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID)
+{
+	GPU_MARKER(pCmdList, 0, "WaterMipmapPass");
+
+	auto pWaterDepthRes = pResManager->GetRenderGraphResource(kWaterDepthID);
+	auto pGBufferCRes = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pDepthMipRes = pResManager->GetRenderGraphResource(kWaterDepthMipID);
+	auto pNormalMipRes = pResManager->GetRenderGraphResource(kWaterNormalMipID);
+
+	auto pSourceDepthSRV = pResManager->CreateOrGetTextureView(pWaterDepthRes);
+	auto pSourceNormalSRV = pResManager->CreateOrGetTextureView(pGBufferCRes);
+
+	struct MipmapCB
+	{
+		sl12::u32 sourceSize[2];
+		sl12::u32 pad[2];
+	};
+
+	auto width = pScene_->GetScreenWidth();
+	auto height = pScene_->GetScreenHeight();
+
+	MipmapCB cb = {{width, height}, {0, 0}};
+	auto hCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
+
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetCsCbv(0, hCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(0, pSourceDepthSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pSourceNormalSRV->GetDescInfo().cpuHandle);
+	for (sl12::u32 mip = 0; mip < kWaterMiplevels; mip++)
+	{
+		auto pDepthUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDepthMipRes, mip);
+		auto pNormalUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pNormalMipRes, mip);
+		descSet.SetCsUav(mip, pDepthUAV->GetDescInfo().cpuHandle);
+		descSet.SetCsUav(kWaterMiplevels + mip, pNormalUAV->GetDescInfo().cpuHandle);
+	}
+
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
+
+	UINT x = (width + 15) / 16;
+	UINT y = (height + 15) / 16;
+	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+}
+
 
 WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
@@ -66,6 +162,7 @@ WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	psoUniform_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoNewton_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoNewtonFace_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoRaymarch_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::WaterVV), pRenderSys->GetShader(ShaderName::WaterUniformP), nullptr, nullptr, nullptr);
@@ -113,6 +210,12 @@ WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene
 		sl12::ConsolePrint("Error: failed to init water pso.");
 	}
 
+	desc.pPS = pRenderSys->GetShader(ShaderName::WaterNewtonFaceP);
+	if (!psoNewtonFace_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init water pso.");
+	}
+
 	desc.pPS = pRenderSys->GetShader(ShaderName::WaterRaymarchP);
 	if (!psoRaymarch_->Initialize(pDev, desc))
 	{
@@ -124,6 +227,7 @@ WaterPass::~WaterPass()
 {
 	psoUniform_.Reset();
 	psoNewton_.Reset();
+	psoNewtonFace_.Reset();
 	psoRaymarch_.Reset();
 	rs_.Reset();
 }
@@ -132,8 +236,16 @@ std::vector<sl12::TransientResource> WaterPass::GetInputResources(const sl12::Re
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kWaterLightAccumID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kWaterDepthID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	if (method_ == 1)
+	{
+		ret.push_back(sl12::TransientResource(kWaterDepthMipID, sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kWaterNormalMipID, sl12::TransientState::ShaderResource));
+	}
+	else
+	{
+		ret.push_back(sl12::TransientResource(kWaterDepthID, sl12::TransientState::ShaderResource));
+		ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	}
 	return ret;
 }
 
@@ -165,8 +277,8 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pDepthRes = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pWaterLightAccumRes = pResManager->GetRenderGraphResource(kWaterLightAccumID);
-	auto pWaterDepthRes = pResManager->GetRenderGraphResource(kWaterDepthID);
-	auto pGBufferCRes = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pWaterDepthRes = pResManager->GetRenderGraphResource(method_ == 1 ? kWaterDepthMipID : kWaterDepthID);
+	auto pGBufferCRes = pResManager->GetRenderGraphResource(method_ == 1 ? kWaterNormalMipID : kGBufferCID);
 
 	auto pAccumRTV = pResManager->CreateOrGetRenderTargetView(pAccumRes);
 	auto pDepthDSV = pResManager->CreateOrGetDepthStencilView(pDepthRes);
@@ -212,7 +324,7 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(1, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
-	sl12::GraphicsPipelineState* psos[] = { &psoUniform_, &psoNewton_, &psoRaymarch_};
+	sl12::GraphicsPipelineState* psos[] = { &psoUniform_, &psoNewton_, &psoNewtonFace_, &psoRaymarch_};
 	pCmdList->GetLatestCommandList()->SetPipelineState(psos[method_]->GetPSO());
 	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);

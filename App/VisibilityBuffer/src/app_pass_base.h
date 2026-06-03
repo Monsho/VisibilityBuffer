@@ -43,6 +43,7 @@ enum class AppPassType
 	PrefixSumTest,
 	Xlu,
 	WaterLightAccumCopy,
+	WaterMipmap,
 	Water,
 	BuildBvh,
 	ReadyRtxgi,

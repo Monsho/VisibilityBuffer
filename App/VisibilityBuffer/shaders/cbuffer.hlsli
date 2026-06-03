@@ -174,6 +174,7 @@ struct WaterCB
 	int		loopCount;
 	int		bUseNormalTex;
 	float	normalIntensity;
+	int		debugFallback;
 };
 
 struct InstanceData

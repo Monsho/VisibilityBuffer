@@ -79,6 +79,9 @@
     <None Include="shaders\water.p.hlsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="shaders\water_mipmap.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
     <None Include="shaders\mesh.p.hlsl">
       <Filter>shaders</Filter>
     </None>

@@ -1,2 +1,2 @@
-#define WATER_METHOD 3
+#define WATER_METHOD 2
 #include "water.p.hlsl"

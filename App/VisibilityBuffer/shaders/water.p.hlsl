@@ -1,8 +1,10 @@
 #include "cbuffer.hlsli"
 
 #ifndef WATER_METHOD
-#	define WATER_METHOD 1
+#	define WATER_METHOD 1 // 0: Uniform, 1: Newton + GBuffer, 2: Newton + Face, 3: Ray March
 #endif
+
+#define NORMAL_FROM_GBUFFER (WATER_METHOD == 1)
 
 struct PSInput
 {
@@ -72,6 +74,21 @@ float3 ReconstructFaceNormal(float2 UV, float3 BaseWorldPos)
 	return normalize(cross(pb - BaseWorldPos, pr - BaseWorldPos));
 }
 
+float ComputeMipLevel(float3 waterPos, float3 planePos, float3 refractedDir)
+{
+	float3 currDir = normalize(planePos - waterPos);
+	float cs = dot(currDir, refractedDir);
+	return smoothstep(0.9, 0.2, cs) * 4.0;
+}
+
+void LoadNormalAndDepth(float2 UV, float mipLevel, out float3 normal, out float depth)
+{
+	float3 n = rGBufferC.SampleLevel(samLinear, UV, mipLevel).xyz * 2.0 - 1.0;
+	float lenSq = dot(n, n);
+	normal = (lenSq > 1e-6) ? n * rsqrt(lenSq) : float3(0.0, 1.0, 0.0);
+	depth = rDepth.SampleLevel(samLinear, UV, mipLevel);
+}
+
 float2 RaymarchRefractedUV(float3 rayOrigin, float3 rayD, float3 eyePos, float2 initialScreenUV)
 {
 	const float StepLength = cbWater.stepLength;
@@ -132,7 +149,7 @@ PSOutput main(PSInput In)
 
 		ScreenColor = rColor.SampleLevel(samLinear, RefractedUV, 0.0);
 	}
-#elif WATER_METHOD == 1
+#elif (WATER_METHOD == 1) || (WATER_METHOD == 2)
 	{
 		// newton method
 		uint2 PixelPos = (uint2)In.position.xy;
@@ -142,8 +159,14 @@ PSOutput main(PSInput In)
 		{
 			float2 BaseUV = ((float2)PixelPos + 0.5) * cbScene.invScreenSize;
 			float3 planeP = ReconstructWorldPosition(BaseUV, depth);
-			// float3 planeN = rGBufferC[PixelPos].xyz * 2.0 - 1.0;
+#if NORMAL_FROM_GBUFFER
+			float mipLevel = ComputeMipLevel(In.worldPos, planeP, RefractedVec);
+			float3 planeN;
+			LoadNormalAndDepth(BaseUV, mipLevel, planeN, depth);
+			planeP = ReconstructWorldPosition(BaseUV, depth);
+#else
 			float3 planeN = ReconstructFaceNormal(BaseUV, planeP);
+#endif
 			float2 screenUV;
 			bool bHit = false;
 			[loop]
@@ -166,16 +189,20 @@ PSOutput main(PSInput In)
 					break;
 				}
 
+#if NORMAL_FROM_GBUFFER
+				mipLevel = ComputeMipLevel(In.worldPos, hitP, RefractedVec);
+				LoadNormalAndDepth(screenUV, mipLevel, planeN, depth);
+				planeP = ReconstructWorldPosition(screenUV, depth);
+#else
 				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
+				planeP = ReconstructWorldPosition(screenUV, depth);
+				planeN = ReconstructFaceNormal(BaseUV, planeP);
+#endif
 				[branch]
-				if (depth > In.position.z)
+				if (planeP.y > In.worldPos.y)
 				{
 					break;
 				}
-
-				planeP = ReconstructWorldPosition(screenUV, depth);
-				// planeN = rGBufferC.SampleLevel(samLinear, screenUV, 0.0);
-				planeN = ReconstructFaceNormal(screenUV, planeP);
 				[branch]
 				if (distance(hitP, planeP) < 1.0)
 				{
@@ -189,7 +216,7 @@ PSOutput main(PSInput In)
 			{
 				// fallback: ray march
 				screenUV = RaymarchRefractedUV(In.worldPos, RefractedVec, eyePos, screenUV);
-				ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
+				ScreenColor = !cbWater.debugFallback ? rColor.SampleLevel(samLinear, screenUV, 0.0) : float4(1, 0, 0, 1);
 			}
 		}
 		else

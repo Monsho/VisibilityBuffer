@@ -672,6 +672,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<WaterMipmapPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::WaterMipmap] = renderGraph_->AddPass(sl12::RenderPassID("WaterMipmap"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<WaterPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Water] = renderGraph_->AddPass(sl12::RenderPassID("Water"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -855,8 +860,12 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 		.AddChild(passNodes_[AppPassType::Xlu]);
 	if (desc.bUseWater)
 	{
-		node = node.AddChild(passNodes_[AppPassType::WaterLightAccumCopy])
-			.AddChild(passNodes_[AppPassType::Water]);
+		node = node.AddChild(passNodes_[AppPassType::WaterLightAccumCopy]);
+		if (desc.waterMethod == 1)
+		{
+			node = node.AddChild(passNodes_[AppPassType::WaterMipmap]);
+		}
+		node = node.AddChild(passNodes_[AppPassType::Water]);
 	}
 	if (bEnableVRS)
 	{
