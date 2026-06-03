@@ -1,5 +1,9 @@
 #include "cbuffer.hlsli"
 
+#ifndef WATER_METHOD
+#	define WATER_METHOD 1
+#endif
+
 struct PSInput
 {
 	float4	position	: SV_POSITION;
@@ -68,6 +72,38 @@ float3 ReconstructFaceNormal(float2 UV, float3 BaseWorldPos)
 	return normalize(cross(pb - BaseWorldPos, pr - BaseWorldPos));
 }
 
+float2 RaymarchRefractedUV(float3 rayOrigin, float3 rayD, float3 eyePos, float2 initialScreenUV)
+{
+	const float StepLength = cbWater.stepLength;
+	const float DepthThreshold = cbWater.depthThreshold;
+	float3 step = rayD * StepLength;
+	float3 wp = rayOrigin;
+	float2 screenUV = initialScreenUV;
+	[loop]
+	for (int i = 0; i < cbWater.loopCount; i++)
+	{
+		wp += step;
+		float4 clipPos = mul(cbScene.mtxWorldToProj, float4(wp, 1.0));
+		screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
+		[branch]
+		if (any(screenUV < 0.0) || any(screenUV > 1.0))
+		{
+			screenUV = saturate(screenUV);
+			break;
+		}
+		float depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
+		float3 planeP = ReconstructWorldPosition(screenUV, depth);
+		float l1 = length(planeP - eyePos);
+		float l2 = length(wp - eyePos);
+		[branch]
+		if (l1 < l2 && (l2 - l1) < DepthThreshold)
+		{
+			break;
+		}
+	}
+	return screenUV;
+}
+
 [earlydepthstencil]
 PSOutput main(PSInput In)
 {
@@ -86,8 +122,7 @@ PSOutput main(PSInput In)
 
 	float4 ScreenColor = 0;
 
-	[branch]
-	if (cbWater.method == 0)
+#if WATER_METHOD == 0
 	{
 		// uniform refraction.
 		float3 NormalVecVS = mul((float3x3)cbScene.mtxWorldToView, WaterNormal);
@@ -97,7 +132,7 @@ PSOutput main(PSInput In)
 
 		ScreenColor = rColor.SampleLevel(samLinear, RefractedUV, 0.0);
 	}
-	else if (cbWater.method == 1)
+#elif WATER_METHOD == 1
 	{
 		// newton method
 		uint2 PixelPos = (uint2)In.position.xy;
@@ -153,29 +188,7 @@ PSOutput main(PSInput In)
 			if (!bHit)
 			{
 				// fallback: ray march
-				const float StepLength = cbWater.stepLength;
-				const float DepthThreshold = cbWater.depthThreshold;
-				float3 step = RefractedVec * StepLength;
-				float3 wp = In.worldPos;
-				for (int i = 0; i < cbWater.loopCount; i++)
-				{
-					wp += step;
-					float4 clipPos = mul(cbScene.mtxWorldToProj, float4(wp, 1.0));
-					screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
-					if (any(screenUV < 0.0) || any(screenUV > 1.0))
-					{
-						screenUV = saturate(screenUV);
-						break;
-					}
-					depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
-					planeP = ReconstructWorldPosition(screenUV, depth);
-					float l1 = length(planeP - eyePos);
-					float l2 = length(wp - eyePos);
-					if (l1 < l2 && (l2 - l1) < DepthThreshold)
-					{
-						break;
-					}
-				}
+				screenUV = RaymarchRefractedUV(In.worldPos, RefractedVec, eyePos, screenUV);
 				ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
 			}
 		}
@@ -184,7 +197,7 @@ PSOutput main(PSInput In)
 			ScreenColor = rColor[PixelPos];
 		}
 	}
-	else
+#else
 	{
 		// ray march only.
 		uint2 PixelPos = (uint2)In.position.xy;
@@ -192,30 +205,8 @@ PSOutput main(PSInput In)
 		[branch]
 		if (depth > 0.0)
 		{
-			const float StepLength = cbWater.stepLength;
-			const float DepthThreshold = cbWater.depthThreshold;
-			float3 step = RefractedVec * StepLength;
-			float3 wp = In.worldPos;
-			float2 screenUV;
-			for (int i = 0; i < cbWater.loopCount; i++)
-			{
-				wp += step;
-				float4 clipPos = mul(cbScene.mtxWorldToProj, float4(wp, 1.0));
-				screenUV = saturate((clipPos.xy / clipPos.w) * float2(0.5, -0.5) + 0.5);
-				if (any(screenUV < 0.0) || any(screenUV > 1.0))
-				{
-					screenUV = saturate(screenUV);
-					break;
-				}
-				depth = rDepth.SampleLevel(samLinear, screenUV, 0.0);
-				float3 planeP = ReconstructWorldPosition(screenUV, depth);
-				float l1 = length(planeP - eyePos);
-				float l2 = length(wp - eyePos);
-				if (l1 < l2 && (l2 - l1) < DepthThreshold)
-				{
-					break;
-				}
-			}
+			float2 BaseUV = ((float2)PixelPos + 0.5) * cbScene.invScreenSize;
+			float2 screenUV = RaymarchRefractedUV(In.worldPos, RefractedVec, eyePos, BaseUV);
 			ScreenColor = rColor.SampleLevel(samLinear, screenUV, 0.0);
 		}
 		else
@@ -223,6 +214,7 @@ PSOutput main(PSInput In)
 			ScreenColor = rColor[PixelPos];
 		}
 	}
+#endif
 
 	Out.accum.rgb = lerp(ScreenColor.rgb, cbWater.color.rgb, cbWater.color.a);
 	Out.accum.a = 1.0;

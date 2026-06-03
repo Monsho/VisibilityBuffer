@@ -463,7 +463,6 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbWater.stepLength = waterStepLength_;
 		cbWater.depthThreshold = waterDepthThreshold_;
 		cbWater.loopCount = waterLoopCount_;
-		cbWater.method = waterMethod_;
 		cbWater.bUseNormalTex = waterUseNormalTex_;
 		cbWater.normalIntensity = waterNormalIntensity_;
 
@@ -782,6 +781,7 @@ bool SampleApplication::Execute()
 	setupDesc.bShadowBlur = evsmBlur_;
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.bUseWater = bEnableWater_;
+	setupDesc.waterMethod = waterMethod_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();

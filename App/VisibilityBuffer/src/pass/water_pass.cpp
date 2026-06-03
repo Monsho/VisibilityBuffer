@@ -64,14 +64,16 @@ WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
-	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoUniform_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoNewton_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	psoRaymarch_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 
-	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::WaterVV), pRenderSys->GetShader(ShaderName::WaterP), nullptr, nullptr, nullptr);
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::WaterVV), pRenderSys->GetShader(ShaderName::WaterUniformP), nullptr, nullptr, nullptr);
 
 	sl12::GraphicsPipelineStateDesc desc{};
 	desc.pRootSignature = &rs_;
 	desc.pVS = pRenderSys->GetShader(ShaderName::WaterVV);
-	desc.pPS = pRenderSys->GetShader(ShaderName::WaterP);
+	desc.pPS = pRenderSys->GetShader(ShaderName::WaterUniformP);
 
 	desc.blend.sampleMask = UINT_MAX;
 	desc.blend.rtDesc[0].isBlendEnable = true;
@@ -100,7 +102,19 @@ WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene
 	desc.dsvFormat = kDepthFormat;
 	desc.multisampleCount = 1;
 
-	if (!pso_->Initialize(pDev, desc))
+	if (!psoUniform_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init water pso.");
+	}
+
+	desc.pPS = pRenderSys->GetShader(ShaderName::WaterNewtonP);
+	if (!psoNewton_->Initialize(pDev, desc))
+	{
+		sl12::ConsolePrint("Error: failed to init water pso.");
+	}
+
+	desc.pPS = pRenderSys->GetShader(ShaderName::WaterRaymarchP);
+	if (!psoRaymarch_->Initialize(pDev, desc))
 	{
 		sl12::ConsolePrint("Error: failed to init water pso.");
 	}
@@ -108,7 +122,9 @@ WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene
 
 WaterPass::~WaterPass()
 {
-	pso_.Reset();
+	psoUniform_.Reset();
+	psoNewton_.Reset();
+	psoRaymarch_.Reset();
 	rs_.Reset();
 }
 
@@ -196,7 +212,8 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(1, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
-	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	sl12::GraphicsPipelineState* psos[] = { &psoUniform_, &psoNewton_, &psoRaymarch_};
+	pCmdList->GetLatestCommandList()->SetPipelineState(psos[method_]->GetPSO());
 	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
 	pCmdList->GetLatestCommandList()->DrawInstanced(6, 1, 0, 0);

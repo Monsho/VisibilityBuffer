@@ -34,6 +34,11 @@ public:
 		return AppPassType::Water;
 	}
 
+	virtual void SetPassSettings(const RenderPassSetupDesc& desc)
+	{
+		method_ = desc.waterMethod;
+	}
+
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
 	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
 	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
@@ -44,7 +49,8 @@ public:
 
 private:
 	sl12::UniqueHandle<sl12::RootSignature> rs_;
-	sl12::UniqueHandle<sl12::GraphicsPipelineState> pso_;
+	sl12::UniqueHandle<sl12::GraphicsPipelineState> psoUniform_, psoNewton_, psoRaymarch_;
+	int method_ = 1;
 };
 
 //	EOF

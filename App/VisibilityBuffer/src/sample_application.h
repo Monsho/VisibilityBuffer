@@ -226,8 +226,8 @@ private:
 	float					waterOpacity_ = 0.1f;
 	float					waterRefractIntensity_ = 32.0f;
 	float					waterIOR_ = 1.333f;
-	float					waterStepLength_ = 10.0f;
-	int						waterLoopCount_ = 8;
+	float					waterStepLength_ = 5.0f;
+	int						waterLoopCount_ = 16;
 	bool					waterUseNormalTex_ = false;
 	float					waterNormalIntensity_ = 0.3f;
 	float					waterDepthThreshold_ = 10.0f;

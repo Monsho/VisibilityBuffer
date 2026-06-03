@@ -206,6 +206,7 @@ struct RenderPassSetupDesc
 	bool bShadowBlur = false;
 	bool bDebugDdgi = false;
 	bool bUseWater = false;
+	int waterMethod = 1;
 	int debugMode = 0;
 
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -224,6 +225,7 @@ struct RenderPassSetupDesc
 			&& (bShadowBlur == rhs.bShadowBlur)
 			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (bUseWater == rhs.bUseWater)
+			&& (waterMethod == rhs.waterMethod)
 			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
