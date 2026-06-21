@@ -14,7 +14,6 @@
 #include "sl12/pipeline_state.h"
 #include "sl12/unique_handle.h"
 #include "sl12/cbv_manager.h"
-#include "sl12/render_graph_deprecated.h"
 #include "sl12/indirect_executer.h"
 #include "sl12/sampler.h"
 

@@ -131,9 +131,6 @@ bool SampleApplication::Initialize()
 		return false;
 	}
 
-	// init render graph.
-	renderGraphDeprecated_ = sl12::MakeUnique<sl12::RenderGraph_Deprecated>(nullptr);
-
 	// wait compile and load.
 	renderSys_->WaitLoadAndCompile();
 
@@ -198,7 +195,6 @@ void SampleApplication::Finalize()
 	// destroy render objects.
 	for (auto&& t : timestamps_) t.Destroy();
 	gui_.Reset();
-	renderGraphDeprecated_.Reset();
 	mainCmdList_.Reset();
 
 	scene_.Reset();

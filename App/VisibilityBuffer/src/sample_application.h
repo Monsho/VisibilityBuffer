@@ -9,7 +9,6 @@
 #include "sl12/pipeline_state.h"
 #include "sl12/unique_handle.h"
 #include "sl12/cbv_manager.h"
-#include "sl12/render_graph_deprecated.h"
 #include "sl12/indirect_executer.h"
 
 #include <memory>
@@ -118,7 +117,6 @@ private:
 	UniqueHandle<CommandLists>	mainCmdList_;
 	UniqueHandle<CommandLists>	frameStartCmdlist_;
 	UniqueHandle<CommandLists>	frameEndCmdList_;
-	UniqueHandle<sl12::RenderGraph_Deprecated>		renderGraphDeprecated_;
 
 	UniqueHandle<sl12::Texture>				detailDerivTex_;
 	UniqueHandle<sl12::TextureView>			detailDerivSrv_;
