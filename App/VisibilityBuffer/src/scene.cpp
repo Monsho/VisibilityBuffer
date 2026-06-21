@@ -766,7 +766,7 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 
 	bool bEnableMeshletCulling = !desc.bUseVisibilityBuffer || !desc.bUseMeshShader;
 	bool bDirectGBufferRender = !desc.bUseVisibilityBuffer;
-	bool bEnableVRS = desc.bUseVRS;
+	bool bEnableVRS = desc.bUseVRS && desc.bUseVisibilityBuffer;
 	bool bEnableRaytracing = desc.bUseRaytracing;
 	bool bEnableDDGI = bEnableRaytracing && desc.raytracingTech == 0;
 	bool bEnableMonteCarlo = bEnableRaytracing && desc.raytracingTech == 1;

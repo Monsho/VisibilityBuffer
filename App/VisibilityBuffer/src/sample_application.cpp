@@ -519,7 +519,7 @@ bool SampleApplication::Execute()
 		}
 
 		// light settings.
-		if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_None))
 		{
 			ImGui::SliderFloat("Ambient Intensity", &ambientIntensity_, 0.0f, 10.0f);
 			ImGui::SliderFloat("Directional Theta", &directionalTheta_, 0.0f, 90.0f);
@@ -529,7 +529,7 @@ bool SampleApplication::Execute()
 		}
 
 		// shadow settings.
-		if (ImGui::CollapsingHeader("Shadow", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("Shadow", ImGuiTreeNodeFlags_None))
 		{
 			ImGui::Checkbox("Blur", &evsmBlur_);
 			ImGui::SliderFloat("Exponent", &shadowExponent_, 0.1f, 50.0f);
@@ -537,7 +537,7 @@ bool SampleApplication::Execute()
 		}
 
 		// ssao settings.
-		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_None))
 		{
 			static const char* kTypes[] = {
 				"HBAO",
@@ -564,7 +564,7 @@ bool SampleApplication::Execute()
 		}
 
 		// denoise settings.
-		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("Denoise", ImGuiTreeNodeFlags_None))
 		{
 			ImGui::SliderFloat("Spatio Radius", &denoiseRadius_, 0.0f, 5.0f);
 			ImGui::SliderFloat("Base Weight", &denoiseBaseWeight_, 0.0f, 0.99f);
@@ -590,7 +590,7 @@ bool SampleApplication::Execute()
 		}
 
 		// water settings.
-		if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_None))
 		{
 			ImGui::Checkbox("Render Water", &bEnableWater_);
 			if (bEnableWater_)
@@ -617,7 +617,7 @@ bool SampleApplication::Execute()
 		}
 
 		// vrs settings.
-		if (ImGui::CollapsingHeader("VRS", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("VRS", ImGuiTreeNodeFlags_None))
 		{
 			ImGui::Checkbox("Use VRS", &bUseVRS_);
 			if (bUseVRS_)
@@ -628,7 +628,7 @@ bool SampleApplication::Execute()
 		}
 
 		// raytracing settings.
-		if (ImGui::CollapsingHeader("RayTracing", ImGuiTreeNodeFlags_DefaultOpen))
+		if (ImGui::CollapsingHeader("RayTracing", ImGuiTreeNodeFlags_None))
 		{
 			bRestirInitFrame_ = false;
 			if (ImGui::Checkbox("Use RayTracing", &bUseRaytracing_))
@@ -753,6 +753,20 @@ bool SampleApplication::Execute()
 					ImGui::Text("%s   : %f (ms)", pPerfResult[sl12::HardwareQueue::Compute].passNames[i].c_str(), pPerfResult[sl12::HardwareQueue::Compute].passMicroSecTimes[i] / 1000.0f);
 				}
 			}
+		}
+		auto heapStatistics = scene_->GetRenderGraph()->GetHeapStatistics();
+		if (ImGui::CollapsingHeader("Render Graph", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			ImGui::Text("RT/DS");
+			ImGui::Text("  total : %f (MB)", heapStatistics.placedRTDSTextures.totalSize / 1024.0f / 1024.0f);
+			ImGui::Text("  alloc : %f (MB)", heapStatistics.placedRTDSTextures.allocatedSize / 1024.0f / 1024.0f);
+			ImGui::Text("  free  : %f (MB)", heapStatistics.placedRTDSTextures.freeSize / 1024.0f / 1024.0f);
+			ImGui::Text("  over  : %f (MB)", heapStatistics.placedRTDSTextures.overlappedSize / 1024.0f / 1024.0f);
+			ImGui::Text("Texture");
+			ImGui::Text("  total : %f (MB)", heapStatistics.placedTextures.totalSize / 1024.0f / 1024.0f);
+			ImGui::Text("  alloc : %f (MB)", heapStatistics.placedTextures.allocatedSize / 1024.0f / 1024.0f);
+			ImGui::Text("  free  : %f (MB)", heapStatistics.placedTextures.freeSize / 1024.0f / 1024.0f);
+			ImGui::Text("  over  : %f (MB)", heapStatistics.placedTextures.overlappedSize / 1024.0f / 1024.0f);
 		}
 	}
 	ImGui::Render();
