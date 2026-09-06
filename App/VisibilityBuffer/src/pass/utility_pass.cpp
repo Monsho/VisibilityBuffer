@@ -46,8 +46,8 @@ std::vector<sl12::TransientResource> ClearMiplevelPass::GetOutputResources(const
 
 	sl12::TransientResource mip(kMiplevelFeedbackID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = (pScene_->GetScreenWidth() + 3) / 4;
-	sl12::u32 height = (pScene_->GetScreenHeight() + 3) / 4;
+	sl12::u32 width = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 3) / 4;
+	sl12::u32 height = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 3) / 4;
 	mip.desc.bIsTexture = true;
 	mip.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8_UINT, width, height, 1, 1, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
 
@@ -72,8 +72,8 @@ void ClearMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT w = (pScene_->GetScreenWidth() + 3) / 4;
-	UINT h = (pScene_->GetScreenHeight() + 3) / 4;
+	UINT w = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 3) / 4;
+	UINT h = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 3) / 4;
 	UINT x = (w + 7) / 8;
 	UINT y = (w + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
@@ -149,8 +149,8 @@ void FeedbackMiplevelPass::Execute(sl12::CommandList* pCmdList, sl12::TransientR
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT w = (pScene_->GetScreenWidth() + 3) / 4;
-	UINT h = (pScene_->GetScreenHeight() + 3) / 4;
+	UINT w = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 3) / 4;
+	UINT h = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 3) / 4;
 	UINT x = (w + 7) / 8;
 	UINT y = (h + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
@@ -220,8 +220,8 @@ std::vector<sl12::TransientResource> LightingPass::GetOutputResources(const sl12
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	accum.desc.historyFrame = 1;
@@ -268,8 +268,8 @@ void LightingPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -315,8 +315,8 @@ std::vector<sl12::TransientResource> HiZPass::GetOutputResources(const sl12::Ren
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource hiz(kHiZID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth() / 2;
-	sl12::u32 height = pScene_->GetScreenHeight() / 2;
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth() / 2;
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight() / 2;
 	hiz.desc.bIsTexture = true;
 	hiz.desc.textureDesc.Initialize2D(kHiZFormat, width, height, kHiZMiplevels, 1, 0);
 	hiz.desc.historyFrame = 1;
@@ -335,8 +335,8 @@ void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 
 	auto srv = pDepthSRV->GetDescInfo().cpuHandle;
-	auto width = pScene_->GetScreenWidth() >> 2;
-	auto height = pScene_->GetScreenHeight() >> 2;
+	auto width = pScene_->GetSceneRenderInfo().GetRenderWidth() >> 2;
+	auto height = pScene_->GetSceneRenderInfo().GetRenderHeight() >> 2;
 	sl12::u32 i = 0;
 	while (true)
 	{
@@ -374,6 +374,71 @@ void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 }
 
 
+//----------------
+UpscalePass::UpscalePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
+	: AppPassBase(pDev, pRenderSys, pScene)
+{
+	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
+	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
+	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::FullscreenVV), pRenderSys->GetShader(ShaderName::UpscaleP), nullptr, nullptr, nullptr);
+	sl12::GraphicsPipelineStateDesc desc{};
+	desc.pRootSignature = &rs_;
+	desc.pVS = pRenderSys->GetShader(ShaderName::FullscreenVV);
+	desc.pPS = pRenderSys->GetShader(ShaderName::UpscaleP);
+	desc.blend.sampleMask = UINT_MAX;
+	desc.blend.rtDesc[0].writeMask = 0xf;
+	desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+	desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+	desc.rasterizer.isDepthClipEnable = true;
+	desc.rasterizer.isFrontCCW = true;
+	desc.depthStencil.isDepthEnable = false;
+	desc.depthStencil.isDepthWriteEnable = false;
+	desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	desc.numRTVs = 1;
+	desc.rtvFormats[0] = kLightAccumFormat;
+	desc.dsvFormat = DXGI_FORMAT_UNKNOWN;
+	desc.multisampleCount = 1;
+	if (!pso_->Initialize(pDev, desc)) sl12::ConsolePrint("Error: failed to init upscale pso.");
+}
+
+UpscalePass::~UpscalePass() { pso_.Reset(); rs_.Reset(); }
+
+std::vector<sl12::TransientResource> UpscalePass::GetInputResources(const sl12::RenderPassID&) const
+{
+	return { sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource) };
+}
+
+std::vector<sl12::TransientResource> UpscalePass::GetOutputResources(const sl12::RenderPassID&) const
+{
+	auto&& info = pScene_->GetSceneRenderInfo();
+	sl12::TransientResource output(kUpscaledLightAccumID, sl12::TransientState::RenderTarget);
+	output.desc.textureDesc.Initialize2D(kLightAccumFormat, info.GetDisplayWidth(), info.GetDisplayHeight(), 1, 1, 0);
+	return { output };
+}
+
+void UpscalePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID&)
+{
+	GPU_MARKER(pCmdList, 1, "UpscalePass");
+	auto pSource = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pOutput = pResManager->GetRenderGraphResource(kUpscaledLightAccumID);
+	auto pSourceSRV = pResManager->CreateOrGetTextureView(pSource);
+	auto pOutputRTV = pResManager->CreateOrGetRenderTargetView(pOutput);
+	auto rtv = pOutputRTV->GetDescInfo().cpuHandle;
+	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+	auto&& info = pScene_->GetSceneRenderInfo();
+	D3D12_VIEWPORT vp{ 0.0f, 0.0f, (float)info.GetDisplayWidth(), (float)info.GetDisplayHeight(), 0.0f, 1.0f };
+	D3D12_RECT rect{ 0, 0, (LONG)info.GetDisplayWidth(), (LONG)info.GetDisplayHeight() };
+	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
+	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+	sl12::DescriptorSet descSet;
+	descSet.Reset();
+	descSet.SetPsSrv(0, pSourceSRV->GetDescInfo().cpuHandle);
+	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
+	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);
+	pCmdList->GetLatestCommandList()->DrawInstanced(3, 1, 0, 0);
+}
 //----------------
 TonemapPass::TonemapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
@@ -425,7 +490,7 @@ TonemapPass::~TonemapPass()
 std::vector<sl12::TransientResource> TonemapPass::GetInputResources(const sl12::RenderPassID& ID) const
 {
 	std::vector<sl12::TransientResource> ret;
-	ret.push_back(sl12::TransientResource(kLightAccumID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kUpscaledLightAccumID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -440,7 +505,7 @@ void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 {
 	GPU_MARKER(pCmdList, 1, "TonemapPass");
 
-	auto pAccumRes = pResManager->GetRenderGraphResource(kLightAccumID);
+	auto pAccumRes = pResManager->GetRenderGraphResource(kUpscaledLightAccumID);
 	auto pSwapRes = pResManager->GetRenderGraphResource(kSwapchainID);
 	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
 	auto pSwapRTV = pResManager->CreateOrGetRenderTargetView(pSwapRes);
@@ -449,8 +514,8 @@ void TonemapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	auto&& rtv = pSwapRTV->GetDescInfo().cpuHandle;
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetDisplayWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetDisplayHeight();
 
 	// set viewport.
 	D3D12_VIEWPORT vp;
@@ -529,8 +594,8 @@ std::vector<sl12::TransientResource> GenerateVrsPass::GetOutputResources(const s
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource vrs(kPrevVrsID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth() / 2;
-	sl12::u32 height = pScene_->GetScreenHeight() / 2;
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth() / 2;
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight() / 2;
 	vrs.desc.bIsTexture = true;
 	vrs.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8_UINT, width, height, 1, 1, 0);
 	vrs.desc.historyFrame = 1;
@@ -559,8 +624,8 @@ void GenerateVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
 	auto pVRSUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pVRSRes);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
 	auto&& cbvMan = pRenderSystem_->GetCbvManager();
@@ -641,8 +706,8 @@ std::vector<sl12::TransientResource> ReprojectVrsPass::GetOutputResources(const 
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource vrs(kCurrVrsID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth() / 2;
-	sl12::u32 height = pScene_->GetScreenHeight() / 2;
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth() / 2;
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight() / 2;
 	vrs.desc.bIsTexture = true;
 	vrs.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8_UINT, width, height, 1, 1, 0);
 
@@ -672,8 +737,8 @@ void ReprojectVrsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pCurrDepthSRV = pResManager->CreateOrGetTextureView(pCurrDepthRes);
 	auto pCurrVrsUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pCurrVrsRes);
 	
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	sl12::u32 halfWidth = (width + 1) / 2;
 	sl12::u32 halfHeight = (height + 1) / 2;
 
@@ -991,8 +1056,8 @@ void DebugPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 	auto&& rtv = pSwapRTV->GetDescInfo().cpuHandle;
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetDisplayWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetDisplayHeight();
 
 	// set viewport.
 	D3D12_VIEWPORT vp;

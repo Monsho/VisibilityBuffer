@@ -79,7 +79,7 @@ public:
 
 	virtual void SetPassSettings(const RenderPassSetupDesc& desc) override
 	{
-		bDenoiseGI_ = desc.ssaoType == 2 && desc.bUseRaytracing;
+		bDenoiseGI_ = desc.ssaoType == 2;
 	}
 
 	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;

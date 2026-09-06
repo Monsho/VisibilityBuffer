@@ -18,6 +18,8 @@
 #include <random>
 
 #define USE_IN_CPP
+#include <numeric>
+
 #include "../shaders/cbuffer.hlsli"
 #include "pass/raytracing_pass.h"
 #include "pass/render_resource_settings.h"
@@ -138,6 +140,24 @@ void RenderSystem::WaitLoadAndCompile()
 
 
 //----------------
+//----
+void SceneRenderInfo::SetResolution(sl12::u32 width, sl12::u32 height, float percentage)
+{
+	displayWidth_ = width;
+	displayHeight_ = height;
+
+	// Deinterleaveで縦横を4分割するため、アスペクト比を維持しつつ4の倍数になるように調整
+	float g = static_cast<float>(std::gcd(width, height));
+	int step = std::max(1, static_cast<int>(std::round((percentage * g) / 4.0f)));
+	float pp = (4.0f / g) * static_cast<float>(step);
+	renderWidth_ = static_cast<sl12::u32>(std::round(static_cast<float>(width) * pp));
+	renderHeight_ = static_cast<sl12::u32>(std::round(static_cast<float>(height) * pp));
+	screenPercentage_ = pp;
+	miplevelOffset_ = -log2(pp);
+}
+
+
+//----------------
 namespace
 {
 	sl12::CbvHandle CreateMeshBuffer(sl12::SceneMesh* pMesh, sl12::CbvManager* cbvMan)
@@ -220,6 +240,13 @@ void Scene::SetViewportResolution(sl12::u32 width, sl12::u32 height)
 {
 	screenWidth_ = width;
 	screenHeight_ = height;
+}
+
+//----
+void Scene::SetScreenPercentage(float percentage)
+{
+	assert(0.0 < percentage && percentage <= 1.0);
+	screenPercentage_ = percentage;
 }
 
 //----
@@ -566,6 +593,11 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<UpscalePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::Upscale] = renderGraph_->AddPass(kUpscalePass, pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<TonemapPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Tonemap] = renderGraph_->AddPass(kTonemapPass, pass.get());
 		passes_.push_back(std::move(pass));
@@ -747,6 +779,7 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 
+	CreateSceneRenderInfo();
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
 
@@ -875,7 +908,8 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		node = node.AddChild(passNodes_[AppPassType::DebugDDGI]);
 	}
-	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
+	node = node.AddChild(passNodes_[AppPassType::Upscale])
+		.AddChild(passNodes_[AppPassType::Tonemap]);
 	if (desc.debugMode != 0)
 	{
 		node = node.AddChild(passNodes_[AppPassType::Debug]);
@@ -968,6 +1002,8 @@ void Scene::SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSet
 {
 	if (lastRenderPassDesc_ != desc)
 	{
+		SetScreenPercentage(desc.screenPercentage);
+		CreateSceneRenderInfo();
 		SetupRenderPassGraph(desc);
 	}
 
@@ -1058,6 +1094,11 @@ void Scene::CreateIrradianceMap(sl12::CommandList* pCmdList)
 void Scene::CreateMeshletResource()
 {
 	meshletResource_->CreateResources(pDevice_, sceneMeshes_);
+}
+
+void Scene::CreateSceneRenderInfo()
+{
+	renderInfo_.SetResolution(screenWidth_, screenHeight_, screenPercentage_);
 }
 
 void Scene::GatherRenderCommands()

@@ -141,6 +141,9 @@ private:
 	DirectX::XMFLOAT3		cameraDir_;
 	int						lastMouseX_, lastMouseY_;
 
+	// screen parameters.
+	float					screenPercentage_ = 1.0f;
+
 	// rendering parameters.
 	bool					bEnableVisibilityBuffer_ = false;
 	bool					bEnableMeshShader_ = false;

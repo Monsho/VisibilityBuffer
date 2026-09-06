@@ -29,8 +29,8 @@ std::vector<sl12::TransientResource> WaterLightAccumCopyPass::GetOutputResources
 	sl12::TransientResource accum(kWaterLightAccumID, sl12::TransientState::CopyDst);
 	sl12::TransientResource depth(kWaterDepthID, sl12::TransientState::CopyDst);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	depth.desc.bIsTexture = true;
@@ -94,8 +94,8 @@ std::vector<sl12::TransientResource> WaterMipmapPass::GetOutputResources(const s
 {
 	std::vector<sl12::TransientResource> ret;
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	sl12::TransientResource depth(kWaterDepthMipID, sl12::TransientState::UnorderedAccess);
 	depth.desc.bIsTexture = true;
@@ -128,8 +128,8 @@ void WaterMipmapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 		sl12::u32 pad[2];
 	};
 
-	auto width = pScene_->GetScreenWidth();
-	auto height = pScene_->GetScreenHeight();
+	auto width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	auto height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	MipmapCB cb = {{width, height}, {0, 0}};
 	auto hCB = pRenderSystem_->GetCbvManager()->GetTemporal(&cb, sizeof(cb));
@@ -256,8 +256,8 @@ std::vector<sl12::TransientResource> WaterPass::GetOutputResources(const sl12::R
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	depth.desc.bIsTexture = true;
@@ -294,16 +294,16 @@ void WaterPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMana
 
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
-	vp.Width = (float)pScene_->GetScreenWidth();
-	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.Width = (float)pScene_->GetSceneRenderInfo().GetRenderWidth();
+	vp.Height = (float)pScene_->GetSceneRenderInfo().GetRenderHeight();
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
 
 	D3D12_RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = pScene_->GetScreenWidth();
-	rect.bottom = pScene_->GetScreenHeight();
+	rect.right = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	rect.bottom = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	DirectX::XMFLOAT3 sceneAabbMin, sceneAabbMax;

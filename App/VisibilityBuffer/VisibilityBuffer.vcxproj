@@ -146,6 +146,7 @@
     <None Include="shaders\mesh_opaque.p.hlsl" />
     <None Include="shaders\mesh.vv.hlsl" />
     <None Include="shaders\tonemap.p.hlsl" />
+    <None Include="shaders\upscale.p.hlsl" />
     <None Include="shaders\visibility_opaque.p.hlsl" />
     <None Include="shaders\visibility_opaque.vv.hlsl" />
     <None Include="shaders\shadow_opaque.vv.hlsl" />

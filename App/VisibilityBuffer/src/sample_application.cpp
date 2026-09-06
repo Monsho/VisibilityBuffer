@@ -1,4 +1,4 @@
-﻿#include "sample_application.h"
+#include "sample_application.h"
 #include "shader_types.h"
 
 #include "sl12/resource_mesh.h"
@@ -245,10 +245,11 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbScene.eyePosition.y = cameraPos_.y;
 		cbScene.eyePosition.z = cameraPos_.z;
 		cbScene.eyePosition.w = 0.0f;
-		cbScene.screenSize.x = (float)displayWidth_;
-		cbScene.screenSize.y = (float)displayHeight_;
-		cbScene.invScreenSize.x = 1.0f / (float)displayWidth_;
-		cbScene.invScreenSize.y = 1.0f / (float)displayHeight_;
+		auto&& renderInfo = scene_->GetSceneRenderInfo();
+		cbScene.screenSize.x = (float)renderInfo.GetRenderWidth();
+		cbScene.screenSize.y = (float)renderInfo.GetRenderHeight();
+		cbScene.invScreenSize.x = 1.0f / (float)renderInfo.GetRenderWidth();
+		cbScene.invScreenSize.y = 1.0f / (float)renderInfo.GetRenderHeight();
 		cbScene.nearFar.x = Zn;
 		cbScene.nearFar.y = 0.0f;
 		cbScene.feedbackIndex.x = (scene_->GetFrameIndex() % 16) % 4;
@@ -423,8 +424,10 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 	{
 		TileCB cbTile;
 
-		UINT x = (displayWidth_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
-		UINT y = (displayHeight_ + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+		sl12::u32 renderWidth = scene_->GetSceneRenderInfo().GetRenderWidth();
+		sl12::u32 renderHeight = scene_->GetSceneRenderInfo().GetRenderHeight();
+		UINT x = (renderWidth + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
+		UINT y = (renderHeight + CLASSIFY_TILE_WIDTH - 1) / CLASSIFY_TILE_WIDTH;
 		cbTile.numX = x;
 		cbTile.numY = y;
 		cbTile.tileMax = x * y;
@@ -500,6 +503,7 @@ bool SampleApplication::Execute()
 		// rendering settings.
 		if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
 		{
+			ImGui::SliderFloat("Screen Percentage", &screenPercentage_, 0.5f, 1.0f);
 			if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
 			{}
 
@@ -795,6 +799,7 @@ bool SampleApplication::Execute()
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.bUseWater = bEnableWater_;
 	setupDesc.waterMethod = waterMethod_;
+	setupDesc.screenPercentage = screenPercentage_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();

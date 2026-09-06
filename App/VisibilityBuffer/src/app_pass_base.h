@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "sl12/render_graph.h"
 
@@ -23,6 +23,7 @@ enum class AppPassType
 	Lighting,
 	HiZ,
 	HiZafterFirstCull,
+	Upscale,
 	Tonemap,
 	Deinterleave,
 	SSAO,

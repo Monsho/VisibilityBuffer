@@ -206,6 +206,7 @@ struct RenderPassSetupDesc
 	bool bDebugDdgi = false;
 	bool bUseWater = false;
 	int waterMethod = 1;
+	float screenPercentage = 1.0f;
 	int debugMode = 0;
 
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -225,12 +226,32 @@ struct RenderPassSetupDesc
 			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (bUseWater == rhs.bUseWater)
 			&& (waterMethod == rhs.waterMethod)
+			&& (screenPercentage == rhs.screenPercentage)
 			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
 	{
 		return !operator==(rhs);
 	}
+};
+
+//----
+class SceneRenderInfo
+{
+public:
+	void SetResolution(sl12::u32 width, sl12::u32 height, float percentage);
+
+	sl12::u32 GetDisplayWidth() const { return displayWidth_; }
+	sl12::u32 GetDisplayHeight() const { return displayHeight_; }
+	sl12::u32 GetRenderWidth() const { return renderWidth_; }
+	sl12::u32 GetRenderHeight() const { return renderHeight_; }
+	float GetScreenPercentage() const { return screenPercentage_; }
+
+private:
+	sl12::u32 displayWidth_, displayHeight_;
+	sl12::u32 renderWidth_, renderHeight_;
+	float screenPercentage_;
+	float miplevelOffset_;
 };
 
 //----
@@ -266,12 +287,14 @@ public:
 	void Finalize();
 
 	void SetViewportResolution(sl12::u32 width, sl12::u32 height);
+	void SetScreenPercentage(float percentage);
 	bool CreateSceneMeshes(int meshType);
 	void CreateMiplevelFeedback();
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
 	void CreateIrradianceMap(sl12::CommandList* pCmdList);
 	bool CreateRtxgiComponent(const std::string& rtxgiShaderDir);
 
+	void CreateSceneRenderInfo();
 	void GatherRenderCommands();
 	void UpdateBVH(sl12::CommandList* pCmdList);
 	void RequestClearProbes();
@@ -289,6 +312,15 @@ public:
 	sl12::u32 GetScreenHeight() const
 	{
 		return screenHeight_;
+	}
+	float GetScreenPercentage() const
+	{
+		return screenPercentage_;
+	}
+
+	const SceneRenderInfo& GetSceneRenderInfo() const
+	{
+		return renderInfo_;
 	}
 
 	MeshletResource* GetMeshletResource()
@@ -436,6 +468,9 @@ private:
 	RenderSystem*	pRenderSystem_ = nullptr;
 
 	sl12::u32		screenWidth_, screenHeight_;
+	float			screenPercentage_ = 1.0f;
+
+	SceneRenderInfo renderInfo_;
 
 	UniqueHandle<MeshletResource>	meshletResource_;
 

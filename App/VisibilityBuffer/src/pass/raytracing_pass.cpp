@@ -246,8 +246,8 @@ std::vector<sl12::TransientResource> TestRayTracingPass::GetOutputResources(cons
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource test(kTestRTResultID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	test.desc.bIsTexture = true;
 	test.desc.textureDesc.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1, 0);
 
@@ -588,8 +588,8 @@ std::vector<sl12::TransientResource> ApplyRtxgiPass::GetOutputResources(const sl
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	gi.desc.bIsTexture = true;
 	gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
@@ -634,8 +634,8 @@ void ApplyRtxgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourc
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -705,8 +705,8 @@ std::vector<sl12::TransientResource> MonteCarloGIPass::GetOutputResources(const 
 
 	sl12::TransientResource gi(kReSTIRGIID, sl12::TransientState::UnorderedAccess);
 	{
-		sl12::u32 width = pScene_->GetScreenWidth();
-		sl12::u32 height = pScene_->GetScreenHeight();
+		sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+		sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 		gi.desc.bIsTexture = true;
 		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 	}
@@ -776,8 +776,8 @@ void MonteCarloGIPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	desc.rayGenTable = &MonteCarloRGSTable_;
 	desc.hitGroupRecordSize = bvhShaderRecordSize_;
 	desc.missRecordSize = bvhShaderRecordSize_;
-	desc.width = pScene_->GetScreenWidth();
-	desc.height = pScene_->GetScreenHeight();
+	desc.width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	desc.height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	desc.depth = 1;
 	pCmdList->DispatchRays(desc);
 }
@@ -850,8 +850,8 @@ std::vector<sl12::TransientResource> InitialSamplePass::GetOutputResources(const
 
 	sl12::TransientResource reservoir(kInitialSampleReservoirRawID, sl12::TransientState::UnorderedAccess);
 	{
-		const sl12::u32 width = pScene_->GetScreenWidth();
-		const sl12::u32 height = pScene_->GetScreenHeight();
+		const sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+		const sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 		reservoir.desc.bIsTexture = false;
 		reservoir.desc.bufferDesc.InitializeStructured(sizeof(InitialSample::Reservoir), width * height, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
 	}
@@ -901,8 +901,11 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pGbCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
 	auto pMotionSrv = pResManager->CreateOrGetTextureView(pMotion);
-	auto pPrevDepthSrv = pResManager->CreateOrGetTextureView(pPrevDepth);
-	if (!pPrevReservoir)
+	auto&& renderInfo = pScene_->GetSceneRenderInfo();
+	const auto historyWidth = renderInfo.GetRenderWidth();
+	const auto historyHeight = renderInfo.GetRenderHeight();
+	auto pPrevDepthSrv = pPrevDepth && pPrevDepth->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDepth) : pDepthSrv;
+	if (!pPrevReservoir || !pPrevReservoir->IsSameBufferSize(sizeof(InitialSample::Reservoir) * historyWidth * historyHeight))
 	{
 		pPrevReservoir = pReservoir;
 	}
@@ -935,8 +938,8 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	desc.rayGenTable = &InitialSampleRGSTable_;
 	desc.hitGroupRecordSize = bvhShaderRecordSize_;
 	desc.missRecordSize = bvhShaderRecordSize_;
-	desc.width = pScene_->GetScreenWidth();
-	desc.height = pScene_->GetScreenHeight();
+	desc.width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	desc.height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	desc.depth = 1;
 	pCmdList->DispatchRays(desc);
 
@@ -983,8 +986,8 @@ std::vector<sl12::TransientResource> SpatialReusePass::GetOutputResources(const 
 
 	sl12::TransientResource reservoir(kInitialSampleReservoirID, sl12::TransientState::UnorderedAccess);
 	{
-		const sl12::u32 width = pScene_->GetScreenWidth();
-		const sl12::u32 height = pScene_->GetScreenHeight();
+		const sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+		const sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 		reservoir.desc.bIsTexture = false;
 		reservoir.desc.bufferDesc.InitializeStructured(sizeof(InitialSample::Reservoir), width * height, sl12::ResourceUsage::ShaderResource | sl12::ResourceUsage::UnorderedAccess);
 		reservoir.desc.historyFrame = 1;
@@ -1020,8 +1023,8 @@ void SpatialReusePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -1063,8 +1066,8 @@ std::vector<sl12::TransientResource> ReSTIRResolvePass::GetOutputResources(const
 
 	sl12::TransientResource gi(kReSTIRGIID, sl12::TransientState::UnorderedAccess);
 	{
-		sl12::u32 width = pScene_->GetScreenWidth();
-		sl12::u32 height = pScene_->GetScreenHeight();
+		sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+		sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 		gi.desc.bIsTexture = true;
 		gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 	}
@@ -1091,8 +1094,8 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -1166,8 +1169,8 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	sl12::TransientResource ping(kSvgfPingID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource pong(kSvgfPongID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	gi.desc.bIsTexture = true;
 	gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
@@ -1204,9 +1207,12 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pNormalSRV = pResManager->CreateOrGetTextureView(pNormalRes);
 	auto pRestirGISRV = pResManager->CreateOrGetTextureView(pRestirGIRes);
-	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
-	auto pPrevGISRV = pPrevGIRes ? pResManager->CreateOrGetTextureView(pPrevGIRes) : pRestirGISRV;
-	auto pPrevMomentSRV = pPrevMomentRes ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : nullptr;
+	auto&& renderInfo = pScene_->GetSceneRenderInfo();
+	const auto historyWidth = renderInfo.GetRenderWidth();
+	const auto historyHeight = renderInfo.GetRenderHeight();
+	auto pPrevDepthSRV = pPrevDepthRes && pPrevDepthRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
+	auto pPrevGISRV = pPrevGIRes && pPrevGIRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevGIRes) : pRestirGISRV;
+	auto pPrevMomentSRV = pPrevMomentRes && pPrevMomentRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : nullptr;
 
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
 	auto pMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentID);
@@ -1236,8 +1242,8 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	pCmdList->GetLatestCommandList()->SetPipelineState(psoPrepass_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsPrepass_, &prepassSet);
 
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
 	// temporal descriptors.
@@ -1355,8 +1361,8 @@ std::vector<sl12::TransientResource> DebugDdgiPass::GetOutputResources(const sl1
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	depth.desc.bIsTexture = true;
@@ -1388,8 +1394,8 @@ void DebugDdgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
-	vp.Width = (float)pScene_->GetScreenWidth();
-	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.Width = (float)pScene_->GetSceneRenderInfo().GetRenderWidth();
+	vp.Height = (float)pScene_->GetSceneRenderInfo().GetRenderHeight();
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
@@ -1397,8 +1403,8 @@ void DebugDdgiPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	// set scissor rect.
 	D3D12_RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = pScene_->GetScreenWidth();
-	rect.bottom = pScene_->GetScreenHeight();
+	rect.right = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	rect.bottom = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	auto&& TempCB = pScene_->GetTemporalCBs();

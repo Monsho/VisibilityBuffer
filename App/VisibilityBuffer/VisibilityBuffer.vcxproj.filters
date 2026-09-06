@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="src">
@@ -136,5 +136,8 @@
     <None Include="shaders\svgf_atrous.c.hlsl" />
     <None Include="shaders\culling.hlsli" />
     <None Include="shaders\mesh_shader.hlsli" />
+    <None Include="shaders\upscale.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

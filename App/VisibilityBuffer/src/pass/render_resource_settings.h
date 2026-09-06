@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "sl12/render_graph.h"
 
@@ -14,6 +14,7 @@ static const sl12::TransientResourceID	kShadowBlurID("ShadowBlur");
 static const sl12::TransientResourceID	kMeshletIndirectArgID("MeshletIndirectArg");
 static const sl12::TransientResourceID	kMiplevelFeedbackID("MiplevelFeedback");
 static const sl12::TransientResourceID	kLightAccumID("LightAccum");
+static const sl12::TransientResourceID	kUpscaledLightAccumID("UpscaledLightAccum");
 static const sl12::TransientResourceID	kWaterLightAccumID("WaterLightAccum");
 static const sl12::TransientResourceID	kWaterDepthID("WaterDepth");
 static const sl12::TransientResourceID	kWaterDepthMipID("WaterDepthMip");
@@ -76,6 +77,7 @@ static const sl12::RenderPassID kShadowBlurYPass("ShadowBlurYPass");
 static const sl12::RenderPassID kLightingPass("LightingPass");
 static const sl12::RenderPassID kHiZPass("HiZPass");
 static const sl12::RenderPassID kHiZafterFirstCullPass("HiZafterFirstCullPass");
+static const sl12::RenderPassID kUpscalePass("UpscalePass");
 static const sl12::RenderPassID kTonemapPass("TonemapPass");
 static const sl12::RenderPassID kDeinterleavePass("DeinterleavePass");
 static const sl12::RenderPassID kScreenSpaceAOPass("ScreenSpaceAOPass");

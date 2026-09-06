@@ -50,8 +50,8 @@ std::vector<sl12::TransientResource> DeinterleavePass::GetOutputResources(const 
 	sl12::TransientResource diNormal(kDeinterleaveNormalID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource diAccum(kDeinterleaveAccumID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	diDepth.desc.bIsTexture = true;
 	diDepth.desc.textureDesc.Initialize2D(kDeinterleaveDepthFormat, width, height, 1, 1, 0);
@@ -81,7 +81,8 @@ void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	auto pDiAccumRes = pResManager->GetRenderGraphResource(kDeinterleaveAccumID);
 	auto pGbCSRV = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
-	auto pAccumSRV = pResManager->CreateOrGetTextureView(pAccumRes);
+	auto&& renderInfo = pScene_->GetSceneRenderInfo();
+	auto pAccumSRV = pAccumRes ? pResManager->CreateOrGetTextureView(pAccumRes) : pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
 	auto pDiDepthUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiDepthRes);
 	auto pDiNormalUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiNormalRes);
 	auto pDiAccumUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiAccumRes);
@@ -96,14 +97,15 @@ void DeinterleavePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetCsUav(0, pDiDepthUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pDiNormalUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(2, pDiAccumUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	// set pipeline.
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -205,8 +207,8 @@ std::vector<sl12::TransientResource> ScreenSpaceAOPass::GetOutputResources(const
 	sl12::TransientResource ssao(kSsaoID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ssgi(kSsgiID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	ssao.desc.bIsTexture = true;
 	ssao.desc.textureDesc.Initialize2D(kSsaoFormat, width, height, 1, 1, 0);
@@ -271,8 +273,8 @@ void ScreenSpaceAOPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -339,8 +341,8 @@ std::vector<sl12::TransientResource> DenoisePass::GetOutputResources(const sl12:
 	sl12::TransientResource ao(kDenoiseAOID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	ao.desc.bIsTexture = true;
 	ao.desc.textureDesc.Initialize2D(kSsaoFormat, width, height, 1, 1, 0);
@@ -369,9 +371,12 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pSsaoSRV = pResManager->CreateOrGetTextureView(pSsaoRes);
 	auto pSsgiSRV = pSsgiRes ? pResManager->CreateOrGetTextureView(pSsgiRes) : nullptr;
-	auto pPrevDepthSRV = pPrevDepthRes ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
-	auto pPrevSsaoSRV = pPrevSsaoRes ? pResManager->CreateOrGetTextureView(pPrevSsaoRes) : pSsaoSRV;
-	auto pPrevSsgiSRV = pPrevSsgiRes ? pResManager->CreateOrGetTextureView(pPrevSsgiRes) : pSsgiSRV;
+	auto&& renderInfo = pScene_->GetSceneRenderInfo();
+	const auto width = renderInfo.GetRenderWidth();
+	const auto height = renderInfo.GetRenderHeight();
+	auto pPrevDepthSRV = pPrevDepthRes && pPrevDepthRes->IsSameTextureSize(width, height) ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
+	auto pPrevSsaoSRV = pPrevSsaoRes && pPrevSsaoRes->IsSameTextureSize(width, height) ? pResManager->CreateOrGetTextureView(pPrevSsaoRes) : pSsaoSRV;
+	auto pPrevSsgiSRV = pPrevSsgiRes && pPrevSsgiRes->IsSameTextureSize(width, height) ? pResManager->CreateOrGetTextureView(pPrevSsgiRes) : pSsgiSRV;
 
 	auto pDenoiseAORes = pResManager->GetRenderGraphResource(kDenoiseAOID);
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
@@ -401,8 +406,8 @@ void DenoisePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -453,8 +458,8 @@ std::vector<sl12::TransientResource> IndirectLightPass::GetOutputResources(const
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
@@ -505,8 +510,8 @@ void IndirectLightPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
 	// dispatch.
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 

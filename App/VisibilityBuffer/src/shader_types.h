@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 enum ShaderName
 {
@@ -16,6 +16,7 @@ enum ShaderName
 	LightingEVSMC,
 	IndirectC,
 	FullscreenVV,
+	UpscaleP,
 	TonemapP,
 	ClassifyC,
 	MatDepthP,
@@ -109,6 +110,7 @@ static const char* kShaderFileAndEntry[] = {
 	"lighting_evsm.c.hlsl",				"main",
 	"indirect_lighting.c.hlsl",			"main",
 	"fullscreen.vv.hlsl",				"main",
+	"upscale.p.hlsl",					"main",
 	"tonemap.p.hlsl",					"main",
 	"classify.c.hlsl",					"main",
 	"material_depth.p.hlsl",			"main",

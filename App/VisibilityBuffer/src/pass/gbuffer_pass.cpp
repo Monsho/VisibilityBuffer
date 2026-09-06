@@ -1,4 +1,4 @@
-﻿#include "gbuffer_pass.h"
+#include "gbuffer_pass.h"
 #include "render_resource_settings.h"
 #include "../shader_types.h"
 
@@ -309,8 +309,8 @@ std::vector<sl12::TransientResource> DepthPrePass::GetOutputResources(const sl12
 
 	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	depth.desc.bIsTexture = true;
 	depth.desc.textureDesc.Initialize2D(kDepthFormat, width, height, 1, 1, 0);
 	depth.desc.textureDesc.clearDepth = 0.0f;
@@ -338,8 +338,8 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
-	vp.Width = (float)pScene_->GetScreenWidth();
-	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.Width = (float)pScene_->GetSceneRenderInfo().GetRenderWidth();
+	vp.Height = (float)pScene_->GetSceneRenderInfo().GetRenderHeight();
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
@@ -347,8 +347,8 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	// set scissor rect.
 	D3D12_RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = pScene_->GetScreenWidth();
-	rect.bottom = pScene_->GetScreenHeight();
+	rect.right = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	rect.bottom = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	// set descriptors.
@@ -624,8 +624,8 @@ std::vector<sl12::TransientResource> GBufferPass::GetOutputResources(const sl12:
 	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
 	sl12::TransientResource mip(kMiplevelFeedbackID, sl12::TransientState::UnorderedAccess);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	accum.desc.historyFrame = 1;
@@ -685,8 +685,8 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
-	vp.Width = (float)pScene_->GetScreenWidth();
-	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.Width = (float)pScene_->GetSceneRenderInfo().GetRenderWidth();
+	vp.Height = (float)pScene_->GetSceneRenderInfo().GetRenderHeight();
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
@@ -694,8 +694,8 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	// set scissor rect.
 	D3D12_RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = pScene_->GetScreenWidth();
-	rect.bottom = pScene_->GetScreenHeight();
+	rect.right = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	rect.bottom = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
@@ -878,7 +878,7 @@ std::vector<sl12::TransientResource> MotionVectorPass::GetOutputResources(const 
 
 	sl12::TransientResource mv(kMotionVectorID, sl12::TransientState::UnorderedAccess);
 	mv.desc.bIsTexture = true;
-	mv.desc.textureDesc.Initialize2D(kMotionVectorFormat, pScene_->GetScreenWidth(), pScene_->GetScreenHeight(), 1, 1, 0);
+	mv.desc.textureDesc.Initialize2D(kMotionVectorFormat, pScene_->GetSceneRenderInfo().GetRenderWidth(), pScene_->GetSceneRenderInfo().GetRenderHeight(), 1, 1, 0);
 	ret.push_back(mv);
 
 	return ret;
@@ -902,8 +902,8 @@ void MotionVectorPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rs_, &descSet);
 
-	UINT x = (pScene_->GetScreenWidth() + 7) / 8;
-	UINT y = (pScene_->GetScreenHeight() + 7) / 8;
+	UINT x = (pScene_->GetSceneRenderInfo().GetRenderWidth() + 7) / 8;
+	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 }
 
@@ -995,8 +995,8 @@ std::vector<sl12::TransientResource> XluPass::GetOutputResources(const sl12::Ren
 	sl12::TransientResource accum(kLightAccumID, sl12::TransientState::RenderTarget);
 	sl12::TransientResource depth(kDepthBufferID, sl12::TransientState::DepthStencil);
 
-	sl12::u32 width = pScene_->GetScreenWidth();
-	sl12::u32 height = pScene_->GetScreenHeight();
+	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	accum.desc.bIsTexture = true;
 	accum.desc.textureDesc.Initialize2D(kLightAccumFormat, width, height, 1, 1, 0);
 	depth.desc.bIsTexture = true;
@@ -1028,8 +1028,8 @@ void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	// set viewport.
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = vp.TopLeftY = 0.0f;
-	vp.Width = (float)pScene_->GetScreenWidth();
-	vp.Height = (float)pScene_->GetScreenHeight();
+	vp.Width = (float)pScene_->GetSceneRenderInfo().GetRenderWidth();
+	vp.Height = (float)pScene_->GetSceneRenderInfo().GetRenderHeight();
 	vp.MinDepth = 0.0f;
 	vp.MaxDepth = 1.0f;
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
@@ -1037,8 +1037,8 @@ void XluPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	// set scissor rect.
 	D3D12_RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = pScene_->GetScreenWidth();
-	rect.bottom = pScene_->GetScreenHeight();
+	rect.right = pScene_->GetSceneRenderInfo().GetRenderWidth();
+	rect.bottom = pScene_->GetSceneRenderInfo().GetRenderHeight();
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
