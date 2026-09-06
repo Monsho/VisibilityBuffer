@@ -41,15 +41,15 @@ PSOutput main(PSInput In)
 {
 	PSOutput Out = (PSOutput)0;
 
-	float4 baseColor = texColor.Sample(samLinearWrap, In.uv);
+	float4 baseColor = texColor.SampleBias(samLinearWrap, In.uv, cbScene.miplevelBias);
 #if ENABLE_MASKED
 	if (baseColor.a < 0.333)
 	{
 		discard;
 	}
 #endif
-	float3 orm = texORM.Sample(samLinearWrap, In.uv);
-	float3 emissive = texEmissive.Sample(samLinearWrap, In.uv);
+	float3 orm = texORM.SampleBias(samLinearWrap, In.uv, cbScene.miplevelBias);
+	float3 emissive = texEmissive.SampleBias(samLinearWrap, In.uv, cbScene.miplevelBias);
 
 	uint2 PixPos = uint2(In.position.xy);
 	uint2 TileIndex = PixPos / 4;
@@ -59,10 +59,10 @@ PSOutput main(PSInput In)
 	{
 		rwFeedback[TileIndex] = uint2(cbMaterialTile.materialIndex, neededMiplevel);
 	}
-	
+
 	float3 T, B, N;
 	GetTangentSpace(In.normal, In.tangent, T, B, N);
-	float3 normalInTS = texNormal.Sample(samLinearWrap, In.uv).xyz * 2 - 1;
+	float3 normalInTS = texNormal.SampleBias(samLinearWrap, In.uv, cbScene.miplevelBias).xyz * 2 - 1;
 	normalInTS *= float3(1, -sign(In.tangent.w), 1);
 	float3 normalInWS;
 	if (cbDetail.detailType >= 2)

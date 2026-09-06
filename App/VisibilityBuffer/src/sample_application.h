@@ -142,7 +142,8 @@ private:
 	int						lastMouseX_, lastMouseY_;
 
 	// screen parameters.
-	float					screenPercentage_ = 1.0f;
+	int upscaleMethod_ = 0;
+	int upscaleQuality_ = 0;
 
 	// rendering parameters.
 	bool					bEnableVisibilityBuffer_ = false;

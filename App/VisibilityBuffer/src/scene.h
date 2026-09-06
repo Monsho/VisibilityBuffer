@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <memory>
+#include "xess_context.h"
 #include <queue>
 #include <vector>
 
@@ -206,7 +207,8 @@ struct RenderPassSetupDesc
 	bool bDebugDdgi = false;
 	bool bUseWater = false;
 	int waterMethod = 1;
-	float screenPercentage = 1.0f;
+	bool useXess = false;
+	int upscaleQuality = 0;
 	int debugMode = 0;
 
 	bool operator==(const RenderPassSetupDesc& rhs) const
@@ -226,7 +228,8 @@ struct RenderPassSetupDesc
 			&& (bDebugDdgi == rhs.bDebugDdgi)
 			&& (bUseWater == rhs.bUseWater)
 			&& (waterMethod == rhs.waterMethod)
-			&& (screenPercentage == rhs.screenPercentage)
+			&& (useXess == rhs.useXess)
+			&& (upscaleQuality == rhs.upscaleQuality)
 			&& (debugMode == rhs.debugMode);
 	}
 	bool operator!=(const RenderPassSetupDesc& rhs) const
@@ -239,19 +242,20 @@ struct RenderPassSetupDesc
 class SceneRenderInfo
 {
 public:
-	void SetResolution(sl12::u32 width, sl12::u32 height, float percentage);
+	void SetResolution(sl12::u32 width, sl12::u32 height, sl12::u32 renderWidth, sl12::u32 renderHeight);
 
 	sl12::u32 GetDisplayWidth() const { return displayWidth_; }
 	sl12::u32 GetDisplayHeight() const { return displayHeight_; }
 	sl12::u32 GetRenderWidth() const { return renderWidth_; }
 	sl12::u32 GetRenderHeight() const { return renderHeight_; }
 	float GetScreenPercentage() const { return screenPercentage_; }
+	float GetMiplevelBias() const { return miplevelBias_; }
 
 private:
 	sl12::u32 displayWidth_, displayHeight_;
 	sl12::u32 renderWidth_, renderHeight_;
-	float screenPercentage_;
-	float miplevelOffset_;
+	float screenPercentage_ = 1.0f;
+	float miplevelBias_ = 0.0f;
 };
 
 //----
@@ -287,7 +291,7 @@ public:
 	void Finalize();
 
 	void SetViewportResolution(sl12::u32 width, sl12::u32 height);
-	void SetScreenPercentage(float percentage);
+	XessContext& GetXess() { return xess_; }
 	bool CreateSceneMeshes(int meshType);
 	void CreateMiplevelFeedback();
 	void CreateMeshletBounds(sl12::CommandList* pCmdList);
@@ -315,7 +319,7 @@ public:
 	}
 	float GetScreenPercentage() const
 	{
-		return screenPercentage_;
+		return renderInfo_.GetScreenPercentage();
 	}
 
 	const SceneRenderInfo& GetSceneRenderInfo() const
@@ -468,7 +472,8 @@ private:
 	RenderSystem*	pRenderSystem_ = nullptr;
 
 	sl12::u32		screenWidth_, screenHeight_;
-	float			screenPercentage_ = 1.0f;
+	XessContext xess_;
+	bool renderGraphUsesXess_ = false;
 
 	SceneRenderInfo renderInfo_;
 

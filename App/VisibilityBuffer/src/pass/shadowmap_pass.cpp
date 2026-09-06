@@ -170,6 +170,7 @@ void ShadowMapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResource
 	dsOpaque.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
 	dsMasked.Reset();
 	dsMasked.SetVsCbv(0, pScene_->GetTemporalCBs().hShadowCB.GetCBV()->GetDescInfo().cpuHandle);
+	dsMasked.SetPsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 
 	sl12::GraphicsPipelineState* NowPSO = nullptr;
 

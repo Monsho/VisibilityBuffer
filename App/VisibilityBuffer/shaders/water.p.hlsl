@@ -131,7 +131,7 @@ PSOutput main(PSInput In)
 	if (cbWater.bUseNormalTex)
 	{
 		float2 WaterUV = In.worldPos.xz * 0.01;
-		WaterNormal = normalize(lerp(WaterNormal, rNormal.Sample(samLinearWrap, WaterUV).xzy * 2.0 - 1.0, cbWater.normalIntensity));
+		WaterNormal = normalize(lerp(WaterNormal, rNormal.SampleBias(samLinearWrap, WaterUV, cbScene.miplevelBias).xzy * 2.0 - 1.0, cbWater.normalIntensity));
 	}
 	float3 eyePos = cbScene.eyePosition.xyz;
 	float3 ViewVec = normalize(In.worldPos - eyePos);

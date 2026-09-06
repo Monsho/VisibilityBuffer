@@ -114,15 +114,19 @@ void StandardCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 	// feedback maplevel.
 	FeedbackMiplevel(pixelPos, attr, matIndex);
 
+	float mipBiasedFactor = exp2(cbScene.miplevelBias);
+	float2 mipBiasedDDX = attr.texcoordDDX * mipBiasedFactor;
+	float2 mipBiasedDDY = attr.texcoordDDY * mipBiasedFactor;
+
 	// sample texture.
-	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).xyz * 2 - 1;
+	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).xyz * 2 - 1;
 
 	float3 normalV = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
 	float4 tangentV = float4(normalize(mul((float3x3)inData.mtxLocalToWorld, attr.tangent.xyz)), attr.tangent.w);
-	
+
 	float3 T, B, N;
 	GetTangentSpace(normalV, tangentV, T, B, N);
 	normalInTS *= float3(1, -sign(tangentV.w), 1);
@@ -154,7 +158,7 @@ void StandardCS(uint gid : SV_GroupID, uint gtid : SV_GroupThreadID)
 		}
 		normalInWS = ConvertVectorTangetToWorld(normalInTS, T, B, N);
 	}
-	
+
 	rwAccum[pixelPos] = float4(emissive, 0);
 	rwColor[pixelPos] = float4(bc, 1);
 	rwORM[pixelPos] = float4(orm, 1);

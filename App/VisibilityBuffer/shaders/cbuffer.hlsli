@@ -29,6 +29,7 @@ struct SceneCB
 	float2		nearFar;
 	uint2		feedbackIndex;
 	uint		frameIndex;
+	float		miplevelBias;
 };
 
 struct LightCB

@@ -186,7 +186,7 @@ DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 	psoOpaqueDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoMasked_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	psoMaskedDS_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
-	
+
 	// init root signature.
 	rsOpaque_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthOpaqueVV), nullptr, nullptr, nullptr, nullptr);
 	rsMasked_->Initialize(pDev, pRenderSys->GetShader(ShaderName::DepthMaskedVV), pRenderSys->GetShader(ShaderName::DepthMaskedP), nullptr, nullptr, nullptr);
@@ -270,7 +270,7 @@ DepthPrePass::DepthPrePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* 
 		}
 
 		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
-		
+
 		if (!psoMaskedDS_->Initialize(pDev, desc))
 		{
 			sl12::ConsolePrint("Error: failed to init depth masked doublesided pso.");
@@ -299,7 +299,7 @@ std::vector<sl12::TransientResource> DepthPrePass::GetInputResources(const sl12:
 	std::vector<sl12::TransientResource> ret;
 
 	ret.push_back(sl12::TransientResource(kMeshletIndirectArgID, sl12::TransientState::IndirectArgument));
-	
+
 	return ret;
 }
 
@@ -358,11 +358,12 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	dsOpaque.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	dsMasked.Reset();
 	dsMasked.SetVsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	dsMasked.SetPsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	dsMasked.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
 
 	sl12::GraphicsPipelineState* NowPSO = nullptr;
 	sl12::RootSignature* NowRS = nullptr;
-	
+
 	// draw meshes.
 	auto pMR = pScene_->GetMeshletResource();
 	auto&& instances = pMR->GetMeshInstanceInfos();
@@ -373,7 +374,7 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 	{
 		auto resMesh = instance.meshInstance.lock()->GetParentResource();
 		auto resInfo = pMR->GetMeshResInfo(resMesh);
-		
+
 		// set mesh constant.
 		dsOpaque.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 		dsMasked.SetVsCbv(1, pScene_->GetTemporalCBs().hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
@@ -440,7 +441,7 @@ void DepthPrePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceM
 				pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 				NowPSO = pso;
 			}
-			
+
 			if (isSetTex)
 			{
 				auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
@@ -699,7 +700,7 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
 
 	auto&& TempCB = pScene_->GetTemporalCBs();
-	
+
 	// set descriptors.
 	auto detail_res = const_cast<sl12::ResourceItemTextureBase*>(pScene_->GetDetailTexHandle().GetItem<sl12::ResourceItemTextureBase>());
 	sl12::DescriptorSet descSet;
@@ -732,7 +733,7 @@ void GBufferPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceMa
 		// select pso.
 		auto resMesh = instance.meshInstance.lock()->GetParentResource();
 		auto resInfo = pMR->GetMeshResInfo(resMesh);
-		
+
 		// set mesh constant.
 		descSet.SetVsCbv(1, TempCB.hMeshCBs[meshIndex].GetCBV()->GetDescInfo().cpuHandle);
 

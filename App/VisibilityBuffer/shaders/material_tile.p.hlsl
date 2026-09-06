@@ -73,20 +73,24 @@ PSOutput main(PSInput In)
 			cbScene.mtxWorldToProj, cbScene.screenSize);
 	}
 
+	float mipBiasedFactor = exp2(cbScene.miplevelBias);
+	float2 mipBiasedDDX = attr.texcoordDDX * mipBiasedFactor;
+	float2 mipBiasedDDY = attr.texcoordDDY * mipBiasedFactor;
+
 	// miplevel feedback.
 	uint2 TileIndex = pos / 4;
 	uint2 TilePos = pos % 4;
-	uint neededMiplevel = uint(ComputeMiplevelCS(attr.texcoord, attr.texcoordDDX, attr.texcoordDDY, 4096));
+	uint neededMiplevel = uint(ComputeMiplevelCS(attr.texcoord, mipBiasedDDX, mipBiasedDDY, 4096));
 	if (all(TilePos == cbScene.feedbackIndex))
 	{
 		rwFeedback[TileIndex] = uint2(cbMaterialTile.materialIndex, neededMiplevel);
 	}
 
 	// sample texture.
-	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).rgb;
-	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, attr.texcoordDDX, attr.texcoordDDY).xyz * 2 - 1;
+	float3 bc = texColor.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 orm = texORM.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 emissive = texEmissive.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).rgb;
+	float3 normalInTS = texNormal.SampleGrad(samLinearWrap, attr.texcoord, mipBiasedDDX, mipBiasedDDY).xyz * 2 - 1;
 
 	float3 normalV = normalize(mul((float3x3)inData.mtxLocalToWorld, attr.normal));
 	float4 tangentV = float4(normalize(mul((float3x3)inData.mtxLocalToWorld, attr.tangent.xyz)), attr.tangent.w);

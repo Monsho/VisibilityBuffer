@@ -14,7 +14,7 @@ SamplerState		samLinearWrap	: register(s0);
 
 void main(PSInput In)
 {
-	float4 baseColor = texColor.Sample(samLinearWrap, In.uv);
+	float4 baseColor = texColor.SampleBias(samLinearWrap, In.uv, cbScene.miplevelBias);
 	if (baseColor.a < 0.333)
 	{
 		discard;

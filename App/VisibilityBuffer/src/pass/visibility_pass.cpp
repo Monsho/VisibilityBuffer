@@ -651,7 +651,7 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	descSet.SetMsSrv(4, pDrawCallSRV->GetDescInfo().cpuHandle);
 	// ps
 	descSet.SetPsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
-	
+
 	// draw meshes.
 	auto&& cbvMan = pRenderSystem_->GetCbvManager();
 	auto pMR = pScene_->GetMeshletResource();
@@ -663,7 +663,7 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	{
 		auto resMesh = instance.meshInstance.lock()->GetParentResource();
 		auto resInfo = pMR->GetMeshResInfo(resMesh);
-		
+
 		const sl12::BufferView* pMeshletBoundSrv = pMR->GetMeshletBoundsSRV(resMesh);
 
 		// opaque.
@@ -702,17 +702,17 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 			auto submeshInfo = resInfo->nonXluSubmeshInfos[submeshIndex];
 			auto material = materials[submeshInfo.materialIndex].pResMaterial;
 			meshletCnt = (sl12::u32)submeshes[submeshInfo.submeshIndex].meshlets.size();
-		
+
 			auto bc_tex_view = GetTextureView(material->baseColorTex, pDevice_->GetDummyTextureView(sl12::DummyTex::Black));
 			descSet.SetPsSrv(0, bc_tex_view->GetDescInfo().cpuHandle);
 			descSet.SetPsSampler(0, pRenderSystem_->GetLinearWrapSampler()->GetDescInfo().cpuHandle);
-		
+
 			cb.meshletCount = meshletCnt;
 			cb.localMeshletIndex = localMeshletIndex;
 			sl12::CbvHandle hMaskedCB = cbvMan->GetTemporal(&cb, sizeof(cb));
 			descSet.SetAsCbv(3, hMaskedCB.GetCBV()->GetDescInfo().cpuHandle);
 			descSet.SetMsCbv(3, hMaskedCB.GetCBV()->GetDescInfo().cpuHandle);
-		
+
 			// set pipeline.
 			sl12::GraphicsPipelineState* pso = &psoList[material->cullMode == sl12::ResourceMeshMaterialCullMode::None ? EPipelineType::MaskedDS : EPipelineType::Masked];
 			if (pso != NowPSO)
@@ -721,7 +721,7 @@ void VisibilityMsPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 				NowPSO = pso;
 			}
 			pCmdList->SetMeshRootSignatureAndDescriptorSet(&rs_, &descSet);
-		
+
 			dispatchCnt = (meshletCnt + kLaneCount - 1) / kLaneCount;
 			pCmdList->GetLatestCommandList()->DispatchMesh(dispatchCnt, 1, 1);
 			meshletTotal += meshletCnt;
@@ -790,7 +790,7 @@ std::vector<sl12::TransientResource> MaterialDepthPass::GetInputResources(const 
 	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
-	
+
 	return ret;
 }
 
@@ -807,7 +807,7 @@ std::vector<sl12::TransientResource> MaterialDepthPass::GetOutputResources(const
 	md.desc.textureDesc.clearDepth = 0.0f;
 
 	ret.push_back(md);
-	
+
 	return ret;
 }
 
@@ -827,7 +827,7 @@ void MaterialDepthPass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pMeshletSRV = pResManager->CreateOrGetBufferView(pMeshletRes, 0, 0, (sl12::u32)pMeshletRes->pBuffer->GetBufferDesc().stride);
 	auto pDrawCallSRV = pResManager->CreateOrGetBufferView(pDrawCallRes, 0, 0, (sl12::u32)pDrawCallRes->pBuffer->GetBufferDesc().stride);
 	auto pMatDepthDSV = pResManager->CreateOrGetDepthStencilView(pMatDepthRes);
-	
+
 	D3D12_CPU_DESCRIPTOR_HANDLE dsv = pMatDepthDSV->GetDescInfo().cpuHandle;
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
 
@@ -916,7 +916,7 @@ std::vector<sl12::TransientResource> ClassifyPass::GetInputResources(const sl12:
 	ret.push_back(sl12::TransientResource(kSubmeshBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kMeshletBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDrawCallBufferID, sl12::TransientState::ShaderResource));
-	
+
 	return ret;
 }
 

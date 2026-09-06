@@ -1,3 +1,6 @@
 [submodule "SampleLib12"]
 	path = SampleLib12
 	url = https://github.com/Monsho/SampleLib12
+[submodule "ThirdParty/xess"]
+	path = ThirdParty/xess
+	url = https://github.com/intel/xess.git

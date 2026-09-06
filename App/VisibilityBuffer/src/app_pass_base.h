@@ -24,6 +24,8 @@ enum class AppPassType
 	HiZ,
 	HiZafterFirstCull,
 	Upscale,
+	XessVelocity,
+	XessUpscale,
 	Tonemap,
 	Deinterleave,
 	SSAO,

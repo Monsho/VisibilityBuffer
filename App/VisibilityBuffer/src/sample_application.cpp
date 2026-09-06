@@ -213,6 +213,11 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		auto up = DirectX::XMLoadFloat3(&upVec);
 		auto mtxWorldToView = DirectX::XMMatrixLookAtRH(cp, DirectX::XMVectorAdd(cp, dir), up);
 		auto mtxViewToClip = sl12::MatrixPerspectiveInfiniteInverseFovRH(DirectX::XMConvertToRadians(kFovY), (float)displayWidth_ / (float)displayHeight_, Zn);
+		auto& xess = scene_->GetXess();
+		auto jitter = xess.Jitter();
+		// Post-projection translation: +X right, +Y down, measured in input pixels.
+		mtxViewToClip *= DirectX::XMMatrixTranslation(
+			2.0f * jitter.x / xess.InputWidth(), -2.0f * jitter.y / xess.InputHeight(), 0.0f);
 		auto mtxWorldToClip = mtxWorldToView * mtxViewToClip;
 		auto mtxClipToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToClip);
 		auto mtxViewToWorld = DirectX::XMMatrixInverse(nullptr, mtxWorldToView);
@@ -255,6 +260,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbScene.feedbackIndex.x = (scene_->GetFrameIndex() % 16) % 4;
 		cbScene.feedbackIndex.y = (scene_->GetFrameIndex() % 16) / 4;
 		cbScene.frameIndex = (sl12::u32)scene_->GetFrameIndex();
+		cbScene.miplevelBias = scene_->GetSceneRenderInfo().GetMiplevelBias();
 
 		OutCBs.hSceneCB = cbvMan->GetTemporal(&cbScene, sizeof(cbScene));
 
@@ -503,7 +509,13 @@ bool SampleApplication::Execute()
 		// rendering settings.
 		if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImGui::SliderFloat("Screen Percentage", &screenPercentage_, 0.5f, 1.0f);
+			ImGui::Combo("Upscaler", &upscaleMethod_, "Bilinear\0Intel XeSS-SR\0");
+			ImGui::Combo("Upscale Quality", &upscaleQuality_, "Native AA\0Ultra Quality Plus\0Ultra Quality\0Quality\0Balanced\0Performance\0Ultra Performance\0");
+			auto&& resolution = scene_->GetSceneRenderInfo();
+			ImGui::Text("Render: %u x %u", resolution.GetRenderWidth(), resolution.GetRenderHeight());
+			if (upscaleMethod_ == 1 && !scene_->GetXess().Enabled())
+				ImGui::TextUnformatted("XeSS unavailable: using Bilinear");
+			if (ImGui::Button("Reset Upscaler History")) scene_->GetXess().ResetHistory();
 			if (ImGui::Checkbox("Visibility Buffer", &bEnableVisibilityBuffer_))
 			{}
 
@@ -565,6 +577,9 @@ bool SampleApplication::Execute()
 			};
 			ImGui::Combo("Baes Vec", &ssaoBaseVecType_, kBaseVecs, ARRAYSIZE(kBaseVecs));
 			ImGui::Checkbox("Deinterleave", &bIsDeinterleave_);
+			auto&& diSize = scene_->GetSceneRenderInfo();
+			if (bIsDeinterleave_ && ((diSize.GetRenderWidth() % 4) || (diSize.GetRenderHeight() % 4)))
+				ImGui::TextUnformatted("Using non-deinterleaved SSGI for this SDK resolution");
 		}
 
 		// denoise settings.
@@ -799,7 +814,8 @@ bool SampleApplication::Execute()
 	setupDesc.bDebugDdgi = bDebugDdgi_;
 	setupDesc.bUseWater = bEnableWater_;
 	setupDesc.waterMethod = waterMethod_;
-	setupDesc.screenPercentage = screenPercentage_;
+	setupDesc.useXess = upscaleMethod_ == 1;
+	setupDesc.upscaleQuality = upscaleQuality_;
 	setupDesc.debugMode = displayMode_;
 	scene_->SetupRenderPass(pSwapchainTarget, setupDesc);
 	scene_->GatherRenderCommands();
@@ -813,6 +829,7 @@ bool SampleApplication::Execute()
 	meshMan->BeginNewFrame(pFrameStartCmdList);
 	cbvMan->BeginNewFrame();
 	renderSys_->GetRTPipelineManager()->BeginNewFrame();
+	scene_->GetXess().BeginFrame();
 
 	// create scene constant buffer.
 	auto&& TempCB = scene_->GetTemporalCBs();

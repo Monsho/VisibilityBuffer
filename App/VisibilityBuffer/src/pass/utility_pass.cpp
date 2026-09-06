@@ -342,7 +342,7 @@ void HiZPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManage
 	{
 		auto pUAV0 = pResManager->CreateOrGetUnorderedAccessTextureView(pHiZRes, i);
 		auto pUAV1 = pResManager->CreateOrGetUnorderedAccessTextureView(pHiZRes, i + 1);
-		
+
 		// set descriptors.
 		sl12::DescriptorSet descSet;
 		descSet.Reset();
@@ -381,24 +381,30 @@ UpscalePass::UpscalePass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pS
 	rs_ = sl12::MakeUnique<sl12::RootSignature>(pDev);
 	pso_ = sl12::MakeUnique<sl12::GraphicsPipelineState>(pDev);
 	rs_->Initialize(pDev, pRenderSys->GetShader(ShaderName::FullscreenVV), pRenderSys->GetShader(ShaderName::UpscaleP), nullptr, nullptr, nullptr);
-	sl12::GraphicsPipelineStateDesc desc{};
-	desc.pRootSignature = &rs_;
-	desc.pVS = pRenderSys->GetShader(ShaderName::FullscreenVV);
-	desc.pPS = pRenderSys->GetShader(ShaderName::UpscaleP);
-	desc.blend.sampleMask = UINT_MAX;
-	desc.blend.rtDesc[0].writeMask = 0xf;
-	desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
-	desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
-	desc.rasterizer.isDepthClipEnable = true;
-	desc.rasterizer.isFrontCCW = true;
-	desc.depthStencil.isDepthEnable = false;
-	desc.depthStencil.isDepthWriteEnable = false;
-	desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	desc.numRTVs = 1;
-	desc.rtvFormats[0] = kLightAccumFormat;
-	desc.dsvFormat = DXGI_FORMAT_UNKNOWN;
-	desc.multisampleCount = 1;
-	if (!pso_->Initialize(pDev, desc)) sl12::ConsolePrint("Error: failed to init upscale pso.");
+
+	{
+		sl12::GraphicsPipelineStateDesc desc{};
+		desc.pRootSignature = &rs_;
+		desc.pVS = pRenderSys->GetShader(ShaderName::FullscreenVV);
+		desc.pPS = pRenderSys->GetShader(ShaderName::UpscaleP);
+		desc.blend.sampleMask = UINT_MAX;
+		desc.blend.rtDesc[0].writeMask = 0xf;
+		desc.rasterizer.cullMode = D3D12_CULL_MODE_NONE;
+		desc.rasterizer.fillMode = D3D12_FILL_MODE_SOLID;
+		desc.rasterizer.isDepthClipEnable = true;
+		desc.rasterizer.isFrontCCW = true;
+		desc.depthStencil.isDepthEnable = false;
+		desc.depthStencil.isDepthWriteEnable = false;
+		desc.primTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		desc.numRTVs = 1;
+		desc.rtvFormats[0] = kLightAccumFormat;
+		desc.dsvFormat = DXGI_FORMAT_UNKNOWN;
+		desc.multisampleCount = 1;
+		if (!pso_->Initialize(pDev, desc))
+		{
+			sl12::ConsolePrint("Error: failed to init upscale pso.");
+		}
+	}
 }
 
 UpscalePass::~UpscalePass() { pso_.Reset(); rs_.Reset(); }
@@ -411,29 +417,36 @@ std::vector<sl12::TransientResource> UpscalePass::GetInputResources(const sl12::
 std::vector<sl12::TransientResource> UpscalePass::GetOutputResources(const sl12::RenderPassID&) const
 {
 	auto&& info = pScene_->GetSceneRenderInfo();
+
 	sl12::TransientResource output(kUpscaledLightAccumID, sl12::TransientState::RenderTarget);
 	output.desc.textureDesc.Initialize2D(kLightAccumFormat, info.GetDisplayWidth(), info.GetDisplayHeight(), 1, 1, 0);
+
 	return { output };
 }
 
 void UpscalePass::Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID&)
 {
 	GPU_MARKER(pCmdList, 1, "UpscalePass");
+
 	auto pSource = pResManager->GetRenderGraphResource(kLightAccumID);
 	auto pOutput = pResManager->GetRenderGraphResource(kUpscaledLightAccumID);
 	auto pSourceSRV = pResManager->CreateOrGetTextureView(pSource);
 	auto pOutputRTV = pResManager->CreateOrGetRenderTargetView(pOutput);
 	auto rtv = pOutputRTV->GetDescInfo().cpuHandle;
+
 	pCmdList->GetLatestCommandList()->OMSetRenderTargets(1, &rtv, false, nullptr);
+
 	auto&& info = pScene_->GetSceneRenderInfo();
 	D3D12_VIEWPORT vp{ 0.0f, 0.0f, (float)info.GetDisplayWidth(), (float)info.GetDisplayHeight(), 0.0f, 1.0f };
 	D3D12_RECT rect{ 0, 0, (LONG)info.GetDisplayWidth(), (LONG)info.GetDisplayHeight() };
 	pCmdList->GetLatestCommandList()->RSSetViewports(1, &vp);
 	pCmdList->GetLatestCommandList()->RSSetScissorRects(1, &rect);
+
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetPsSrv(0, pSourceSRV->GetDescInfo().cpuHandle);
 	descSet.SetPsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
+
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
 	pCmdList->GetLatestCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	pCmdList->SetGraphicsRootSignatureAndDescriptorSet(&rs_, &descSet);

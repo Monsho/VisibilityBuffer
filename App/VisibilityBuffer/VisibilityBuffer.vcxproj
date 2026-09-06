@@ -83,7 +83,23 @@
       <Command>xcopy $(SolutionDir)..\SampleLib12\dll\*.dll $(SolutionDir)$(Platform)\$(Configuration)\ /Y /C</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\ThirdParty\xess\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(ProjectDir)..\..\ThirdParty\xess\lib\libxess.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Target Name="CopyXessRuntime" AfterTargets="Build">
+    <Copy SourceFiles="$(ProjectDir)..\..\ThirdParty\xess\bin\libxess.dll" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
   <ItemGroup>
+    <ClCompile Include="src\xess_context.cpp" />
+    <ClCompile Include="src\pass\xess_pass.cpp" />
+    <ClInclude Include="src\xess_context.h" />
+    <ClInclude Include="src\pass\xess_pass.h" />
+    <None Include="shaders\xess_velocity.c.hlsl" />
     <None Include="shaders\depth_reduction.c.hlsl" />
     <None Include="shaders\prefix_sum.c.hlsl" />
     <None Include="shaders\material_binning.c.hlsl" />

@@ -7,6 +7,7 @@
 #include "pass/gbuffer_pass.h"
 #include "pass/shadowmap_pass.h"
 #include "pass/utility_pass.h"
+#include "pass/xess_pass.h"
 #include "pass/indirect_light_pass.h"
 #include "pass/visibility_pass.h"
 #include "pass/raytracing_pass.h"
@@ -141,19 +142,15 @@ void RenderSystem::WaitLoadAndCompile()
 
 //----------------
 //----
-void SceneRenderInfo::SetResolution(sl12::u32 width, sl12::u32 height, float percentage)
+void SceneRenderInfo::SetResolution(sl12::u32 width, sl12::u32 height, sl12::u32 renderWidth, sl12::u32 renderHeight)
 {
 	displayWidth_ = width;
 	displayHeight_ = height;
 
-	// Deinterleaveで縦横を4分割するため、アスペクト比を維持しつつ4の倍数になるように調整
-	float g = static_cast<float>(std::gcd(width, height));
-	int step = std::max(1, static_cast<int>(std::round((percentage * g) / 4.0f)));
-	float pp = (4.0f / g) * static_cast<float>(step);
-	renderWidth_ = static_cast<sl12::u32>(std::round(static_cast<float>(width) * pp));
-	renderHeight_ = static_cast<sl12::u32>(std::round(static_cast<float>(height) * pp));
-	screenPercentage_ = pp;
-	miplevelOffset_ = -log2(pp);
+	renderWidth_ = renderWidth;
+	renderHeight_ = renderHeight;
+	screenPercentage_ = float(renderWidth) / width;
+	miplevelBias_ = log2(screenPercentage_);
 }
 
 
@@ -240,13 +237,6 @@ void Scene::SetViewportResolution(sl12::u32 width, sl12::u32 height)
 {
 	screenWidth_ = width;
 	screenHeight_ = height;
-}
-
-//----
-void Scene::SetScreenPercentage(float percentage)
-{
-	assert(0.0 < percentage && percentage <= 1.0);
-	screenPercentage_ = percentage;
 }
 
 //----
@@ -598,6 +588,16 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
+		auto pass = std::make_unique<XessVelocityPass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::XessVelocity] = renderGraph_->AddPass(sl12::RenderPassID("XessVelocity"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
+		auto pass = std::make_unique<XessUpscalePass>(pDevice_, pRenderSystem_, this);
+		passNodes_[AppPassType::XessUpscale] = renderGraph_->AddPass(sl12::RenderPassID("XessUpscale"), pass.get());
+		passes_.push_back(std::move(pass));
+	}
+	{
 		auto pass = std::make_unique<TonemapPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Tonemap] = renderGraph_->AddPass(kTonemapPass, pass.get());
 		passes_.push_back(std::move(pass));
@@ -779,6 +779,7 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 
+	xess_.Configure(pDevice_->GetDeviceDep(), screenWidth_, screenHeight_, 0, false);
 	CreateSceneRenderInfo();
 	RenderPassSetupDesc defaultDesc;
 	SetupRenderPassGraph(defaultDesc);
@@ -787,8 +788,12 @@ bool Scene::InitRenderPass()
 }
 
 //----
-void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
+void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& requested)
 {
+	auto desc = requested;
+	// Exact SDK input sizes need not be divisible by four.
+	if ((renderInfo_.GetRenderWidth() % 4) || (renderInfo_.GetRenderHeight() % 4))
+		desc.bNeedDeinterleave = false;
 	bool bNeedDeinterleave = desc.ssaoType == 2 && desc.bNeedDeinterleave;
 
 	// setting.
@@ -908,8 +913,11 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	{
 		node = node.AddChild(passNodes_[AppPassType::DebugDDGI]);
 	}
-	node = node.AddChild(passNodes_[AppPassType::Upscale])
-		.AddChild(passNodes_[AppPassType::Tonemap]);
+	if (xess_.Enabled())
+		node = node.AddChild(passNodes_[AppPassType::XessVelocity]).AddChild(passNodes_[AppPassType::XessUpscale]);
+	else
+		node = node.AddChild(passNodes_[AppPassType::Upscale]);
+	node = node.AddChild(passNodes_[AppPassType::Tonemap]);
 	if (desc.debugMode != 0)
 	{
 		node = node.AddChild(passNodes_[AppPassType::Debug]);
@@ -994,16 +1002,25 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& desc)
 	    }
 	}
 
-	lastRenderPassDesc_ = desc;
+	lastRenderPassDesc_ = requested;
+	renderGraphUsesXess_ = xess_.Enabled();
 }
 
 //----
 void Scene::SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc)
 {
-	if (lastRenderPassDesc_ != desc)
+	const bool resolutionChanged = renderInfo_.GetDisplayWidth() != screenWidth_
+		|| renderInfo_.GetDisplayHeight() != screenHeight_;
+	if (resolutionChanged || lastRenderPassDesc_.useXess != desc.useXess
+		|| lastRenderPassDesc_.upscaleQuality != desc.upscaleQuality)
 	{
-		SetScreenPercentage(desc.screenPercentage);
+		pDevice_->WaitDrawDone();
+		xess_.Configure(pDevice_->GetDeviceDep(), screenWidth_, screenHeight_, desc.upscaleQuality, desc.useXess);
 		CreateSceneRenderInfo();
+	}
+	if (resolutionChanged || lastRenderPassDesc_ != desc || renderGraphUsesXess_ != xess_.Enabled())
+	{
+		xess_.ResetHistory();
 		SetupRenderPassGraph(desc);
 	}
 
@@ -1098,7 +1115,7 @@ void Scene::CreateMeshletResource()
 
 void Scene::CreateSceneRenderInfo()
 {
-	renderInfo_.SetResolution(screenWidth_, screenHeight_, screenPercentage_);
+	renderInfo_.SetResolution(screenWidth_, screenHeight_, xess_.InputWidth(), xess_.InputHeight());
 }
 
 void Scene::GatherRenderCommands()

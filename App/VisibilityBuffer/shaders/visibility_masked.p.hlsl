@@ -23,7 +23,7 @@ PSOutput main(PSInput In, uint primID : SV_PrimitiveID)
 {
 	PSOutput Out = (PSOutput)0;
 
-	float opacity = texBaseColor.Sample(samLinearWrap, In.texcoord).a;
+	float opacity = texBaseColor.SampleBias(samLinearWrap, In.texcoord, cbScene.miplevelBias).a;
 	if (opacity < 0.333)
 	{
 		discard;
