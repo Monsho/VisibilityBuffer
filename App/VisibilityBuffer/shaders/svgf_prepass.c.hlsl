@@ -20,7 +20,8 @@ float Luma(float3 c)
 void main(uint3 did : SV_DispatchThreadID)
 {
     uint2 pixPos = did.xy;
-    uint2 dim = (uint2)cbScene.screenSize;
+    uint2 dim;
+    rwPrepassGI.GetDimensions(dim.x, dim.y);
     if (any(pixPos >= dim))
     {
         return;
@@ -45,12 +46,10 @@ void main(uint3 did : SV_DispatchThreadID)
     float statW = 0.0;
 
     [loop]
-    for (int i = 0; i < loopCount; ++i)
+    for (int y = -kernelRadius; y <= kernelRadius; ++y)
     {
-        int x = (i % kernelWidth) - kernelRadius;
-        int y = (i / kernelWidth) - kernelRadius;
-        // [loop]
-        // for (int x = -kernelRadius; x <= kernelRadius; ++x)
+        [loop]
+        for (int x = -kernelRadius; x <= kernelRadius; ++x)
         {
             int2 p = clamp(int2(pixPos) + int2(x, y), int2(0, 0), int2(dim) - 1);
             float depth = texDepth[p];
@@ -88,13 +87,10 @@ void main(uint3 did : SV_DispatchThreadID)
     float sumW = 0.0;
 
     [loop]
-    for (int i = 0; i < loopCount; ++i)
-    // for (int y = -kernelRadius; y <= kernelRadius; ++y)
+    for (int y = -kernelRadius; y <= kernelRadius; ++y)
     {
-        int x = (i % kernelWidth) - kernelRadius;
-        int y = (i / kernelWidth) - kernelRadius;
-        // [loop]
-        // for (int x = -kernelRadius; x <= kernelRadius; ++x)
+        [loop]
+        for (int x = -kernelRadius; x <= kernelRadius; ++x)
         {
             int2 p = clamp(int2(pixPos) + int2(x, y), int2(0, 0), int2(dim) - 1);
             float depth = texDepth[p];
@@ -106,7 +102,7 @@ void main(uint3 did : SV_DispatchThreadID)
             float3 gi = texInputGI[p];
             float lum = Luma(gi);
             float clampedLum = clamp(lum, lumaMin, lumaMax);
-            float lumScale = (lum > 1e-4) ? (clampedLum / lum) : 0.0;
+            float lumScale = (lum > 1e-4) ? (clampedLum / lum) : 1.0;
             float3 clampedGi = gi * lumScale;
 
             float3 normal = normalize(texNormal[p].xyz * 2.0 - 1.0);

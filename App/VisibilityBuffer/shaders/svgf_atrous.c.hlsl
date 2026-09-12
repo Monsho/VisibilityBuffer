@@ -19,7 +19,8 @@ RWTexture2D<float3>     rwOutputGI : REG(u0);
 void main(uint3 did : SV_DispatchThreadID)
 {
     uint2 pixPos = did.xy;
-    uint2 dim = (uint2)cbScene.screenSize;
+    uint2 dim;
+    rwOutputGI.GetDimensions(dim.x, dim.y);
     if (any(pixPos >= dim))
     {
         return;

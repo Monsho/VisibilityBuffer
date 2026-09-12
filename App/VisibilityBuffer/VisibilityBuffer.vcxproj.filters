@@ -7,24 +7,102 @@
     <Filter Include="shaders">
       <UniqueIdentifier>{912323d3-9cc5-40cc-92a0-d8dac7a4c5b8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\pass">
+      <UniqueIdentifier>{30e1f4aa-b78b-49aa-a18a-b9f3c8f2b6c6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\pass\water_pass.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\sample_application.cpp">
       <Filter>src</Filter>
     </ClCompile>
+    <ClCompile Include="src\pass\gbuffer_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\indirect_light_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\meshlet_resource.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rt_pipeline_manager.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scene.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\shadowmap_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\water_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\raytracing_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\utility_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\visibility_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
+    <ClCompile Include="src\xess_context.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pass\xess_pass.cpp">
+      <Filter>src\pass</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\pass\water_pass.h">
-      <Filter>src</Filter>
-    </ClInclude>
     <ClInclude Include="src\sample_application.h">
       <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app_pass_base.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\gbuffer_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\indirect_light_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\meshlet_resource.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\render_resource_settings.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\rt_pipeline_manager.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scene.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\shader_types.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\shadowmap_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\water_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\raytracing_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\utility_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\visibility_pass.h">
+      <Filter>src\pass</Filter>
+    </ClInclude>
+    <ClInclude Include="src\xess_context.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pass\xess_pass.h">
+      <Filter>src\pass</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -32,12 +110,6 @@
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\visibility_buffer.hlsli">
-      <Filter>shaders</Filter>
-    </None>
-    <None Include="shaders\visibility.vv.hlsl">
-      <Filter>shaders</Filter>
-    </None>
-    <None Include="shaders\visibility.p.hlsl">
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\ts_normal_to_deriv.c.hlsl">
@@ -64,9 +136,6 @@
     <None Include="shaders\ssao.c.hlsl">
       <Filter>shaders</Filter>
     </None>
-    <None Include="shaders\shadow.vv.hlsl">
-      <Filter>shaders</Filter>
-    </None>
     <None Include="shaders\shadow.p.hlsl">
       <Filter>shaders</Filter>
     </None>
@@ -80,9 +149,6 @@
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\water_mipmap.c.hlsl">
-      <Filter>shaders</Filter>
-    </None>
-    <None Include="shaders\mesh.p.hlsl">
       <Filter>shaders</Filter>
     </None>
     <None Include="shaders\material_tile_triplanar.p.hlsl">
@@ -116,27 +182,214 @@
     <None Include="shaders\denoise.c.hlsl">
       <Filter>shaders</Filter>
     </None>
-    <None Include="shaders\ssgi.c.hlsl" />
-    <None Include="shaders\indirect_lighting.c.hlsl" />
-    <None Include="shaders\deinterleave.c.hlsl" />
-    <None Include="shaders\ssgi_deinterleave.c.hlsl" />
-    <None Include="shaders\ssgi_standard.c.hlsl" />
-    <None Include="shaders\denoise_with_gi.c.hlsl" />
-    <None Include="shaders\meshlet_cull.c.hlsl" />
-    <None Include="shaders\depth.vv.hlsl" />
-    <None Include="shaders\miplevel_feedback.c.hlsl" />
-    <None Include="shaders\visibility_mesh.a.hlsl" />
-    <None Include="shaders\visibility_mesh.m.hlsl" />
-    <None Include="shaders\visibility_mesh.p.hlsl" />
-    <None Include="shaders\depth_reduction.p.hlsl" />
-    <None Include="shaders\visibility_mesh_1st.a.hlsl" />
-    <None Include="shaders\visibility_mesh_2nd.a.hlsl" />
-    <None Include="shaders\svgf_temporal.c.hlsl" />
-    <None Include="shaders\svgf_variance.c.hlsl" />
-    <None Include="shaders\svgf_atrous.c.hlsl" />
-    <None Include="shaders\culling.hlsli" />
-    <None Include="shaders\mesh_shader.hlsli" />
     <None Include="shaders\upscale.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\apply_ddgi.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\constant_defs.h">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\culling.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ddgi_debug.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ddgi_debug.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\debug.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\deinterleave.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\denoise_with_gi.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\depth_masked.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\depth_masked.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\depth_opaque.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\depth_reduction.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\depth_reduction.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\indirect_lighting.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\lighting_evsm.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\lighting_sm.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\make_irradiance.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_binning.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_gbuffer.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_resolve.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\material_tile.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh.p.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh_masked.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh_opaque.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh_shader.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh_xlu.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\mesh_xlu.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\meshlet_cull.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\miplevel_feedback.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\motion_vector.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\payload.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\prefix_sum.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\restir.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_material.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_monte_carlo_gi.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_probe_trace.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_resolve_gi.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_restir_gi.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_spatial_reuse.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\rt_test.lib.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\shadow_masked.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\shadow_masked.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\shadow_opaque.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssgi.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssgi_deinterleave.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\ssgi_standard.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\svgf_atrous.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\svgf_prepass.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\svgf_temporal.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_masked.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_masked.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh.a.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_1st.a.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_2nd.a.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_masked.m.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_masked.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_mesh_shader.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_opaque.m.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_opaque.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_mesh_pixel_shader.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_opaque.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\visibility_opaque.vv.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\vrs.c.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\vrs.hlsli">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water_newton.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water_newton_face.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water_raymarch.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\water_uniform.p.hlsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="shaders\xess_velocity.c.hlsl">
       <Filter>shaders</Filter>
     </None>
   </ItemGroup>

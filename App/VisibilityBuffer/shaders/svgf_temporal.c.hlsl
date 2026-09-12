@@ -21,7 +21,8 @@ RWTexture2D<float2>     rwMoments       : REG(u1);
 void main(uint3 did : SV_DispatchThreadID)
 {
     uint2 pixPos = did.xy;
-    uint2 dim = (uint2)cbScene.screenSize;
+    uint2 dim;
+    rwTemporalGI.GetDimensions(dim.x, dim.y);
     if (any(pixPos >= dim))
     {
         return;

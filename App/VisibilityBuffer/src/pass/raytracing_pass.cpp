@@ -1246,6 +1246,9 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	UINT y = (pScene_->GetSceneRenderInfo().GetRenderHeight() + 7) / 8;
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
+	pCmdList->AddUAVBarrier(pPrepassRes->pTexture);
+	pCmdList->FlushBarriers();
+
 	// temporal descriptors.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
@@ -1268,9 +1271,16 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	// dispatch.
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
+	pCmdList->AddUAVBarrier(pPingRes->pTexture);
+	pCmdList->AddUAVBarrier(pMomentRes->pTexture);
+	pCmdList->FlushBarriers();
+
 	const sl12::u32 kIterationCount = atrousIterations_;
 	for (sl12::u32 i = 0; i < kIterationCount; ++i)
 	{
+		sl12::RenderGraphResource* pOutputRes = (i + 1 == kIterationCount) ? pDenoiseGIRes : ((i & 1) ? pPingRes : pPongRes);
+		sl12::UnorderedAccessView* pOutputUAV = (i + 1 == kIterationCount) ? pDenoiseGIUAV : ((i & 1) ? pPingUAV : pPongUAV);
+
 		sl12::DescriptorSet atrousSet;
 		atrousSet.Reset();
 		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -1279,7 +1289,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);
-		atrousSet.SetCsUav(0, (i + 1 == kIterationCount) ? pDenoiseGIUAV->GetDescInfo().cpuHandle : ((i & 1) ? pPingUAV : pPongUAV)->GetDescInfo().cpuHandle);
+		atrousSet.SetCsUav(0, pOutputUAV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoAtrous_->GetPSO());
@@ -1287,6 +1297,9 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		const sl12::u32 filterRadius = (1u << i);
 		pCmdList->GetLatestCommandList()->SetComputeRoot32BitConstant(rsAtrous_->GetRootConstantIndex(), filterRadius, 0);
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
+
+		pCmdList->AddUAVBarrier(pOutputRes->pTexture);
+		pCmdList->FlushBarriers();
 	}
 }
 
