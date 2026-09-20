@@ -1469,7 +1469,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoInit_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init count pso.");
+			sl12::ConsolePrint("Error: failed to init count pso.\n");
 		}
 	}
 	{
@@ -1479,7 +1479,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoCount_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to count pso.");
+			sl12::ConsolePrint("Error: failed to count pso.\n");
 		}
 	}
 	{
@@ -1489,7 +1489,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoCountSum_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to count sum pso.");
+			sl12::ConsolePrint("Error: failed to count sum pso.\n");
 		}
 	}
 	{
@@ -1499,7 +1499,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoPrefixSumInit_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to init prefix sum pso.");
+			sl12::ConsolePrint("Error: failed to init prefix sum pso.\n");
 		}
 	}
 	{
@@ -1509,7 +1509,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoPrefixSum_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to prefix sum pso.");
+			sl12::ConsolePrint("Error: failed to prefix sum pso.\n");
 		}
 	}
 	{
@@ -1519,7 +1519,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoBinning_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to binning pso.");
+			sl12::ConsolePrint("Error: failed to binning pso.\n");
 		}
 	}
 	{
@@ -1529,7 +1529,7 @@ MaterialComputeBinningPass::MaterialComputeBinningPass(sl12::Device* pDev, Rende
 
 		if (!psoFinalize_->Initialize(pDevice_, desc))
 		{
-			sl12::ConsolePrint("Error: failed to finalize pso.");
+			sl12::ConsolePrint("Error: failed to finalize pso.\n");
 		}
 	}
 }

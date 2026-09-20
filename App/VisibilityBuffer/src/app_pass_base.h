@@ -43,7 +43,6 @@ enum class AppPassType
 	MaterialTileGBuffer,
 	GenerateVRS,
 	ReprojectVRS,
-	PrefixSumTest,
 	Xlu,
 	WaterLightAccumCopy,
 	WaterMipmap,

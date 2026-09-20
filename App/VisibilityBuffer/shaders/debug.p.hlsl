@@ -1,6 +1,6 @@
 #include "cbuffer.hlsli"
 #include "math.hlsli"
-#include "vrs.hlsli"
+#include "util/vrs.hlsli"
 
 struct PSInput
 {

@@ -1,6 +1,6 @@
+#include "math.hlsli"
 #include "cbuffer.hlsli"
 #include "surface_gradient.hlsli"
-#include "math.hlsli"
 
 struct PSInput
 {

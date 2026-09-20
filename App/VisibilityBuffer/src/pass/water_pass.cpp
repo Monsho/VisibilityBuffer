@@ -7,6 +7,8 @@
 #define USE_IN_CPP
 #include "../../shaders/cbuffer.hlsli"
 
+
+//----------------
 WaterLightAccumCopyPass::WaterLightAccumCopyPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {}
@@ -59,6 +61,8 @@ void WaterLightAccumCopyPass::Execute(sl12::CommandList* pCmdList, sl12::Transie
 		pDepthRes->pTexture->GetResourceDep());
 }
 
+
+//----------------
 WaterMipmapPass::WaterMipmapPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {
@@ -156,6 +160,7 @@ void WaterMipmapPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResour
 }
 
 
+//----------------
 WaterPass::WaterPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene)
 	: AppPassBase(pDev, pRenderSys, pScene)
 {

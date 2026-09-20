@@ -26,34 +26,6 @@ public:
 private:
 };
 
-class TestRayTracingPass : public AppPassBase
-{
-public:
-	TestRayTracingPass(sl12::Device* pDev, RenderSystem* pRenderSys, Scene* pScene);
-	virtual ~TestRayTracingPass();
-
-	virtual AppPassType GetPassType() const override
-	{
-		return AppPassType::TestRayTracing;
-	}
-
-	virtual std::vector<sl12::TransientResource> GetInputResources(const sl12::RenderPassID& ID) const override;
-	virtual std::vector<sl12::TransientResource> GetOutputResources(const sl12::RenderPassID& ID) const override;
-	virtual sl12::HardwareQueue::Value GetExecuteQueue() const
-	{
-		return sl12::HardwareQueue::Compute;
-	}
-	virtual void Execute(sl12::CommandList* pCmdList, sl12::TransientResourceManager* pResManager, const sl12::RenderPassID& ID) override;
-
-private:
-	UniqueHandle<sl12::RootSignature> rtGlobalRS_;
-	UniqueHandle<sl12::DxrPipelineState> psoTestCollection_;
-	UniqueHandle<sl12::Buffer> TestRGSTable_, TestMSTable_;
-	UINT bvhShaderRecordSize_;
-	sl12::u32 rtDescriptorGeneration_ = ~0u;
-	sl12::u32 rtPipelineGeneration_ = ~0u;
-};
-
 class ReadyRtxgiPass : public AppPassBase
 {
 public:

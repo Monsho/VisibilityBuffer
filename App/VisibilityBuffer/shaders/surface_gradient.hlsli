@@ -1,8 +1,6 @@
 #ifndef SURFACE_GRADIENT_HLSLI
 #define SURFACE_GRADIENT_HLSLI
 
-#include "math.hlsli"
-
 float2 NormalInTS2SurfaceGradientDeriv(float3 n)
 {
 	const float kScale = 1.0 / 128.0;

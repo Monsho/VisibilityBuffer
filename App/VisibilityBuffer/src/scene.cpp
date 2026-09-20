@@ -689,11 +689,6 @@ bool Scene::InitRenderPass()
 		passes_.push_back(std::move(pass));
 	}
 	{
-		auto pass = std::make_unique<PrefixSumTestPass>(pDevice_, pRenderSystem_, this);
-		passNodes_[AppPassType::PrefixSumTest] = renderGraph_->AddPass(sl12::RenderPassID("PrefixSumTest"), pass.get());
-		passes_.push_back(std::move(pass));
-	}
-	{
 		auto pass = std::make_unique<XluPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::Xlu] = renderGraph_->AddPass(sl12::RenderPassID("Xlu"), pass.get());
 		passes_.push_back(std::move(pass));
@@ -716,11 +711,6 @@ bool Scene::InitRenderPass()
 	{
 		auto pass = std::make_unique<BuildBvhPass>(pDevice_, pRenderSystem_, this);
 		passNodes_[AppPassType::BuildBvh] = renderGraph_->AddPass(sl12::RenderPassID("BuildBvh"), pass.get());
-		passes_.push_back(std::move(pass));
-	}
-	{
-		auto pass = std::make_unique<TestRayTracingPass>(pDevice_, pRenderSystem_, this);
-		passNodes_[AppPassType::TestRayTracing] = renderGraph_->AddPass(sl12::RenderPassID("TestRaytracing"), pass.get());
 		passes_.push_back(std::move(pass));
 	}
 	{
@@ -814,7 +804,6 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& requested)
 
 	renderGraph_->ClearAllGraphEdges();
 	// graphics queue.
-	// node = node.AddChild(passNodes_[AppPassType::PrefixSumTest]); // TEST: Prefux Sum Test Pass.
 	if (bEnableMeshletCulling)
 	{
 		node = node.AddChild(passNodes_[AppPassType::MeshletArgCopy]);
