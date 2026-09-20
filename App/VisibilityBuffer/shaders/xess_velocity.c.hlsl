@@ -1,14 +1,20 @@
-cbuffer ConversionCB : register(b0)
+struct MotionConvCB
 {
-    uint2 renderSize;
-    float2 jitterDeltaUV;
+	uint2 renderSize;
+	float2 jitterDeltaUV;
 };
-Texture2D<float2> sourceMotion : register(t0);
-RWTexture2D<float2> outputMotion : register(u0);
+
+ConstantBuffer<MotionConvCB> cbMotionConv : register(b0);
+
+Texture2D<float2> srcMotion : register(t0);
+RWTexture2D<float2> rwMotion : register(u0);
 
 [numthreads(8, 8, 1)]
-void main(uint3 id : SV_DispatchThreadID)
+void main(uint3 dtid : SV_DispatchThreadID)
 {
-    if (any(id.xy >= renderSize)) return;
-    outputMotion[id.xy] = (sourceMotion[id.xy] - jitterDeltaUV) * float2(renderSize);
+	if (any(dtid.xy >= cbMotionConv.renderSize))
+	{
+		return;
+	}
+	rwMotion[dtid.xy] = (srcMotion[dtid.xy] - cbMotionConv.jitterDeltaUV) * float2(cbMotionConv.renderSize);
 }
