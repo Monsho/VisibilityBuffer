@@ -1015,7 +1015,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(co
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
-	ret.push_back(sl12::TransientResource(kGIHistoryID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kSvgfDiffuseHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSvgfMomentHistoryID, sl12::TransientState::ShaderResource));
 	return ret;
 }
@@ -1024,6 +1024,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 {
 	std::vector<sl12::TransientResource> ret;
 	sl12::TransientResource gi(kDenoiseGIID, sl12::TransientState::UnorderedAccess);
+	sl12::TransientResource diffuse(kSvgfDiffuseID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource moments(kSvgfMomentID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource prepassGI(kSvgfPrepassID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource ping(kSvgfPingID, sl12::TransientState::UnorderedAccess);
@@ -1034,7 +1035,9 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 
 	gi.desc.bIsTexture = true;
 	gi.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-	gi.desc.historyFrame = 1;
+	diffuse.desc.bIsTexture = true;
+	diffuse.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+	diffuse.desc.historyFrame = 1;
 	moments.desc.bIsTexture = true;
 	moments.desc.textureDesc.Initialize2D(kSvgfMomentFormat, width, height, 1, 1, 0);
 	moments.desc.historyFrame = 1;
@@ -1046,6 +1049,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	pong.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 
 	ret.push_back(gi);
+	ret.push_back(diffuse);
 	ret.push_back(moments);
 	ret.push_back(prepassGI);
 	ret.push_back(ping);
@@ -1062,7 +1066,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	auto pNormalRes = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pRestirGIRes = pResManager->GetRenderGraphResource(kReSTIRGIID);
 	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
-	auto pPrevGIRes = pResManager->GetRenderGraphResource(kGIHistoryID);
+	auto pPrevDiffuseRes = pResManager->GetRenderGraphResource(kSvgfDiffuseHistoryID);
 	auto pPrevMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentHistoryID);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
 	auto pNormalSRV = pResManager->CreateOrGetTextureView(pNormalRes);
@@ -1071,15 +1075,18 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	const auto historyWidth = renderInfo.GetRenderWidth();
 	const auto historyHeight = renderInfo.GetRenderHeight();
 	auto pPrevDepthSRV = pPrevDepthRes && pPrevDepthRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
-	auto pPrevGISRV = pPrevGIRes && pPrevGIRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevGIRes) : pRestirGISRV;
+	auto pPrevDiffuseSRV = pPrevDiffuseRes && pPrevDiffuseRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDiffuseRes) : pRestirGISRV;
 	auto pPrevMomentSRV = pPrevMomentRes && pPrevMomentRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : nullptr;
 
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
+	auto pDiffuseRes = pResManager->GetRenderGraphResource(kSvgfDiffuseID);
 	auto pMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentID);
 	auto pPrepassRes = pResManager->GetRenderGraphResource(kSvgfPrepassID);
 	auto pPingRes = pResManager->GetRenderGraphResource(kSvgfPingID);
 	auto pPongRes = pResManager->GetRenderGraphResource(kSvgfPongID);
 	auto pDenoiseGIUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDenoiseGIRes);
+	auto pDiffuseSRV = pResManager->CreateOrGetTextureView(pDiffuseRes);
+	auto pDiffuseUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pDiffuseRes);
 	auto pMomentSRV = pResManager->CreateOrGetTextureView(pMomentRes);
 	auto pMomentUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pMomentRes);
 	auto pPrepassGISRV = pResManager->CreateOrGetTextureView(pPrepassRes);
@@ -1118,9 +1125,9 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pNormalSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pPrepassGISRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(4, pPrevGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pPrevDiffuseSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(5, pPrevMomentSRV ? pPrevMomentSRV->GetDescInfo().cpuHandle : pMomentSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(0, pPingUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pDiffuseUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pMomentUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
@@ -1145,7 +1152,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		atrousSet.Reset();
 		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		atrousSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
-		atrousSet.SetCsSrv(0, (i == 0 ? pPingSRV : ((i & 1) ? pPongSRV : pPingSRV))->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(0, (i == 0 ? pDiffuseSRV : ((i & 1) ? pPongSRV : pPingSRV))->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);

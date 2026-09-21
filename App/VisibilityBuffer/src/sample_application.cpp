@@ -481,6 +481,15 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 
 		OutCBs.hDebugCB = cbvMan->GetTemporal(&cbDebug, sizeof(cbDebug));
 	}
+	{
+		MotionConvCB cbConv;
+
+		auto& info = scene_->GetSceneRenderInfo();
+		cbConv.renderSize = {info.GetRenderWidth(), info.GetRenderHeight()};
+		cbConv.jitterDeltaUV = scene_->GetXess().JitterDeltaUV();
+
+		OutCBs.hMotionCB = cbvMan->GetTemporal(&cbConv, sizeof(cbConv));
+	}
 }
 
 bool SampleApplication::Execute()

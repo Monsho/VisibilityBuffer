@@ -169,6 +169,7 @@ struct TemporalCBs
 	sl12::CbvHandle hRestirCB;
 	sl12::CbvHandle hWaterCB;
 	sl12::CbvHandle hDebugCB;
+	sl12::CbvHandle hMotionCB;
 	std::vector<sl12::CbvHandle> hMeshCBs;
 
 	void Clear()

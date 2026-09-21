@@ -20,55 +20,60 @@ RWTexture2D<float2>     rwMoments       : REG(u1);
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
-    uint2 pixPos = did.xy;
-    uint2 dim;
-    rwTemporalGI.GetDimensions(dim.x, dim.y);
-    if (any(pixPos >= dim))
-    {
-        return;
-    }
+	uint2 pixPos = did.xy;
+	uint2 dim;
+	rwTemporalGI.GetDimensions(dim.x, dim.y);
+	if (any(pixPos >= dim))
+	{
+		return;
+	}
 
-    float depth = texDepth[pixPos];
-    float3 normal = normalize(texGBufferC[pixPos].xyz * 2.0 - 1.0);
-    float3 currGI = texGI[pixPos];
+	float depth = texDepth[pixPos];
+	float3 normal = normalize(texGBufferC[pixPos].xyz * 2.0 - 1.0);
+	float3 currGI = texGI[pixPos];
 
-    float luma = dot(currGI, float3(0.299, 0.587, 0.114));
-    float2 currMoments = float2(luma, luma * luma);
+	float luma = dot(currGI, float3(0.299, 0.587, 0.114));
+	float2 currMoments = float2(luma, luma * luma);
 
-    float2 uv = (float2(pixPos) + 0.5) * cbScene.invScreenSize;
-    float4 clipPos = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
-    float4 prevClipPos = mul(cbScene.mtxProjToPrevProj, clipPos);
-    prevClipPos.xyz *= (1.0 / prevClipPos.w);
-    float2 prevUV = prevClipPos.xy * float2(0.5, -0.5) + 0.5;
+	float2 uv = (float2(pixPos) + 0.5) * cbScene.invScreenSize;
+	float4 clipPos = float4(uv * float2(2, -2) + float2(-1, 1), depth, 1);
+	float4 prevClipPos = mul(cbScene.mtxProjToPrevProj, clipPos);
+	prevClipPos.xyz *= (1.0 / prevClipPos.w);
+	float2 prevUV = prevClipPos.xy * float2(0.5, -0.5) + 0.5;
 
-    [branch]
-    if (any(prevUV < 0) || any(prevUV > 1) || depth <= 0.0)
-    {
-        rwTemporalGI[pixPos] = currGI;
-        rwMoments[pixPos] = currMoments;
-        return;
-    }
+	[branch]
+	if (any(prevUV < 0) || any(prevUV > 1) || depth <= 0.0)
+	{
+		rwTemporalGI[pixPos] = currGI;
+		rwMoments[pixPos] = currMoments;
+		return;
+	}
 
-    float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
-    float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
-    float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
-    float depthDiff = abs(prevVD - currVD);
+	float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
+	float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
+	float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
+	float depthDiff = abs(prevVD - currVD);
+	bool validDepth = depthDiff < cbSvgf.disocclusionDepth;
 
-    // uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
-    // float3 prevNormal = normalize(texGBufferC[prevPix].xyz * 2.0 - 1.0);
-    // float normalCos = dot(normal, prevNormal);
+#if 0
+	uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
+	float3 prevNormal = normalize(texGBufferC[prevPix].xyz * 2.0 - 1.0);
+	float normalCos = dot(normal, prevNormal);
+	bool validNormal = normalCos > cbSvgf.disocclusionNormal;
+#else
+	bool validNormal = true;
+#endif
 
-    // bool validHistory = depthDiff < cbSvgf.disocclusionDepth && normalCos > cbSvgf.disocclusionNormal;
-    bool validHistory = depthDiff < cbSvgf.disocclusionDepth;
+	bool validHistory = validDepth && validNormal;
 
-    float3 prevGI = texPrevGI.SampleLevel(samLinearClamp, prevUV, 0);
-    float2 prevMoments = texPrevMoments.SampleLevel(samLinearClamp, prevUV, 0);
+	float3 prevGI = texPrevGI.SampleLevel(samLinearClamp, prevUV, 0);
+	float2 prevMoments = texPrevMoments.SampleLevel(samLinearClamp, prevUV, 0);
 
-    float temporalBlend = validHistory ? cbSvgf.temporalBlend : 0.0;
-    float momentBlend = validHistory ? cbSvgf.momentBlend : 0.0;
+	float temporalBlend = validHistory ? cbSvgf.temporalBlend : 0.0;
+	float momentBlend = validHistory ? cbSvgf.momentBlend : 0.0;
 
-    rwTemporalGI[pixPos] = lerp(currGI, prevGI, saturate(temporalBlend));
-    rwMoments[pixPos] = lerp(currMoments, prevMoments, saturate(momentBlend));
+	rwTemporalGI[pixPos] = lerp(currGI, prevGI, saturate(temporalBlend));
+	rwMoments[pixPos] = lerp(currMoments, prevMoments, saturate(momentBlend));
 }
 
 // EOF

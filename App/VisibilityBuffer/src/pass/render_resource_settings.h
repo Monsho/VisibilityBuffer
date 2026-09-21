@@ -32,6 +32,8 @@ static const sl12::TransientResourceID	kDenoiseAOID("DenoiseAO");
 static const sl12::TransientResourceID	kDenoiseGIID("DenoiseGI");
 static const sl12::TransientResourceID	kAOHistoryID(kDenoiseAOID, 1);
 static const sl12::TransientResourceID	kGIHistoryID(kDenoiseGIID, 1);
+static const sl12::TransientResourceID	kSvgfDiffuseID("SvgfDiffuse");
+static const sl12::TransientResourceID	kSvgfDiffuseHistoryID(kSvgfDiffuseID, 1);
 static const sl12::TransientResourceID	kSvgfMomentID("SvgfMoment");
 static const sl12::TransientResourceID	kSvgfMomentHistoryID(kSvgfMomentID, 1);
 static const sl12::TransientResourceID	kSvgfPrepassID("SvgfPrepass");

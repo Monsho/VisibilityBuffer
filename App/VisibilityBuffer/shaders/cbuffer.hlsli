@@ -178,6 +178,12 @@ struct WaterCB
 	int		debugFallback;
 };
 
+struct MotionConvCB
+{
+	uint2 renderSize;
+	float2 jitterDeltaUV;
+};
+
 struct InstanceData
 {
 	float4x4	mtxBoxTransform;

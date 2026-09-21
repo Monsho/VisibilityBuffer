@@ -1,8 +1,4 @@
-struct MotionConvCB
-{
-	uint2 renderSize;
-	float2 jitterDeltaUV;
-};
+#include "cbuffer.hlsli"
 
 ConstantBuffer<MotionConvCB> cbMotionConv : register(b0);
 

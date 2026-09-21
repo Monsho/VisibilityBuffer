@@ -897,6 +897,7 @@ void MotionVectorPass::Execute(sl12::CommandList* pCmdList, sl12::TransientResou
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(1, pScene_->GetTemporalCBs().hMotionCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pMvUAV->GetDescInfo().cpuHandle);
 
