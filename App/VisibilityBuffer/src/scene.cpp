@@ -998,16 +998,20 @@ void Scene::SetupRenderPassGraph(const RenderPassSetupDesc& requested)
 //----
 void Scene::SetupRenderPass(sl12::Texture* pSwapchainTarget, const RenderPassSetupDesc& desc)
 {
-	const bool resolutionChanged = renderInfo_.GetDisplayWidth() != screenWidth_
+	const bool bResolutionChanged = renderInfo_.GetDisplayWidth() != screenWidth_
 		|| renderInfo_.GetDisplayHeight() != screenHeight_;
-	if (resolutionChanged || lastRenderPassDesc_.useXess != desc.useXess
+
+	if (bResolutionChanged
+		|| lastRenderPassDesc_.useXess != desc.useXess
 		|| lastRenderPassDesc_.upscaleQuality != desc.upscaleQuality)
 	{
+		// XeSSの使用・クオリティ変更時はコンテキストを再生成する
+		// この際に描画コマンドが実行終了していなければならない
 		pDevice_->WaitDrawDone();
 		xess_.Configure(pDevice_->GetDeviceDep(), screenWidth_, screenHeight_, desc.upscaleQuality, desc.useXess);
 		CreateSceneRenderInfo();
 	}
-	if (resolutionChanged || lastRenderPassDesc_ != desc || renderGraphUsesXess_ != xess_.Enabled())
+	if (bResolutionChanged || lastRenderPassDesc_ != desc || renderGraphUsesXess_ != xess_.Enabled())
 	{
 		xess_.ResetHistory();
 		SetupRenderPassGraph(desc);

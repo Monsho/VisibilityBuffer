@@ -509,8 +509,21 @@ bool SampleApplication::Execute()
 		// rendering settings.
 		if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
 		{
-			ImGui::Combo("Upscaler", &upscaleMethod_, "Bilinear\0Intel XeSS-SR\0");
-			ImGui::Combo("Upscale Quality", &upscaleQuality_, "Native AA\0Ultra Quality Plus\0Ultra Quality\0Quality\0Balanced\0Performance\0Ultra Performance\0");
+			static const char* kUpscaleMethods[] = {
+				"Bilinear",
+				"Intel XeSS-SR",
+			};
+			static const char* kUpscaleQualities[] = {
+				"Native AA",
+				"Ultra Quality Plus",
+				"Ultra Quality",
+				"Quality",
+				"Balanced",
+				"Performance",
+				"Ultra Performance",
+			};
+			ImGui::Combo("Upscaler", &upscaleMethod_, kUpscaleMethods, ARRAYSIZE(kUpscaleMethods));
+			ImGui::Combo("Upscale Quality", &upscaleQuality_, kUpscaleQualities, ARRAYSIZE(kUpscaleQualities));
 			auto&& resolution = scene_->GetSceneRenderInfo();
 			ImGui::Text("Render: %u x %u", resolution.GetRenderWidth(), resolution.GetRenderHeight());
 			if (upscaleMethod_ == 1 && !scene_->GetXess().Enabled())
