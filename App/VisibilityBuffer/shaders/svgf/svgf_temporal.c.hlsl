@@ -73,6 +73,111 @@ float EstimateSpatialVariance(uint2 pixel, uint2 dim, float depth, float3 normal
 	return max(0.0, sumDelta2 * invW - meanDelta * meanDelta);
 }
 
+// All history attributes are fetched from the same integer pixel and validated
+// before interpolation. Length is the minimum among contributing samples.
+struct HistoryGather
+{
+	float3 gi;
+	float2 moments;
+	float weight;
+	float length;
+};
+
+HistoryGather EmptyHistoryGather()
+{
+	HistoryGather h = (HistoryGather)0;
+	h.length = 32.0;
+	return h;
+}
+
+void AccumulateHistory(
+	int2 p, uint2 dim, float expectedVD, float3 normal,
+	float weight, inout HistoryGather h)
+{
+	if (weight <= 0.0 || any(p < 0) || any(p >= int2(dim)))
+	{
+		// ピクセルが無効
+		return;
+	}
+
+	float depth = texPrevDepth[p];
+	if (depth <= 0.0 || !isfinite(depth))
+	{
+		// 深度が無効
+		return;
+	}
+
+	float vd = ClipDepthToViewDepthRH(depth, cbScene.mtxPrevViewToProj);
+	float3 prevNormal = normalize(texPrevGBufferC[p].xyz * 2.0 - 1.0);
+	float4 history = texPrevMoments[p];
+	if (!isfinite(vd) || !all(isfinite(prevNormal)) || !all(isfinite(history.xyz)))
+	{
+		return;
+	}
+	if (abs(vd - expectedVD) >= cbSvgf.disocclusionDepth
+		|| dot(normal, prevNormal) <= cbSvgf.disocclusionNormal
+		|| history.z < 1.0)
+	{
+		return;
+	}
+
+	float3 gi = texPrevGI[p];
+	if (!all(isfinite(gi)))
+	{
+		return;
+	}
+
+	h.gi += gi * weight;
+	h.moments += history.xy * weight;
+	h.weight += weight;
+	h.length = min(h.length, history.z);
+}
+
+HistoryGather GatherHistory(float2 prevUV, uint2 dim, float expectedVD, float3 normal)
+{
+	// 2x2quadのヒストリー重みを求める
+	float2 p = prevUV * float2(dim) - 0.5;
+	int2 base = int2(floor(p));
+	float2 f = frac(p);
+	HistoryGather h = EmptyHistoryGather();
+	[unroll]
+	for (int y = 0; y < 2; ++y)
+	{
+		[unroll]
+		for (int x = 0; x < 2; ++x)
+		{
+			float weight = (x == 0 ? 1.0 - f.x : f.x) * (y == 0 ? 1.0 - f.y : f.y);
+			AccumulateHistory(base + int2(x, y), dim, expectedVD, normal, weight, h);
+		}
+	}
+
+	// 適切なヒストリーが見つからなかった場合、3x3近傍を探索してヒストリー重みを計算する
+	[branch]
+	if (h.weight <= 1e-4)
+	{
+		h = EmptyHistoryGather();
+		int2 center = int2(floor(p + 0.5));
+		[unroll]
+		for (int y = -1; y <= 1; ++y)
+		{
+			[unroll]
+			for (int x = -1; x <= 1; ++x)
+			{
+				int2 candidate = center + int2(x, y);
+				float2 offset = float2(candidate) - p;
+				float weight = rcp(1.0 + dot(offset, offset));
+				AccumulateHistory(candidate, dim, expectedVD, normal, weight, h);
+			}
+		}
+	}
+	if (h.weight > 1e-4)
+	{
+		h.gi /= h.weight;
+		h.moments /= h.weight;
+	}
+	return h;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -105,24 +210,16 @@ void main(uint3 did : SV_DispatchThreadID)
 		float2 prevUV = prevClipPos.xy * float2(0.5, -0.5) + 0.5;
 		if (all(prevUV >= 0.0) && all(prevUV < 1.0))
 		{
-			float prevDepth = texPrevDepth.SampleLevel(samLinearClamp, prevUV, 0);
-			float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
 			float currVD = ClipDepthToViewDepthRH(prevClipPos.z, cbScene.mtxPrevViewToProj);
-			uint2 prevPix = min(uint2(prevUV * float2(dim)), dim - 1);
-			float3 prevNormal = normalize(texPrevGBufferC[prevPix].xyz * 2.0 - 1.0);
-			// Discrete history length uses the same sample as the existing normal test.
-			float prevLength = texPrevMoments[prevPix].z;
-			bool validHistory = prevDepth > 0.0 && prevLength >= 1.0
-				&& abs(prevVD - currVD) < cbSvgf.disocclusionDepth
-				&& dot(normal, prevNormal) > cbSvgf.disocclusionNormal;
-			if (validHistory)
+			HistoryGather history = GatherHistory(prevUV, dim, currVD, normal);
+			if (history.weight > 1e-4)
 			{
-				historyLength = min(prevLength + 1.0, 32.0);
+				historyLength = min(history.length + 1.0, 32.0);
 				float historyWeight = 1.0 - rcp(historyLength);
 				float temporalBlend = min(saturate(cbSvgf.temporalBlend), historyWeight);
 				float momentBlend = min(saturate(cbSvgf.momentBlend), historyWeight);
-				temporalGI = lerp(currGI, texPrevGI.SampleLevel(samLinearClamp, prevUV, 0), temporalBlend);
-				moments = lerp(moments, texPrevMoments.SampleLevel(samLinearClamp, prevUV, 0).xy, momentBlend);
+				temporalGI = lerp(currGI, history.gi, temporalBlend);
+				moments = lerp(moments, history.moments, momentBlend);
 			}
 		}
 	}
