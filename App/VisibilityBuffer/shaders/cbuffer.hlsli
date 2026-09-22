@@ -138,6 +138,12 @@ struct RestirCB
 	uint	initialFrame;
 };
 
+struct RestirHistoryCB
+{
+	uint valid;
+	float normalCos;
+};
+
 struct SvgfCB
 {
 	float	temporalBlend;

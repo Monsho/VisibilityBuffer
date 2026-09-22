@@ -158,8 +158,8 @@ namespace MonteCarloGI
 namespace InitialSample
 {
 	static const sl12::RaytracingDescriptorCount kRTDescriptorCountGlobal = {
-		3,	// cbv
-		6,	// srv
+		4,	// cbv
+		7,	// srv
 		2,	// uav
 		1,	// sampler
 	};
@@ -699,6 +699,7 @@ std::vector<sl12::TransientResource> InitialSamplePass::GetInputResources(const 
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kMotionVectorID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(sl12::TransientResourceID(kInitialSampleReservoirID, 1), sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kBuildBvhDummy, sl12::TransientState::ShaderResource));
 	return ret;
@@ -755,6 +756,7 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto pDepth = pResManager->GetRenderGraphResource(kDepthBufferID);
 	auto pMotion = pResManager->GetRenderGraphResource(kMotionVectorID);
 	auto pPrevDepth = pResManager->GetRenderGraphResource(kDepthHistoryID);
+	auto pPrevNormal = pResManager->GetRenderGraphResource(kGBufferCHistoryID);
 	auto pPrevReservoir = pResManager->GetRenderGraphResource(sl12::TransientResourceID(kInitialSampleReservoirID, 1));
 	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirRawID);
 
@@ -764,6 +766,15 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	auto&& renderInfo = pScene_->GetSceneRenderInfo();
 	const auto historyWidth = renderInfo.GetRenderWidth();
 	const auto historyHeight = renderInfo.GetRenderHeight();
+	const bool validHistory = pPrevDepth && pPrevDepth->IsSameTextureSize(historyWidth, historyHeight)
+		&& pPrevNormal && pPrevNormal->IsSameTextureSize(historyWidth, historyHeight)
+		&& pPrevReservoir && pPrevReservoir->IsSameBufferSize(sizeof(InitialSample::Reservoir) * historyWidth * historyHeight);
+	// The shader must not read fallback descriptors when history is unavailable.
+	RestirHistoryCB historyCB{};
+	historyCB.valid = validHistory ? 1u : 0u;
+	historyCB.normalCos = 0.75f;
+	auto historyHandle = pRenderSystem_->GetCbvManager()->GetTemporal(&historyCB, sizeof(historyCB));
+	auto pPrevNormalSrv = validHistory ? pResManager->CreateOrGetTextureView(pPrevNormal) : pGbCSrv;
 	auto pPrevDepthSrv = pPrevDepth && pPrevDepth->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDepth) : pDepthSrv;
 	if (!pPrevReservoir || !pPrevReservoir->IsSameBufferSize(sizeof(InitialSample::Reservoir) * historyWidth * historyHeight))
 	{
@@ -778,12 +789,14 @@ void InitialSamplePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.SetCsCbv(0, TempCB.hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(1, TempCB.hLightCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsCbv(2, TempCB.hRestirCB.GetCBV()->GetDescInfo().cpuHandle);
+	descSet.SetCsCbv(3, historyHandle.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pGbCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(3, pScene_->GetIrradianceMapSRV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(4, pMotionSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(5, pPrevDepthSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(6, pPrevReservoirSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(7, pPrevNormalSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pReservoirUav->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 

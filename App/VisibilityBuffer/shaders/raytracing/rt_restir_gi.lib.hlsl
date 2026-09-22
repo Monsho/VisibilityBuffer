@@ -8,6 +8,9 @@
 #define RayTMax			10000.0
 #define TEMPORAL_DEPTH_EPS	0.01
 
+ConstantBuffer<RestirHistoryCB> cbHistory : REG(b3);
+Texture2D<float4> texPrevNormal : REG(t7);
+
 // global
 ConstantBuffer<SceneCB>				cbScene			: REG(b0);
 ConstantBuffer<LightCB>				cbLight			: REG(b1);
@@ -40,7 +43,7 @@ void InitialSampleRGS()
 		rwReservoirs[pixelIndex] = reservoir;
 		return;
 	}
-	float VD = ClipDepthToViewDepthRH(depth, cbScene.mtxViewToProj);
+
 
 	float3 normal = normalize(texGBufferC[pixelPos].xyz * 2.0 - 1.0);
 
@@ -135,29 +138,51 @@ void InitialSampleRGS()
 	float3 prevWorldPos = 0;
 
 	[branch]
-	if (!cbRestir.initialFrame)
+	if (!cbRestir.initialFrame && cbHistory.valid)
 	{
-		float2 motionUV = texMotion[pixelPos];
-		float2 currUV = (float2(pixelPos) + 0.5) / (float2)dim;
-		float2 prevUV = currUV + motionUV;
-		float2 prevPixF = prevUV * (float2)dim - 0.5;
-		uint2 prevPixelPos = (uint2)round(prevPixF);
-
-		if (all(prevUV >= 0.0) && all(prevUV <= 1.0))
+		float2 currUV = (float2(pixelPos) + 0.5) / float2(dim);
+		// Motion already includes the previous-current jitter delta. Do not add it twice.
+		float2 prevUV = currUV + texMotion[pixelPos];
+		float4 prevClip = mul(cbScene.mtxProjToPrevProj,
+			float4(currUV * float2(2, -2) + float2(-1, 1), depth, 1));
+		if (prevClip.w > 0.0 && all(prevUV >= 0.0) && all(prevUV < 1.0))
 		{
-			float prevDepth = texPrevDepth[prevPixelPos];
-			float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxViewToProj);
-			// Simple disocclusion rejection using depth.
-			if (abs(prevVD - VD) <= cbRestir.temporalDepthEps)
+			float expectedDepth = prevClip.z / prevClip.w;
+			float expectedVD = ClipDepthToViewDepthRH(expectedDepth, cbScene.mtxPrevViewToProj);
+			float2 prevPixF = prevUV * float2(dim) - 0.5;
+			int2 basePixel = int2(floor(prevPixF));
+			float bestDistance = 1e30;
+			float4x4 prevProjToWorld = mul(cbScene.mtxProjToWorld, cbScene.mtxPrevProjToProj);
+			// Pick one geometrically compatible reservoir; never interpolate reservoir fields.
+			[unroll]
+			for (int y = 0; y < 2; ++y)
 			{
-				uint prevIndex = prevPixelPos.x + prevPixelPos.y * dim.x;
-				prevRes = prevReservoirs[prevIndex];
-				prevWorldPos = GetWorldPos(prevPixelPos, prevDepth, cbScene.screenSize, mul(cbScene.mtxProjToWorld, cbScene.mtxPrevProjToProj));
-				IsPreviousFounded = IsReservoirValid(prevRes);
+				[unroll]
+				for (int x = 0; x < 2; ++x)
+				{
+					int2 p = basePixel + int2(x, y);
+					if (any(p < 0) || any(p >= int2(dim))) continue;
+					float prevDepth = texPrevDepth[p];
+					if (prevDepth <= 0.0) continue;
+					float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
+					if (abs(prevVD - expectedVD) > cbRestir.temporalDepthEps) continue;
+					float3 prevNormal = normalize(texPrevNormal[p].xyz * 2.0 - 1.0);
+					if (dot(normal, prevNormal) < cbHistory.normalCos) continue;
+					Reservoir candidate = prevReservoirs[p.x + p.y * dim.x];
+					if (!IsReservoirValid(candidate) || candidate.age >= cbRestir.maxReservoirAge) continue;
+					float2 offset = float2(p) - prevPixF;
+					float distance = dot(offset, offset);
+					if (distance < bestDistance)
+					{
+						bestDistance = distance;
+						prevRes = candidate;
+						prevWorldPos = GetWorldPos(uint2(p), prevDepth, float2(dim), prevProjToWorld);
+						IsPreviousFounded = true;
+					}
+				}
 			}
 		}
 	}
-
 	[branch]
 	if (IsPreviousFounded)
 	{
