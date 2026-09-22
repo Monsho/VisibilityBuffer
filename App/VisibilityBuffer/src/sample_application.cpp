@@ -412,8 +412,14 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		OutCBs.hAmbOccCB = cbvMan->GetTemporal(&cbAO, sizeof(cbAO));
 	}
 	{
+		// Track the source independently of whether the RayTracing UI is expanded.
+		const int svgfTechnique = bUseRaytracing_ ? raytracingTech_ : -1;
+		const bool bResetHistory = (svgfHistoryTechnique_ != svgfTechnique || scene_->GetFrameIndex() == 0);
+		svgfHistoryTechnique_ = svgfTechnique;
+
 		SvgfCB cbSvgf;
 		cbSvgf.temporalBlend = svgfTemporalBlend_;
+		cbSvgf.resetHistory = bResetHistory ? 1u : 0u;
 		cbSvgf.disocclusionDepth = svgfDisocclusionDepth_;
 		cbSvgf.disocclusionNormal = svgfDisocclusionNormal_;
 		cbSvgf.momentBlend = svgfMomentBlend_;

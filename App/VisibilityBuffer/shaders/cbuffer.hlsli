@@ -157,6 +157,12 @@ struct SvgfCB
 	float	prepassDepthPhiScale;
 	float	prepassVarianceBias;
 	uint	prepassKernelRadius;
+	uint	resetHistory;
+};
+
+struct SvgfHistoryCB
+{
+	uint valid;
 };
 
 struct SvgfAtrousRootCB

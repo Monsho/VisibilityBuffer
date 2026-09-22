@@ -108,7 +108,7 @@ static const DXGI_FORMAT	kShadowExpFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 static const DXGI_FORMAT	kDeinterleaveDepthFormat = DXGI_FORMAT_R32_FLOAT;
 static const DXGI_FORMAT	kSsaoFormat = DXGI_FORMAT_R8_UNORM;
 static const DXGI_FORMAT	kSsgiFormat = DXGI_FORMAT_R11G11B10_FLOAT;
-static const DXGI_FORMAT	kSvgfMomentFormat = DXGI_FORMAT_R16G16_FLOAT;
+static const DXGI_FORMAT	kSvgfMomentFormat = DXGI_FORMAT_R32G32B32A32_FLOAT; // moments.xy, history length.z, variance.w
 static const DXGI_FORMAT	kVisibilityFormat = DXGI_FORMAT_R32_UINT;
 static const DXGI_FORMAT	kMaterialDepthFormat = DXGI_FORMAT_D32_FLOAT;
 

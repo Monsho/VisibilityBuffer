@@ -206,6 +206,7 @@ private:
 	bool					bDebugDdgi_ = false;
 
 	// svgf parameters.
+	int						svgfHistoryTechnique_ = -1;
 	float					svgfTemporalBlend_ = 0.95f;
 	float					svgfMomentBlend_ = 0.92f;
 	float					svgfPrepassClampSigma_ = 1.25f;

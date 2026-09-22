@@ -7,7 +7,7 @@ ConstantBuffer<SvgfCB>  cbSvgf  : REG(b1);
 ConstantBuffer<SvgfAtrousRootCB> cbAtrous : REG_SPACE(b0, 1);
 
 Texture2D<float3>       texInputGI : REG(t0);
-Texture2D<float2>       texMoments : REG(t1);
+Texture2D<float4>       texMoments : REG(t1);
 Texture2D<float>        texDepth   : REG(t2);
 Texture2D<float4>       texNormal  : REG(t3);
 
@@ -36,8 +36,8 @@ void main(uint3 did : SV_DispatchThreadID)
     float3 centerNormal = normalize(texNormal[pixPos].xyz * 2.0 - 1.0);
     float3 centerGI = texInputGI[pixPos];
 
-    float2 moments = texMoments[pixPos];
-    float variance = max(0.0, moments.y - moments.x * moments.x);
+    // Includes the spatial estimate for short or rejected histories.
+    float variance = texMoments[pixPos].w;
     float colorSigma = cbSvgf.phiColor * sqrt(variance + 1e-4);
 
     float3 sumGI = 0.0;

@@ -8,13 +8,12 @@
 #define RayTMax			10000.0
 #define TEMPORAL_DEPTH_EPS	0.01
 
-ConstantBuffer<RestirHistoryCB> cbHistory : REG(b3);
-Texture2D<float4> texPrevNormal : REG(t7);
 
 // global
 ConstantBuffer<SceneCB>				cbScene			: REG(b0);
 ConstantBuffer<LightCB>				cbLight			: REG(b1);
 ConstantBuffer<RestirCB>			cbRestir		: REG(b2);
+ConstantBuffer<RestirHistoryCB>		cbHistory		: REG(b3);
 
 RaytracingAccelerationStructure		TLAS			: REG(t0);
 Texture2D<float4>					texGBufferC		: REG(t1);
@@ -22,7 +21,8 @@ Texture2D<float>					texDepth		: REG(t2);
 Texture2D							texIrradiance	: REG(t3);
 Texture2D<float2>					texMotion		: REG(t4);
 Texture2D<float>					texPrevDepth	: REG(t5);
-StructuredBuffer<Reservoir>			prevReservoirs	: REG(t6);
+Texture2D<float4>					texPrevNormal	: REG(t6);
+StructuredBuffer<Reservoir>			prevReservoirs	: REG(t7);
 
 RWStructuredBuffer<Reservoir>		rwReservoirs	: REG(u0);
 
@@ -153,7 +153,7 @@ void InitialSampleRGS()
 			int2 basePixel = int2(floor(prevPixF));
 			float bestDistance = 1e30;
 			float4x4 prevProjToWorld = mul(cbScene.mtxProjToWorld, cbScene.mtxPrevProjToProj);
-			// Pick one geometrically compatible reservoir; never interpolate reservoir fields.
+			// 単一ピクセルで判断せず、2x2ピクセルの中の最も良い結果を履歴とする
 			[unroll]
 			for (int y = 0; y < 2; ++y)
 			{
@@ -161,15 +161,35 @@ void InitialSampleRGS()
 				for (int x = 0; x < 2; ++x)
 				{
 					int2 p = basePixel + int2(x, y);
-					if (any(p < 0) || any(p >= int2(dim))) continue;
+					if (any(p < 0) || any(p >= int2(dim)))
+					{
+						continue;
+					}
+
 					float prevDepth = texPrevDepth[p];
-					if (prevDepth <= 0.0) continue;
+					if (prevDepth <= 0.0)
+					{
+						continue;
+					}
+
 					float prevVD = ClipDepthToViewDepthRH(prevDepth, cbScene.mtxPrevViewToProj);
-					if (abs(prevVD - expectedVD) > cbRestir.temporalDepthEps) continue;
+					if (abs(prevVD - expectedVD) > cbRestir.temporalDepthEps)
+					{
+						continue;
+					}
+
 					float3 prevNormal = normalize(texPrevNormal[p].xyz * 2.0 - 1.0);
-					if (dot(normal, prevNormal) < cbHistory.normalCos) continue;
+					if (dot(normal, prevNormal) < cbHistory.normalCos)
+					{
+						continue;
+					}
+
 					Reservoir candidate = prevReservoirs[p.x + p.y * dim.x];
-					if (!IsReservoirValid(candidate) || candidate.age >= cbRestir.maxReservoirAge) continue;
+					if (!IsReservoirValid(candidate) || candidate.age >= cbRestir.maxReservoirAge)
+					{
+						continue;
+					}
+
 					float2 offset = float2(p) - prevPixF;
 					float distance = dot(offset, offset);
 					if (distance < bestDistance)
