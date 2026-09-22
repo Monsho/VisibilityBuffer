@@ -5,6 +5,7 @@
 static const sl12::TransientResourceID	kGBufferAID("GBufferA");
 static const sl12::TransientResourceID	kGBufferBID("GBufferB");
 static const sl12::TransientResourceID	kGBufferCID("GBufferC");
+static const sl12::TransientResourceID	kGBufferCHistoryID(kGBufferCID, 1);
 static const sl12::TransientResourceID	kMotionVectorID("MotionVector");
 static const sl12::TransientResourceID	kDepthBufferID("DepthBuffer");
 static const sl12::TransientResourceID	kDepthHistoryID(kDepthBufferID, 1);

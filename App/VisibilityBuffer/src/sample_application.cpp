@@ -71,8 +71,8 @@ namespace
 	}
 }
 
-SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader)
-	: Application(hInstance, nCmdShow, screenWidth, screenHeight, csType)
+SampleApplication::SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader, sl12::u32 flags)
+	: Application(hInstance, nCmdShow, screenWidth, screenHeight, csType, flags)
 	, displayWidth_(screenWidth), displayHeight_(screenHeight)
 	, meshType_(meshType)
 {

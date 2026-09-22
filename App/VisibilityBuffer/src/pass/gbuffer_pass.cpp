@@ -636,6 +636,7 @@ std::vector<sl12::TransientResource> GBufferPass::GetOutputResources(const sl12:
 	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
 	gc.desc.bIsTexture = true;
 	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+	gc.desc.historyFrame = 1;
 	depth.desc.bIsTexture = true;
 	depth.desc.textureDesc.Initialize2D(kDepthFormat, width, height, 1, 1, 0);
 	depth.desc.historyFrame = 1;

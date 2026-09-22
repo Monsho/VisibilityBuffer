@@ -26,7 +26,7 @@ class SampleApplication
 	: public sl12::Application
 {
 	template <typename T> using UniqueHandle = sl12::UniqueHandle<T>;
-	
+
 	struct NeededMiplevel
 	{
 		sl12::u32	minLevel;
@@ -35,7 +35,7 @@ class SampleApplication
 	};	// struct NeededMiplevel
 
 public:
-	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader);
+	SampleApplication(HINSTANCE hInstance, int nCmdShow, int screenWidth, int screenHeight, sl12::ColorSpaceType csType, const std::string& homeDir, int meshType, const std::string& appShader, const std::string& sysShader, sl12::u32 flags);
 	virtual ~SampleApplication();
 
 	// virtual
@@ -149,7 +149,6 @@ private:
 	bool					bEnableVisibilityBuffer_ = false;
 	bool					bEnableMeshShader_ = false;
 	int						VisToGBufferType_ = 0;
-	bool					bEnableWorkGraph_ = false;
 
 	// light parameters.
 	float					ambientIntensity_ = 0.1f;

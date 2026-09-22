@@ -8,9 +8,10 @@ ConstantBuffer<SvgfCB>  cbSvgf  : REG(b1);
 Texture2D<float>        texDepth        : REG(t0);
 Texture2D<float>        texPrevDepth    : REG(t1);
 Texture2D<float4>       texGBufferC     : REG(t2);
-Texture2D<float3>       texGI           : REG(t3);
-Texture2D<float3>       texPrevGI       : REG(t4);
-Texture2D<float2>       texPrevMoments  : REG(t5);
+Texture2D<float4>       texPrevGBufferC : REG(t3);
+Texture2D<float3>       texGI           : REG(t4);
+Texture2D<float3>       texPrevGI       : REG(t5);
+Texture2D<float2>       texPrevMoments  : REG(t6);
 
 SamplerState            samLinearClamp  : REG(s0);
 
@@ -55,9 +56,9 @@ void main(uint3 did : SV_DispatchThreadID)
 	float depthDiff = abs(prevVD - currVD);
 	bool validDepth = depthDiff < cbSvgf.disocclusionDepth;
 
-#if 0
+#if 1
 	uint2 prevPix = min((uint2)(prevUV * cbScene.screenSize), dim - 1);
-	float3 prevNormal = normalize(texGBufferC[prevPix].xyz * 2.0 - 1.0);
+	float3 prevNormal = normalize(texPrevGBufferC[prevPix].xyz * 2.0 - 1.0);
 	float normalCos = dot(normal, prevNormal);
 	bool validNormal = normalCos > cbSvgf.disocclusionNormal;
 #else

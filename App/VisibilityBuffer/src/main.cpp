@@ -18,6 +18,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 	int meshType = 3;
 	int screenWidth = kDisplayWidth;
 	int screenHeight = kDisplayHeight;
+	sl12::u32 deviceFlags = 0;
 
 	LPWSTR *szArglist;
 	int nArgs;
@@ -58,10 +59,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 			{
 				sysShaderInclDir = sl12::WStringToString(szArglist[++i]);
 			}
+			else if (!lstrcmpW(szArglist[i], L"-nopix"))
+			{
+				deviceFlags |= sl12::ApplicationFlag::NO_PiX_CAPTURE;
+			}
+			else if (!lstrcmpW(szArglist[i], L"-nobreak"))
+			{
+				deviceFlags |= sl12::ApplicationFlag::NO_DEBUG_BREAK;
+			}
 		}
 	}
 
-	SampleApplication app(hInstance, nCmdShow, screenWidth, screenHeight, ColorSpace, homeDir, meshType, appShaderDir, sysShaderInclDir);
+	SampleApplication app(hInstance, nCmdShow, screenWidth, screenHeight, ColorSpace, homeDir, meshType, appShaderDir, sysShaderInclDir, deviceFlags);
 
 	return app.Run();
 }

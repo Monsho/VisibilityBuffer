@@ -1014,6 +1014,7 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetInputResources(co
 	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kDepthHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kReSTIRGIID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSvgfDiffuseHistoryID, sl12::TransientState::ShaderResource));
 	ret.push_back(sl12::TransientResource(kSvgfMomentHistoryID, sl12::TransientState::ShaderResource));
@@ -1066,6 +1067,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	auto pNormalRes = pResManager->GetRenderGraphResource(kGBufferCID);
 	auto pRestirGIRes = pResManager->GetRenderGraphResource(kReSTIRGIID);
 	auto pPrevDepthRes = pResManager->GetRenderGraphResource(kDepthHistoryID);
+	auto pPrevNormalRes = pResManager->GetRenderGraphResource(kGBufferCHistoryID);
 	auto pPrevDiffuseRes = pResManager->GetRenderGraphResource(kSvgfDiffuseHistoryID);
 	auto pPrevMomentRes = pResManager->GetRenderGraphResource(kSvgfMomentHistoryID);
 	auto pDepthSRV = pResManager->CreateOrGetTextureView(pDepthRes);
@@ -1075,8 +1077,9 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	const auto historyWidth = renderInfo.GetRenderWidth();
 	const auto historyHeight = renderInfo.GetRenderHeight();
 	auto pPrevDepthSRV = pPrevDepthRes && pPrevDepthRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDepthRes) : pDepthSRV;
+	auto pPrevNormalSRV = pPrevNormalRes && pPrevNormalRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevNormalRes) : pNormalSRV;
 	auto pPrevDiffuseSRV = pPrevDiffuseRes && pPrevDiffuseRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevDiffuseRes) : pRestirGISRV;
-	auto pPrevMomentSRV = pPrevMomentRes && pPrevMomentRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : nullptr;
+	auto pPrevMomentSRV = pPrevMomentRes && pPrevMomentRes->IsSameTextureSize(historyWidth, historyHeight) ? pResManager->CreateOrGetTextureView(pPrevMomentRes) : pDevice_->GetDummyTextureView(sl12::DummyTex::Black);
 
 	auto pDenoiseGIRes = pResManager->GetRenderGraphResource(kDenoiseGIID);
 	auto pDiffuseRes = pResManager->GetRenderGraphResource(kSvgfDiffuseID);
@@ -1124,9 +1127,10 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	descSet.SetCsSrv(0, pDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(1, pPrevDepthSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(2, pNormalSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(3, pPrepassGISRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(4, pPrevDiffuseSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsSrv(5, pPrevMomentSRV ? pPrevMomentSRV->GetDescInfo().cpuHandle : pMomentSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(3, pPrevNormalSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(4, pPrepassGISRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(5, pPrevDiffuseSRV->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(6, pPrevMomentSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pDiffuseUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pMomentUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
@@ -1138,21 +1142,23 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	// dispatch.
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-	pCmdList->AddUAVBarrier(pPingRes->pTexture);
+	pCmdList->AddUAVBarrier(pDiffuseRes->pTexture);
 	pCmdList->AddUAVBarrier(pMomentRes->pTexture);
 	pCmdList->FlushBarriers();
 
 	const sl12::u32 kIterationCount = atrousIterations_;
+	auto pInputSRV = pDiffuseSRV;
 	for (sl12::u32 i = 0; i < kIterationCount; ++i)
 	{
 		sl12::RenderGraphResource* pOutputRes = (i + 1 == kIterationCount) ? pDenoiseGIRes : ((i & 1) ? pPingRes : pPongRes);
 		sl12::UnorderedAccessView* pOutputUAV = (i + 1 == kIterationCount) ? pDenoiseGIUAV : ((i & 1) ? pPingUAV : pPongUAV);
+		sl12::TextureView* pOutputSRV = (i + 1 == kIterationCount) ? nullptr : ((i & 1) ? pPingSRV : pPongSRV);
 
 		sl12::DescriptorSet atrousSet;
 		atrousSet.Reset();
 		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		atrousSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
-		atrousSet.SetCsSrv(0, (i == 0 ? pDiffuseSRV : ((i & 1) ? pPongSRV : pPingSRV))->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(0, pInputSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);
@@ -1167,6 +1173,8 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 
 		pCmdList->AddUAVBarrier(pOutputRes->pTexture);
 		pCmdList->FlushBarriers();
+
+		pInputSRV = pOutputSRV;
 	}
 }
 

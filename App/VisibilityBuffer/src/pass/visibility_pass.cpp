@@ -1103,6 +1103,7 @@ std::vector<sl12::TransientResource> MaterialTilePass::GetOutputResources(const 
 	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
 	gc.desc.bIsTexture = true;
 	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+	gc.desc.historyFrame = 1;
 	depth.desc.bIsTexture = true;
 	depth.desc.textureDesc.Initialize2D(kMaterialDepthFormat, width, height, 1, 1, 0);
 
@@ -1339,6 +1340,7 @@ std::vector<sl12::TransientResource> MaterialResolvePass::GetOutputResources(con
 	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
 	gc.desc.bIsTexture = true;
 	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+	gc.desc.historyFrame = 1;
 
 	width = (width + 3) / 4;
 	height = (height + 3) / 4;
@@ -1831,6 +1833,7 @@ std::vector<sl12::TransientResource> MaterialComputeGBufferPass::GetOutputResour
 	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
 	gc.desc.bIsTexture = true;
 	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+	gc.desc.historyFrame = 1;
 
 	width = (width + 3) / 4;
 	height = (height + 3) / 4;
@@ -2220,6 +2223,7 @@ std::vector<sl12::TransientResource> MaterialTileGBufferPass::GetOutputResources
 	gb.desc.textureDesc.Initialize2D(kGBufferBFormat, width, height, 1, 1, 0);
 	gc.desc.bIsTexture = true;
 	gc.desc.textureDesc.Initialize2D(kGBufferCFormat, width, height, 1, 1, 0);
+	gc.desc.historyFrame = 1;
 
 	width = (width + 3) / 4;
 	height = (height + 3) / 4;
