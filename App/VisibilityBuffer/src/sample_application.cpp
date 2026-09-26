@@ -429,7 +429,7 @@ void SampleApplication::SetupConstantBuffers(TemporalCBs& OutCBs)
 		cbSvgf.prepassClampSigma = svgfPrepassClampSigma_;
 		cbSvgf.prepassDepthPhiScale = svgfPrepassDepthPhiScale_;
 		cbSvgf.prepassVarianceBias = svgfPrepassVarianceBias_;
-		cbSvgf.prepassKernelRadius = (sl12::u32)std::clamp(svgfPrepassKernelRadius_, 1, 2);
+		cbSvgf.prepassKernelRadius = (sl12::u32)svgfPrepassKernelRadius_;
 
 		OutCBs.hSvgfCB = cbvMan->GetTemporal(&cbSvgf, sizeof(cbSvgf));
 	}
