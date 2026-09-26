@@ -1050,8 +1050,6 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	sl12::TransientResource diffuse(kSvgfDiffuseID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource moments(kSvgfMomentID, sl12::TransientState::UnorderedAccess);
 	sl12::TransientResource prepassGI(kSvgfPrepassID, sl12::TransientState::UnorderedAccess);
-	sl12::TransientResource ping(kSvgfPingID, sl12::TransientState::UnorderedAccess);
-	sl12::TransientResource pong(kSvgfPongID, sl12::TransientState::UnorderedAccess);
 
 	sl12::u32 width = pScene_->GetSceneRenderInfo().GetRenderWidth();
 	sl12::u32 height = pScene_->GetSceneRenderInfo().GetRenderHeight();
@@ -1066,17 +1064,25 @@ std::vector<sl12::TransientResource> RayTracingDenoisePass::GetOutputResources(c
 	moments.desc.historyFrame = 1;
 	prepassGI.desc.bIsTexture = true;
 	prepassGI.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-	ping.desc.bIsTexture = true;
-	ping.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
-	pong.desc.bIsTexture = true;
-	pong.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
 
 	ret.push_back(gi);
 	ret.push_back(diffuse);
 	ret.push_back(moments);
 	ret.push_back(prepassGI);
-	ret.push_back(ping);
-	ret.push_back(pong);
+	for (const auto& resourceID : { kSvgfPingID, kSvgfPongID })
+	{
+		sl12::TransientResource res(resourceID, sl12::TransientState::UnorderedAccess);
+		res.desc.bIsTexture = true;
+		res.desc.textureDesc.Initialize2D(kSsgiFormat, width, height, 1, 1, 0);
+		ret.push_back(res);
+	}
+	for (const auto& varianceID : { kSvgfVariancePingID, kSvgfVariancePongID })
+	{
+		sl12::TransientResource variance(varianceID, sl12::TransientState::UnorderedAccess);
+		variance.desc.bIsTexture = true;
+		variance.desc.textureDesc.Initialize2D(DXGI_FORMAT_R32_FLOAT, width, height, 1, 1, 0);
+		ret.push_back(variance);
+	}
 
 	return ret;
 }
@@ -1127,6 +1133,17 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	auto pPingUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPingRes);
 	auto pPongSRV = pResManager->CreateOrGetTextureView(pPongRes);
 	auto pPongUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPongRes);
+	sl12::RenderGraphResource* varianceRes[2] = {
+		pResManager->GetRenderGraphResource(kSvgfVariancePingID),
+		pResManager->GetRenderGraphResource(kSvgfVariancePongID)
+	};
+	sl12::TextureView* varianceSRV[2];
+	sl12::UnorderedAccessView* varianceUAV[2];
+	for (int i = 0; i < 2; ++i)
+	{
+		varianceSRV[i] = pResManager->CreateOrGetTextureView(varianceRes[i]);
+		varianceUAV[i] = pResManager->CreateOrGetUnorderedAccessTextureView(varianceRes[i]);
+	}
 
 	// svgf prepass.
 	sl12::DescriptorSet prepassSet;
@@ -1163,6 +1180,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	descSet.SetCsSrv(6, pPrevMomentSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pPingUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pMomentUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(2, varianceUAV[0]->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(psoTemporal_->GetPSO());
@@ -1172,9 +1190,11 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 
 	pCmdList->AddUAVBarrier(pPingRes->pTexture);
 	pCmdList->AddUAVBarrier(pMomentRes->pTexture);
+	pCmdList->AddUAVBarrier(varianceRes[0]->pTexture);
 	pCmdList->FlushBarriers();
 
 	// svgf a-trous passes.
+	// Temporal writes variance[0]; each iteration reads one texture and writes the other.
 	const sl12::u32 kIterationCount = std::max(atrousIterations_, 2);
 	sl12::TextureView* pInputSRV = pPingSRV;
 	sl12::RenderGraphResource* pOutputRes = pDiffuseRes;
@@ -1187,10 +1207,12 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 		atrousSet.SetCsCbv(1, pScene_->GetTemporalCBs().hSvgfCB.GetCBV()->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(0, pInputSRV->GetDescInfo().cpuHandle);
-		atrousSet.SetCsSrv(1, pMomentSRV->GetDescInfo().cpuHandle);
+		atrousSet.SetCsSrv(1, varianceSRV[i & 1]->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(2, pDepthSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsSrv(3, pNormalSRV->GetDescInfo().cpuHandle);
 		atrousSet.SetCsUav(0, pOutputUAV->GetDescInfo().cpuHandle);
+		atrousSet.SetCsUav(1, varianceUAV[(i + 1) & 1]->GetDescInfo().cpuHandle);
+		pCmdList->FlushBarriers();
 		atrousSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
 		pCmdList->GetLatestCommandList()->SetPipelineState(psoAtrous_->GetPSO());
@@ -1200,6 +1222,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
 		pCmdList->AddUAVBarrier(pOutputRes->pTexture);
+		pCmdList->AddUAVBarrier(varianceRes[(i + 1) & 1]->pTexture);
 		pCmdList->FlushBarriers();
 
 		pInputSRV = pOutputSRV;

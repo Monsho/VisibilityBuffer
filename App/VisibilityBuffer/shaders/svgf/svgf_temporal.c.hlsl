@@ -16,6 +16,7 @@ Texture2D<float4>		texPrevMoments	: REG(t6);	// xy: temporal luminance moments, 
 
 RWTexture2D<float3>		rwTemporalGI	: REG(u0);
 RWTexture2D<float4>		rwMoments		: REG(u1);
+RWTexture2D<float>		rwVariance		: REG(u2);
 
 SamplerState	samLinearClamp		: REG(s0);
 
@@ -192,6 +193,7 @@ void main(uint3 did : SV_DispatchThreadID)
 	{
 		rwTemporalGI[pixPos] = currGI;
 		rwMoments[pixPos] = 0.0;
+		rwVariance[pixPos] = 0.0;
 		return;
 	}
 	float3 normal = normalize(texGBufferC[pixPos].xyz * 2.0 - 1.0);
@@ -235,4 +237,5 @@ void main(uint3 did : SV_DispatchThreadID)
 	rwTemporalGI[pixPos] = temporalGI;
 	// Keep spatial variance out of the temporal moments fed to the next frame.
 	rwMoments[pixPos] = float4(moments, historyLength, variance);
+	rwVariance[pixPos] = variance;
 }

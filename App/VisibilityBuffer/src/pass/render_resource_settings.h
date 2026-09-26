@@ -40,6 +40,8 @@ static const sl12::TransientResourceID	kSvgfMomentHistoryID(kSvgfMomentID, 1);
 static const sl12::TransientResourceID	kSvgfPrepassID("SvgfPrepass");
 static const sl12::TransientResourceID	kSvgfPingID("SvgfPing");
 static const sl12::TransientResourceID	kSvgfPongID("SvgfPong");
+static const sl12::TransientResourceID kSvgfVariancePingID("SvgfVariancePing");
+static const sl12::TransientResourceID kSvgfVariancePongID("SvgfVariancePong");
 static const sl12::TransientResourceID	kVisBufferID("VisBuffer");
 static const sl12::TransientResourceID	kMaterialDepthID("MaterialDepth");
 static const sl12::TransientResourceID	kDrawFlagID("DrawFlag");
