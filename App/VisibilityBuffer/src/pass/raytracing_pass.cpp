@@ -931,6 +931,8 @@ std::vector<sl12::TransientResource> ReSTIRResolvePass::GetInputResources(const 
 {
 	std::vector<sl12::TransientResource> ret;
 	ret.push_back(sl12::TransientResource(kInitialSampleReservoirID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kDepthBufferID, sl12::TransientState::ShaderResource));
+	ret.push_back(sl12::TransientResource(kGBufferCID, sl12::TransientState::ShaderResource));
 	return ret;
 }
 
@@ -956,6 +958,10 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 
 	auto pReservoir = pResManager->GetRenderGraphResource(kInitialSampleReservoirID);
 	auto pGi = pResManager->GetRenderGraphResource(kReSTIRGIID);
+	auto pDepth = pResManager->GetRenderGraphResource(kDepthBufferID);
+	auto pGBufferC = pResManager->GetRenderGraphResource(kGBufferCID);
+	auto pDepthSrv = pResManager->CreateOrGetTextureView(pDepth);
+	auto pGBufferCSrv = pResManager->CreateOrGetTextureView(pGBufferC);
 	auto pReservoirSrv = pResManager->CreateOrGetBufferView(pReservoir, 0, 0, sizeof(InitialSample::Reservoir));
 	auto pGiUav = pResManager->CreateOrGetUnorderedAccessTextureView(pGi);
 
@@ -963,6 +969,8 @@ void ReSTIRResolvePass::Execute(sl12::CommandList* pCmdList, sl12::TransientReso
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(0, pReservoirSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(1, pDepthSrv->GetDescInfo().cpuHandle);
+	descSet.SetCsSrv(2, pGBufferCSrv->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(0, pGiUav->GetDescInfo().cpuHandle);
 
 	pCmdList->GetLatestCommandList()->SetPipelineState(pso_->GetPSO());
@@ -1120,7 +1128,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	auto pPongSRV = pResManager->CreateOrGetTextureView(pPongRes);
 	auto pPongUAV = pResManager->CreateOrGetUnorderedAccessTextureView(pPongRes);
 
-	// prepass descriptors.
+	// svgf prepass.
 	sl12::DescriptorSet prepassSet;
 	prepassSet.Reset();
 	prepassSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -1140,7 +1148,7 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	pCmdList->AddUAVBarrier(pPrepassRes->pTexture);
 	pCmdList->FlushBarriers();
 
-	// temporal descriptors.
+	// svgf temporal pass.
 	sl12::DescriptorSet descSet;
 	descSet.Reset();
 	descSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -1153,29 +1161,27 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 	descSet.SetCsSrv(4, pPrepassGISRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(5, pPrevDiffuseSRV->GetDescInfo().cpuHandle);
 	descSet.SetCsSrv(6, pPrevMomentSRV->GetDescInfo().cpuHandle);
-	descSet.SetCsUav(0, pDiffuseUAV->GetDescInfo().cpuHandle);
+	descSet.SetCsUav(0, pPingUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsUav(1, pMomentUAV->GetDescInfo().cpuHandle);
 	descSet.SetCsSampler(0, pRenderSystem_->GetLinearClampSampler()->GetDescInfo().cpuHandle);
 
-	// set pipeline.
 	pCmdList->GetLatestCommandList()->SetPipelineState(psoTemporal_->GetPSO());
 	pCmdList->SetComputeRootSignatureAndDescriptorSet(&rsTemporal_, &descSet);
 
-	// dispatch.
 	pCmdList->GetLatestCommandList()->Dispatch(x, y, 1);
 
-	pCmdList->AddUAVBarrier(pDiffuseRes->pTexture);
+	pCmdList->AddUAVBarrier(pPingRes->pTexture);
 	pCmdList->AddUAVBarrier(pMomentRes->pTexture);
 	pCmdList->FlushBarriers();
 
-	const sl12::u32 kIterationCount = atrousIterations_;
-	auto pInputSRV = pDiffuseSRV;
+	// svgf a-trous passes.
+	const sl12::u32 kIterationCount = std::max(atrousIterations_, 2);
+	sl12::TextureView* pInputSRV = pPingSRV;
+	sl12::RenderGraphResource* pOutputRes = pDiffuseRes;
+	sl12::UnorderedAccessView* pOutputUAV = pDiffuseUAV;
+	sl12::TextureView* pOutputSRV = pDiffuseSRV;
 	for (sl12::u32 i = 0; i < kIterationCount; ++i)
 	{
-		sl12::RenderGraphResource* pOutputRes = (i + 1 == kIterationCount) ? pDenoiseGIRes : ((i & 1) ? pPingRes : pPongRes);
-		sl12::UnorderedAccessView* pOutputUAV = (i + 1 == kIterationCount) ? pDenoiseGIUAV : ((i & 1) ? pPingUAV : pPongUAV);
-		sl12::TextureView* pOutputSRV = (i + 1 == kIterationCount) ? nullptr : ((i & 1) ? pPingSRV : pPongSRV);
-
 		sl12::DescriptorSet atrousSet;
 		atrousSet.Reset();
 		atrousSet.SetCsCbv(0, pScene_->GetTemporalCBs().hSceneCB.GetCBV()->GetDescInfo().cpuHandle);
@@ -1197,6 +1203,19 @@ void RayTracingDenoisePass::Execute(sl12::CommandList* pCmdList, sl12::Transient
 		pCmdList->FlushBarriers();
 
 		pInputSRV = pOutputSRV;
+		if (i == kIterationCount - 2)
+		{
+			pOutputRes = pDenoiseGIRes;
+			pOutputUAV = pDenoiseGIUAV;
+			pOutputSRV = nullptr;
+		}
+		else
+		{
+			bool bCurrentIsPing = pOutputRes == pPingRes;
+			pOutputRes = !bCurrentIsPing ? pPingRes : pPongRes;
+			pOutputUAV = !bCurrentIsPing ? pPingUAV : pPongUAV;
+			pOutputSRV = !bCurrentIsPing ? pPingSRV : pPongSRV;
+		}
 	}
 }
 

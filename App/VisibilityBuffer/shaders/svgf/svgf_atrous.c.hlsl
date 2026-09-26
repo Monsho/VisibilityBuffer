@@ -15,6 +15,11 @@ SamplerState            samLinearClamp : REG(s0);
 
 RWTexture2D<float3>     rwOutputGI : REG(u0);
 
+float Luma(float3 c)
+{
+    return dot(c, float3(0.299, 0.587, 0.114));
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 did : SV_DispatchThreadID)
 {
@@ -63,7 +68,7 @@ void main(uint3 did : SV_DispatchThreadID)
 
             float depthW = exp(-abs(vd - centerVD) * cbSvgf.phiDepth);
             float normalW = pow(saturate(dot(normal, centerNormal)), cbSvgf.phiNormal);
-            float colorW = exp(-length(gi - centerGI) / (colorSigma + 1e-4));
+            float colorW = exp(-(Luma(gi) - Luma(centerGI)) / (colorSigma + 1e-4));
 
             float w = depthW * normalW * colorW;
             sumGI += gi * w;

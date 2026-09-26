@@ -12,50 +12,13 @@ StructuredBuffer<Reservoir>			inputReservoirs	: REG(t2);
 
 RWStructuredBuffer<Reservoir>		outputReservoirs	: REG(u0);
 
-float Halton(int i, int b)
+// Separate random dimensions for the disk offset and reservoir selection.
+float2 MapToDisk(uint seed, float radius)
 {
-	float f = 1.0;
-	float r = 0.0;
-	while (i > 0)
-	{
-		f = f / float(b);
-		r = r + f * float(i % b);
-		i = i / b;
-	}
-	return r;
-}
-
-// Halton<2, 3> 16
-float2 Jitter(uint2 fragCoord, uint frame)
-{
-	int num = 8;
-	return (float2(
-		Halton(frame % num + int(fragCoord.x) % num + 1, 2),
-		Halton(frame % num + int(fragCoord.y) % num + 1, 3)) - 0.5);
-}
-
-float2 MapToDisk(uint2 fragCoord, uint frame, float radius)
-{
-	float2 uv = Jitter(fragCoord, frame);
-
-	if (uv.x == 0.0f && uv.y == 0.0f)
-	{
-		return float2(0, 0);
-	}
-
-	float phi, r;
-	if (abs(uv.x) > abs(uv.y))
-	{
-		r = uv.x;
-		phi = (PI / 4.0f) * (uv.y / uv.x);
-	}
-	else
-	{
-		r = uv.y;
-		phi = (PI / 2.0f) - (PI / 4.0f) * (uv.x / uv.y);
-	}
-
-	return r * radius * float2(cos(phi), sin(phi));
+	float phi = 2.0 * PI * Hash(seed);
+	// Preserve the previous maximum offset (half of spatialRadius).
+	float r = 0.5 * radius * sqrt(Hash(seed + 1u));
+	return r * float2(cos(phi), sin(phi));
 }
 
 [numthreads(8, 8, 1)]
@@ -95,7 +58,7 @@ void main(
 	worldPos.xyz /= worldPos.w;
 
 	Reservoir merged = ReservoirEmpty();
-	float rnd = Hash(pixelIndex * 13 + cbScene.frameIndex * 31u + 7u);
+	uint spatialSeed = pixelIndex * 0x85ebca6bu + cbScene.frameIndex * 0x9e3779b9u;
 
 	float3 dirL = normalize(center.samplePosition - worldPos.xyz);
 	float selectedPdf = ReservoirGetGIPdf(center.sampleRadiance, max(dot(normal, dirL), 0.0));
@@ -104,7 +67,8 @@ void main(
 	[loop]
 	for (int i = 0; i < cbRestir.spatialSampleCount; ++i)
 	{
-		int2 pixelOffset = int2(MapToDisk(pixelPos, cbScene.frameIndex * cbRestir.spatialSampleCount + i, cbRestir.spatialRadius));
+		uint candidateSeed = spatialSeed + uint(i) * 3u;
+		int2 pixelOffset = int2(MapToDisk(candidateSeed, cbRestir.spatialRadius));
 		int2 npos = (int2)pixelPos + pixelOffset;
 		[branch]
 		if (any(npos < 0) || any((uint2)npos >= dim))
@@ -137,6 +101,7 @@ void main(
 		float3 dirN = normalize(nRes.samplePosition - worldPos.xyz);
 		float targetPdfN = ReservoirGetGIPdf(nRes.sampleRadiance, max(dot(normal, dirN), 0.0));
 
+		float rnd = Hash(candidateSeed + 2u);
 		bool IsNSelection = ReservoirCombine(merged, nRes, targetPdfN * Jacobian, rnd);
 		if (IsNSelection)
 		{

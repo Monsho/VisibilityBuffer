@@ -628,7 +628,7 @@ bool SampleApplication::Execute()
 				ImGui::SliderFloat("Phi Color", &svgfPhiColor_, 0.1f, 50.0f);
 				ImGui::SliderFloat("Phi Normal", &svgfPhiNormal_, 1.0f, 256.0f);
 				ImGui::SliderFloat("Phi Depth", &svgfPhiDepth_, 0.1f, 16.0f);
-				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 1, 6);
+				ImGui::SliderInt("A-Trous Iterations", &svgfAtrousIterations_, 2, 6);
 				ImGui::SliderInt("PrePass Radius", &svgfPrepassKernelRadius_, 1, 5);
 				ImGui::SliderFloat("PrePass Clamp Sigma", &svgfPrepassClampSigma_, 0.5f, 5.0f);
 				ImGui::SliderFloat("PrePass Depth Phi Scale", &svgfPrepassDepthPhiScale_, 0.25f, 4.0f);
